@@ -1,93 +1,66 @@
-# nomad-rating-amateur
+# Nomad Amateur
 
+Platform for amateur rating table tennis tournaments in Kazakhstan: clubs, tournaments, Elo rating,
+table booking. Plan: [docs/plans/implementation-plan.md](docs/plans/implementation-plan.md).
 
+Current state: **stage 0 + stage D (client demo)** — players, tournaments, clubs, booking without payment; backend and web screens are done, staging deploy is not.
+Presenter script: [docs/demo-presenter-guide.md](docs/demo-presenter-guide.md).
 
-## Getting started
+## Layout
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+| Path | What |
+|---|---|
+| `packages/shared` | Status machines (spec 4.9), money and commission, time zones, name search, domain constants |
+| `packages/engine` | Pure logic, no I/O: groups and tie-breaks, brackets (olympic, all places), formats and preview, tournament transitions, Elo with calibration, booking slots and prices |
+| `apps/server` | Express API, PostgreSQL (Kysely), sessions, club rights, audit log, payment adapter, WebSocket `/ws`, demo seed |
+| `apps/worker` | BullMQ jobs (hold expiry; later notifications, reminders, rating recalculation) |
+| `apps/web` | React + Vite web app. `/` — scroll-driven landing (`src/features/landing`, three.js + GSAP). Product screens (`src/features/*`, shell in `src/app`): home, tournaments calendar and page (groups, bracket, results), rating list, player profile, clubs, table booking on the hall plan, sign-in / sign-up, player cabinet, club cabinet (tournaments, booking desk, players, club and hall settings). Texts live in `src/i18n/ru.ts`; demo-only UI in `src/demo`. `npm run dev:web` → http://localhost:5173 (proxies `/api` and `/ws` to the server) |
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Run locally
 
-## Add your files
+Requirements: Node.js 22.12+, Docker. Use npm 11 for installs (`npx npm@11 install`) — npm 10 crashes on this workspace tree.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```bash
+npx npm@11 install
+copy .env.example .env
+docker compose up -d
+npm run demo:reset
+npm run dev
 ```
-cd existing_repo
-git remote add origin https://repo.velaro.kz/nomadtta-cms/nomad-rating-amateur.git
-git branch -M main
-git push -uf origin main
-```
 
-## Integrate with your tools
+- API: `http://127.0.0.1:3010/api` (health: `/api/health`), WebSocket: `ws://127.0.0.1:3010/ws`
+- Worker (optional, needs Redis): `npm run dev:worker`
+- Tests: `npm test` · types: `npm run typecheck` · lint: `npm run lint`
 
-* [Set up project integrations](https://repo.velaro.kz/nomadtta-cms/nomad-rating-amateur/-/settings/integrations)
+`npm run demo:reset` wipes the database and creates demo data through the real services: 5 clubs, ~180 players,
+~57 finished tournaments played match by match and rated by Elo, one tournament running now, upcoming tournaments
+with registrations and a waiting list, ~320 bookings. Run it again right before a presentation
+(the «running now» tournament and bookings are relative to today).
 
-## Collaborate with your team
+Demo accounts (password `nomad-demo-2026`), or `POST /api/demo/login-as {"key": "..."}` in demo mode:
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+| key | e-mail | who |
+|---|---|---|
+| `player` | player@demo.nomad.kz | Арман Сейтов, rated player with history |
+| `newbie` | newbie@demo.nomad.kz | Дана Ермекова, calibration 2 of 3 |
+| `organizer` | organizer@demo.nomad.kz | organiser of Smash Arena |
+| `hall_admin` | hall@demo.nomad.kz | helper of Smash Arena with «Брони» and «Игроки» |
+| `admin` | admin@demo.nomad.kz | platform administrator |
 
-## Test and Deploy
+`DEMO_MODE=true` enables `/api/demo/*` only; the server refuses to start with it in production.
+Demo-only code lives in `apps/server/src/demo/`.
 
-Use the built-in continuous integration in GitLab.
+## API (stage D)
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /auth/register`, `/auth/login`, `/auth/logout`, `GET /auth/me` |
+| Catalog | `GET /cities`, `GET /home?city=` |
+| Players | `GET /players` (rating list: city, gender, age, q), `/players/search?q=`, `/players/:id`, `/:id/rating-history?period=3m\|1y\|all`, `/:id/tournaments`, `/:id/tournaments/:tid/matches`, `/:id/best-matches`, `/:id/h2h/:otherId` |
+| Clubs | `GET /clubs?city=`, `/clubs/:slug`, `PATCH /clubs/:id`, `GET/POST /clubs/:id/players`, `GET /my/clubs` |
+| Halls | `GET/PATCH /halls/:id`, `PUT /halls/:id/tables`, `PUT /halls/:id/booking-settings` |
+| Tournaments | `GET /formats`, `POST /formats/preview`, `GET /tournaments?when=&city=&club=&fitsMe=&hasSpots=`, `GET /tournaments/:slug`, `GET/POST /clubs/:clubId/tournaments`, `POST /tournaments/:id/publish`, `GET /tournaments/:id/participants`, `POST /tournaments/:id/entries`, `POST /tournaments/:id/entries/manual`, `DELETE /tournaments/:id/entries/me`, `POST /tournaments/:id/start`, `POST /tournaments/:id/matches/:mid/result`, `POST /tournaments/:id/finish` |
+| Booking | `GET /halls/:id/availability?date=`, `POST /bookings`, `DELETE /bookings/:id`, `GET /my/bookings`, `GET /my/entries`; club desk: `GET/POST /halls/:id/bookings`, `POST /bookings/:id/status`, `POST /halls/:id/blocks` |
 
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Errors are `{ "error": "<code>", "details": ... }` with stable codes for translation (RU/KK/EN) in the web app.
+Money is in tiyn (1 ₸ = 100), times are UTC (shown in the hall time zone).

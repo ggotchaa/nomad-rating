@@ -1,0 +1,432 @@
+// Kysely table types for migrations/0001_init.ts. JSON columns are written as JSON strings (see `json()`).
+
+import type { ColumnType, Generated, Insertable, Selectable, Updateable } from 'kysely'
+import type {
+  BookingStatus,
+  ClubStatus,
+  EntryStatus,
+  MatchStatus,
+  PaymentStatus,
+  TournamentStatus,
+} from '@nomad/shared'
+
+type Timestamp = ColumnType<Date, Date | string, Date | string>
+type DefaultTimestamp = ColumnType<Date, Date | string | undefined, Date | string>
+type Json<T> = ColumnType<T, string, string>
+type JsonDefault<T> = ColumnType<T, string | undefined, string>
+type Id = Generated<number>
+
+export interface CitiesTable {
+  id: Id
+  slug: string
+  name_ru: string
+  name_kk: string
+  name_en: string
+  region_ru: Generated<string>
+  timezone: Generated<string>
+  sort_order: Generated<number>
+}
+
+export interface UsersTable {
+  id: Id
+  email: string
+  email_verified_at: Timestamp | null
+  password_hash: string | null
+  google_sub: string | null
+  platform_role: Generated<'user' | 'admin'>
+  locale: Generated<'ru' | 'kk' | 'en'>
+  totp_secret: string | null
+  blocked_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface SessionsTable {
+  id: string
+  user_id: number
+  active_club_id: number | null
+  user_agent: string | null
+  created_at: DefaultTimestamp
+  expires_at: Timestamp
+}
+
+export interface PlayersTable {
+  id: Id
+  user_id: number | null
+  first_name: string
+  last_name: string
+  middle_name: string | null
+  gender: 'm' | 'f'
+  birth_year: number
+  city_id: number | null
+  hand: 'right' | 'left' | null
+  photo_url: string | null
+  start_level: Generated<number>
+  added_by_club_id: number | null
+  claim_code: string | null
+  contact_email: string | null
+  search_name: string
+  created_at: DefaultTimestamp
+  updated_at: DefaultTimestamp
+}
+
+export type CalibrationJson = {
+  tournaments?: number
+  bestWin?: number | null
+  worstLoss?: number | null
+  bestWinMatch?: string | null
+  worstLossMatch?: string | null
+}
+
+export interface PlayerRatingsTable {
+  player_id: number
+  kind: 'singles' | 'doubles'
+  rating: number | null
+  source: 'calibration' | 'rttf' | 'admin' | null
+  rated_matches: Generated<number>
+  tournaments: Generated<number>
+  matches: Generated<number>
+  wins: Generated<number>
+  max_rating: number | null
+  calibration: JsonDefault<CalibrationJson>
+  last_rated_at: Timestamp | null
+  updated_at: DefaultTimestamp
+}
+
+export interface ClubsTable {
+  id: Id
+  slug: string
+  name: string
+  description: Generated<string>
+  city_id: number
+  logo_url: string | null
+  cover_url: string | null
+  status: Generated<ClubStatus>
+  owner_user_id: number
+  telegram_url: string | null
+  instagram_url: string | null
+  contact_email: string | null
+  contact_telegram: string | null
+  requisites: JsonDefault<Record<string, string>>
+  commission: Json<{ percent: number; minimum: number | null } | null> | null
+  hall_payment_enabled: Generated<boolean>
+  tournament_defaults: JsonDefault<Record<string, unknown>>
+  verified_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface ClubMembersTable {
+  club_id: number
+  user_id: number
+  role: 'organizer' | 'helper'
+  rights: ColumnType<string[], string[] | undefined, string[]>
+  scope: JsonDefault<{ kind: 'club' | 'halls' | 'tournaments'; ids?: number[]; tables?: number[] }>
+  invited_by: number | null
+  created_at: DefaultTimestamp
+}
+
+export type HallPlan = {
+  width: number
+  length: number
+  landmarks: { kind: 'entrance' | 'locker' | 'window' | 'zone' | 'other'; label: string; x: number; y: number; w?: number; h?: number }[]
+}
+
+export interface HallsTable {
+  id: Id
+  club_id: number
+  name: string
+  address: Generated<string>
+  lat: number | null
+  lng: number | null
+  how_to_find: Generated<string>
+  parking: Generated<string>
+  timezone: Generated<string>
+  opening_hours: JsonDefault<Record<string, { open: number; close: number } | null>>
+  comment_for_players: Generated<string>
+  equipment: JsonDefault<Record<string, string>>
+  plan: JsonDefault<HallPlan>
+  is_default: Generated<boolean>
+  created_at: DefaultTimestamp
+}
+
+export interface HallTablesTable {
+  id: Id
+  hall_id: number
+  number: number
+  label: string | null
+  x: Generated<number>
+  y: Generated<number>
+  rotation: Generated<0 | 90>
+  bookable: Generated<boolean>
+  price_per_hour: number | null
+  model: string | null
+  status: Generated<'active' | 'broken'>
+}
+
+export interface BookingSettingsTable {
+  hall_id: number
+  settings: Json<import('@nomad/engine').BookingSettings>
+}
+
+export type TournamentRestrictions = {
+  ratingMin?: number | null
+  ratingMax?: number | null
+  gender?: 'm' | 'f' | null
+  ageMin?: number | null
+  ageMax?: number | null
+}
+
+export type TournamentSettings = {
+  scoreEntry?: 'staff' | 'players'
+  checkinWindowMinutes?: number
+  sameDayRegistration?: boolean
+  callResponseMinutes?: number
+  avgMatchMinutes?: number
+}
+
+export type RefundRule = { hoursBefore: number; percent: number }
+
+export interface TournamentsTable {
+  id: Id
+  club_id: number
+  hall_id: number
+  slug: string
+  title: string
+  type: Generated<'singles' | 'doubles' | 'team'>
+  status: Generated<TournamentStatus>
+  starts_at: Timestamp
+  estimated_end_at: Timestamp
+  registration_closes_at: Timestamp | null
+  max_participants: number
+  min_participants: Generated<number>
+  fee: Generated<number>
+  restrictions: JsonDefault<TournamentRestrictions>
+  prizes: Generated<string>
+  description: Generated<string>
+  comment_for_players: Generated<string>
+  staff_comment: Generated<string>
+  cover_url: string | null
+  format: Json<import('@nomad/engine').TournamentFormat>
+  settings: JsonDefault<TournamentSettings>
+  refund_rules: JsonDefault<RefundRule[]>
+  table_ids: ColumnType<number[], number[] | undefined, number[]>
+  is_rated: Generated<boolean>
+  series_id: number | null
+  address_snapshot: Json<Record<string, unknown>> | null
+  cancelled_reason: string | null
+  created_by: number | null
+  created_at: DefaultTimestamp
+  published_at: Timestamp | null
+  started_at: Timestamp | null
+  finished_at: Timestamp | null
+}
+
+export interface PaymentsTable {
+  id: Id
+  provider: string
+  method: 'online' | 'at_club'
+  purpose: 'tournament_entry' | 'booking' | 'season'
+  amount: number
+  commission: Generated<number>
+  status: Generated<PaymentStatus>
+  external_id: string | null
+  idempotency_key: string
+  user_id: number | null
+  club_id: number
+  metadata: JsonDefault<Record<string, unknown>>
+  created_at: DefaultTimestamp
+  updated_at: DefaultTimestamp
+}
+
+export interface EntriesTable {
+  id: Id
+  tournament_id: number
+  player_id: number
+  status: EntryStatus
+  hold_until: Timestamp | null
+  waitlist_position: number | null
+  payment_id: number | null
+  seed: number | null
+  final_place: number | null
+  final_place_to: number | null
+  rating_at_start: number | null
+  registered_by: number | null
+  created_at: DefaultTimestamp
+  updated_at: DefaultTimestamp
+}
+
+export interface StagesTable {
+  id: Id
+  tournament_id: number
+  stage_key: string
+  kind: 'groups' | 'round_robin' | 'single_elim' | 'all_places'
+  name: string
+  order_index: number
+  status: Generated<'pending' | 'running' | 'finished'>
+  bracket: Json<import('@nomad/engine').Bracket> | null
+  seeds: Json<(number | null)[]> | null
+}
+
+export interface GroupsTable {
+  id: Id
+  stage_id: number
+  code: string
+  order_index: number
+  standings: Json<import('@nomad/engine').StandingsResult> | null
+}
+
+export interface GroupMembersTable {
+  group_id: number
+  entry_id: number
+  seed_index: number
+}
+
+export interface MatchesTable {
+  id: Id
+  tournament_id: number
+  stage_id: number
+  group_id: number | null
+  number: number
+  bracket_number: number | null
+  round: number
+  tour: number | null
+  stage_label: string | null
+  place_from: number | null
+  place_to: number | null
+  home_source: Json<import('@nomad/engine').Source> | null
+  away_source: Json<import('@nomad/engine').Source> | null
+  home_entry_id: number | null
+  away_entry_id: number | null
+  status: MatchStatus
+  result_type: 'normal' | 'walkover' | 'retired' | 'bye' | null
+  table_id: number | null
+  called_at: Timestamp | null
+  started_at: Timestamp | null
+  finished_at: Timestamp | null
+  sets_home: number | null
+  sets_away: number | null
+  games: JsonDefault<import('@nomad/engine').GameScore[]>
+  winner_entry_id: number | null
+  is_rated: Generated<boolean>
+}
+
+export interface RatingEventsTable {
+  id: Generated<number>
+  tournament_id: number
+  match_id: number
+  player_id: number
+  opponent_id: number
+  kind: 'singles' | 'doubles'
+  rating_before: number
+  opponent_rating: number
+  expected: number
+  k: number
+  score: number
+  delta: number
+  created_at: DefaultTimestamp
+}
+
+export interface RatingSnapshotsTable {
+  player_id: number
+  kind: 'singles' | 'doubles'
+  tournament_id: number
+  rating_before: number | null
+  rating_after: number | null
+  delta: Generated<number>
+  place: number | null
+  matches: Generated<number>
+  wins: Generated<number>
+  calibrated: Generated<boolean>
+  at: Timestamp
+}
+
+export interface TableBlocksTable {
+  id: Id
+  hall_id: number
+  table_ids: ColumnType<number[], number[] | undefined, number[]>
+  starts_at: Timestamp
+  ends_at: Timestamp
+  kind: 'training' | 'closed' | 'tournament' | 'maintenance'
+  tournament_id: number | null
+  note: Generated<string>
+  created_by: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface BookingsTable {
+  id: Id
+  hall_id: number
+  table_id: number
+  club_id: number
+  player_id: number | null
+  guest_name: string | null
+  guest_contact: string | null
+  created_by: number | null
+  starts_at: Timestamp
+  ends_at: Timestamp
+  period: ColumnType<string, never, never>
+  status: BookingStatus
+  hold_until: Timestamp | null
+  price: Generated<number>
+  payment_id: number | null
+  source: Generated<'online' | 'phone'>
+  note: Generated<string>
+  created_at: DefaultTimestamp
+  updated_at: DefaultTimestamp
+}
+
+export interface AuditLogTable {
+  id: Generated<number>
+  at: DefaultTimestamp
+  actor_user_id: number | null
+  club_id: number | null
+  entity: string
+  entity_id: string
+  action: string
+  before: Json<unknown> | null
+  after: Json<unknown> | null
+  reason: string | null
+}
+
+export interface PlatformSettingsTable {
+  key: string
+  value: Json<unknown>
+  updated_at: DefaultTimestamp
+}
+
+export interface Database {
+  cities: CitiesTable
+  users: UsersTable
+  sessions: SessionsTable
+  players: PlayersTable
+  player_ratings: PlayerRatingsTable
+  clubs: ClubsTable
+  club_members: ClubMembersTable
+  halls: HallsTable
+  hall_tables: HallTablesTable
+  booking_settings: BookingSettingsTable
+  tournaments: TournamentsTable
+  payments: PaymentsTable
+  entries: EntriesTable
+  stages: StagesTable
+  groups: GroupsTable
+  group_members: GroupMembersTable
+  matches: MatchesTable
+  rating_events: RatingEventsTable
+  rating_snapshots: RatingSnapshotsTable
+  table_blocks: TableBlocksTable
+  bookings: BookingsTable
+  audit_log: AuditLogTable
+  platform_settings: PlatformSettingsTable
+}
+
+export type Tournament = Selectable<TournamentsTable>
+export type NewTournament = Insertable<TournamentsTable>
+export type TournamentUpdate = Updateable<TournamentsTable>
+export type Player = Selectable<PlayersTable>
+export type Club = Selectable<ClubsTable>
+export type Hall = Selectable<HallsTable>
+export type HallTable = Selectable<HallTablesTable>
+export type Booking = Selectable<BookingsTable>
+export type Entry = Selectable<EntriesTable>
+export type Match = Selectable<MatchesTable>
+export type User = Selectable<UsersTable>

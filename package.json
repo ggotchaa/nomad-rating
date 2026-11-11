@@ -1,0 +1,36 @@
+{
+  "name": "nomad-amateur",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @nomad/server",
+    "dev:worker": "npm run dev -w @nomad/worker",
+    "db:up": "docker compose up -d postgres redis",
+    "db:migrate": "npm run migrate -w @nomad/server",
+    "demo:reset": "npm run demo:reset -w @nomad/server",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "dev:web": "npm run dev -w @nomad/web",
+    "build:web": "npm run build -w @nomad/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  }
+}

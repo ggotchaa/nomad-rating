@@ -1,0 +1,30 @@
+/* Design tokens. The landing defines the first version of the visual language («hologram court»);
+   it will be aligned with the design concept when it arrives. */
+:root {
+  --bg: #03050b;
+  --bg-2: #070b16;
+  --surface: rgba(12, 20, 38, 0.55);
+  --surface-strong: rgba(14, 24, 46, 0.86);
+  --line: rgba(94, 242, 255, 0.16);
+  --line-strong: rgba(94, 242, 255, 0.42);
+
+  --holo: #5ef2ff; /* hologram cyan */
+  --holo-2: #8a7dff; /* violet glow */
+  --rubber: #ff3d62; /* red rubber */
+  --ball: #ff8a3d; /* orange ball */
+  --ok: #3dffa8;
+
+  --text: #e9f6ff;
+  --text-2: #9fb3c8;
+  --text-3: #5d708a;
+
+  --font-display: 'Unbounded', 'Manrope Variable', system-ui, sans-serif;
+  --font-body: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --radius: 18px;
+  --radius-sm: 10px;
+  --gutter: clamp(16px, 4vw, 56px);
+  --max: 1280px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
