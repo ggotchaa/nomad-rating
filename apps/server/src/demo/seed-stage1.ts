@@ -2,7 +2,7 @@
 // an RTTF base (~200 profiles, a few matching seeded players), open admin queues.
 
 import { seededRandom } from '@nomad/engine'
-import { START_LEVELS, normalizeText, searchName } from '@nomad/shared'
+import { RIGHT_TEMPLATES, START_LEVELS, normalizeText, searchName } from '@nomad/shared'
 import { db, json } from '../db/index.ts'
 import { hashPassword } from '../auth/password.ts'
 import { DEMO_PASSWORD } from './accounts.ts'
@@ -31,6 +31,14 @@ export async function seedStage1(): Promise<void> {
     .insertInto('club_members')
     .values({ club_id: smash.id, user_id: referee, role: 'helper', rights: ['conduct'], scope: json(next ? { kind: 'tournaments', ids: [next.id] } : { kind: 'club' }), invited_by: smash.owner_user_id })
     .execute()
+
+  // Helpers by the spec templates «Менеджер турниров» and «Бухгалтер».
+  for (const [email, template] of [['manager@demo.nomad.kz', 'tournament_manager'], ['accountant@demo.nomad.kz', 'accountant']] as const) {
+    await db
+      .insertInto('club_members')
+      .values({ club_id: smash.id, user_id: await user(email), role: 'helper', rights: RIGHT_TEMPLATES[template], scope: json({ kind: 'club' }), invited_by: smash.owner_user_id })
+      .execute()
+  }
 
   // Second club owner whose club waits for verification.
   const owner = await user('newclub@demo.nomad.kz')

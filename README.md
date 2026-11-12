@@ -40,6 +40,8 @@ npm run dev
 with registrations and a waiting list, ~320 bookings. Run it again right before a presentation
 (the «running now» tournament and bookings are relative to today).
 
+The site opens in Kazakh by default (switch RU/KZ/EN in the header). Cities come from the reference migration `0007_cities_locale` (36 cities, 20 regions), not from the demo seed.
+
 Demo accounts (password `nomad-demo-2026`), or `POST /api/demo/login-as {"key": "..."}` in demo mode:
 
 | key | e-mail | who |
@@ -48,7 +50,12 @@ Demo accounts (password `nomad-demo-2026`), or `POST /api/demo/login-as {"key": 
 | `newbie` | newbie@demo.nomad.kz | Дана Ермекова, calibration 2 of 3 |
 | `organizer` | organizer@demo.nomad.kz | organiser of Smash Arena |
 | `hall_admin` | hall@demo.nomad.kz | helper of Smash Arena with «Брони» and «Игроки» |
-| `admin` | admin@demo.nomad.kz | platform administrator |
+| `referee` | referee@demo.nomad.kz | helper «Судья»: conduct of one tournament only |
+| `manager` | manager@demo.nomad.kz | helper «Менеджер турниров»: tournaments, conduct, score fix, players |
+| `accountant` | accountant@demo.nomad.kz | helper «Бухгалтер»: finance (view) only |
+| `rttf` | rttf@demo.nomad.kz | player without matches who can claim an RTTF profile |
+| `new_club` | newclub@demo.nomad.kz | organiser of Ping Pong Lab, club under review |
+| `admin` | admin@demo.nomad.kz | platform administrator — open `/admin` (2FA only when `ADMIN_2FA_REQUIRED=true`) |
 
 `DEMO_MODE=true` enables `/api/demo/*` only; the server refuses to start with it in production.
 Demo-only code lives in `apps/server/src/demo/`.

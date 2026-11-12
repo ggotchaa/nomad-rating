@@ -92,6 +92,7 @@ export function Register() {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     void submit('/auth/register', {
+      locale,
       email: f.get('email'),
       password: f.get('password'),
       firstName: f.get('firstName'),

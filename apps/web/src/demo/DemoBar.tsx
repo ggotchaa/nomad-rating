@@ -31,7 +31,7 @@ export function DemoBar() {
         <option value="">{me.user ? t.demo.guest : t.demo.loginAs}</option>
         {accounts.data?.map((a) => (
           <option key={a.key} value={a.key}>
-            {a.title}
+            {t.demo.personas[a.key] ?? a.title}
           </option>
         ))}
       </select>

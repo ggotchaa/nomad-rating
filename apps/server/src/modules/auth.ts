@@ -26,6 +26,7 @@ const registerSchema = z.object({
   hand: z.enum(['right', 'left']).optional(),
   startLevel: z.enum(Object.keys(START_LEVELS) as [keyof typeof START_LEVELS]).default('amateur'),
   consent: z.literal(true),
+  locale: z.enum(['ru', 'kk', 'en']).optional(),
 })
 
 const loginSchema = z.object({ email: z.email(), password: z.string().min(1) })
@@ -82,7 +83,7 @@ authRouter.post(
     if (exists) throw conflict('auth.email_taken')
     const passwordHash = await hashPassword(body.password)
     const userId = await db.transaction().execute(async (trx) => {
-      const user = await trx.insertInto('users').values({ email: body.email, password_hash: passwordHash, consent_at: new Date() }).returning('id').executeTakeFirstOrThrow()
+      const user = await trx.insertInto('users').values({ email: body.email, password_hash: passwordHash, consent_at: new Date(), locale: body.locale ?? null }).returning('id').executeTakeFirstOrThrow()
       // R-10: a profile the club created with this e-mail becomes the new account automatically.
       const clubProfile = await trx
         .selectFrom('players')

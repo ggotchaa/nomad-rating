@@ -33,7 +33,16 @@ export const en: Messages = {
     female: 'female',
     male: 'male',
   },
-  demo: { banner: 'Demo version · data is fictional, payments are disabled', loginAs: 'Log in as…', guest: 'Guest (log out)' },
+  demo: { banner: 'Demo version · data is fictional, payments are disabled', loginAs: 'Log in as…', guest: 'Guest (log out)', personas: { player: 'Player', newbie: 'Newcomer', organizer: 'Club organiser', hall_admin: 'Hall administrator', referee: 'Referee', manager: 'Tournament manager', accountant: 'Club accountant', rttf: 'Player with an RTTF profile', new_club: 'New club under review', admin: 'Platform administrator' } as Record<string, string> },
+  bookIdx: {
+    kicker: 'Booking',
+    nav: 'Booking',
+    title: 'Book a table',
+    lead: 'Choose a city to see the clubs that take online table bookings. Payment at the club.',
+    empty: 'No clubs with online booking in this city yet.',
+    citiesWith: 'Cities where booking already works:',
+    book: 'Book a table',
+  },
   home: {
     eyebrow: 'Rated table tennis tournaments',
     title: 'Play. Grow. Climb the rating.',

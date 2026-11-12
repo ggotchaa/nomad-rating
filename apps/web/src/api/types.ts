@@ -1,6 +1,15 @@
 // Response shapes of the endpoints used by the web app (see apps/server/src/modules).
 
-export type City = { id: number; slug: string; name: { ru: string; kk: string; en: string }; region: string; timezone: string }
+export type City = {
+  id: number
+  slug: string
+  name: { ru: string; kk: string; en: string }
+  region: string
+  regionName?: { ru: string; kk: string; en: string }
+  timezone: string
+  /** Active clubs of the city that take online bookings. */
+  bookingClubs?: number
+}
 
 export type Restrictions = { ratingMin?: number | null; ratingMax?: number | null; gender?: 'm' | 'f' | null; ageMin?: number | null; ageMax?: number | null }
 
@@ -45,7 +54,7 @@ export type Me = {
     id: number
     email: string
     role: 'user' | 'admin'
-    locale: string
+    locale: string | null
     emailVerified?: boolean
     hasPassword?: boolean
     googleLinked?: boolean

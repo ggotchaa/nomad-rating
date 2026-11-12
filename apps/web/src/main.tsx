@@ -14,6 +14,7 @@ import { SessionProvider } from './app/auth.tsx'
 import { Login, Register } from './features/account/Auth.tsx'
 import { Cabinet } from './features/account/Cabinet.tsx'
 import { Booking } from './features/booking/Booking.tsx'
+import { BookingIndex } from './features/booking/BookingIndex.tsx'
 import { ClubPage } from './features/clubs/ClubPage.tsx'
 import { Clubs } from './features/clubs/Clubs.tsx'
 import { Home } from './features/home/Home.tsx'
@@ -69,6 +70,7 @@ const router = createBrowserRouter([
       { path: 'rating', element: <RatingList /> },
       { path: 'players/:id', element: <Profile /> },
       { path: 'clubs', element: <Clubs /> },
+      { path: 'booking', element: <BookingIndex /> },
       { path: 'clubs/new', element: <RegisterClub /> },
       { path: 'club/:slug', element: <ClubPage /> },
       { path: 'club/:slug/booking', element: <Booking /> },

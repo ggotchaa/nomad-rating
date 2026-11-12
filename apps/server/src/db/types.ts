@@ -23,6 +23,8 @@ export interface CitiesTable {
   name_kk: string
   name_en: string
   region_ru: Generated<string>
+  region_kk: Generated<string>
+  region_en: Generated<string>
   timezone: Generated<string>
   sort_order: Generated<number>
 }
@@ -34,7 +36,8 @@ export interface UsersTable {
   password_hash: string | null
   google_sub: string | null
   platform_role: Generated<'user' | 'admin'>
-  locale: Generated<'ru' | 'kk' | 'en'>
+  /** Explicit choice; NULL means the site default (Kazakh). */
+  locale: 'ru' | 'kk' | 'en' | null
   totp_secret: string | null
   totp_enabled_at: Timestamp | null
   consent_at: Timestamp | null

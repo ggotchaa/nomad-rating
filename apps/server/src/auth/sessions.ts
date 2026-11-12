@@ -12,7 +12,7 @@ export type SessionUser = {
   id: number
   email: string
   platformRole: 'user' | 'admin'
-  locale: 'ru' | 'kk' | 'en'
+  locale: 'ru' | 'kk' | 'en' | null
   playerId: number | null
   sessionId: string
   activeClubId: number | null

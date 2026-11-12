@@ -5,6 +5,7 @@ import { INITIAL_STATE } from './scene/state.ts'
 import { t } from '../../i18n/index.ts'
 import { CHAPTERS, buildStory } from './story.ts'
 import { LiveSection } from './LiveSection.tsx'
+import { LangSelect } from '../../ui/Lang.tsx'
 import './landing.css'
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -81,11 +82,14 @@ export function Landing() {
           <Link to="/tournaments">{t.nav.tournaments}</Link>
           <Link to="/rating">{t.nav.rating}</Link>
           <Link to="/clubs">{t.nav.clubs}</Link>
-          <Link to="/clubs">{t.landing.navBooking}</Link>
+          <Link to="/booking">{t.landing.navBooking}</Link>
         </nav>
         <Link className="btn btn--ghost hud__login" to="/login">
           {t.landing.login}
         </Link>
+        <div className="hud__lang">
+          <LangSelect />
+        </div>
         <div className="hud__progress">
           <div ref={progressRef} />
         </div>

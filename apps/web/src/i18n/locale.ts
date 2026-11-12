@@ -7,7 +7,9 @@ export const INTL_TAG: Record<Locale, string> = { ru: 'ru-RU', kk: 'kk-KZ', en: 
 const KEY = 'nomad.locale'
 const SYNC_KEY = 'nomad.locale.sync'
 
-export const isLocale = (v: unknown): v is Locale => v === 'ru' || v === 'kk' || v === 'en'
+export const DEFAULT_LOCALE: Locale = 'kk'
+
+export const isLocale =(v: unknown): v is Locale => v === 'ru' || v === 'kk' || v === 'en'
 
 function resolve(): Locale {
   try {
@@ -16,8 +18,7 @@ function resolve(): Locale {
   } catch {
     // storage unavailable
   }
-  const browser = (typeof navigator === 'undefined' ? '' : navigator.language).slice(0, 2).toLowerCase()
-  return browser === 'kk' || browser === 'en' ? browser : 'ru'
+  return DEFAULT_LOCALE
 }
 
 export const locale: Locale = resolve()
@@ -35,7 +36,7 @@ export function storeLocale(next: Locale): void {
 }
 
 /** Adopts the account locale once per tab session; returns true when a reload was started. */
-export function adoptUserLocale(next: string): boolean {
+export function adoptUserLocale(next: string | null): boolean {
   if (!isLocale(next) || next === locale) return false
   try {
     if (sessionStorage.getItem(SYNC_KEY) === next) return false

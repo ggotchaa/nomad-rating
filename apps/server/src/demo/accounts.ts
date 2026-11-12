@@ -39,6 +39,20 @@ export const DEMO_ACCOUNTS = [
     email: 'referee@demo.nomad.kz',
   },
   {
+    key: 'manager',
+    role: 'helper',
+    title: 'Менеджер турниров',
+    description: 'Помощник по шаблону «Менеджер турниров»: турниры, проведение, исправление счёта, игроки',
+    email: 'manager@demo.nomad.kz',
+  },
+  {
+    key: 'accountant',
+    role: 'helper',
+    title: 'Бухгалтер клуба',
+    description: 'Помощник по шаблону «Бухгалтер»: только просмотр финансов',
+    email: 'accountant@demo.nomad.kz',
+  },
+  {
     key: 'rttf',
     role: 'player',
     title: 'Игрок с профилем RTTF',

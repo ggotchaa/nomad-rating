@@ -14,8 +14,32 @@ export const catalogRouter = Router()
 catalogRouter.get(
   '/cities',
   handler(async (_req, res) => {
-    const rows = await db.selectFrom('cities').selectAll().orderBy('sort_order').orderBy('name_ru').execute()
-    res.json(rows.map((c) => ({ id: c.id, slug: c.slug, name: { ru: c.name_ru, kk: c.name_kk, en: c.name_en }, region: c.region_ru, timezone: c.timezone })))
+    const rows = await db
+      .selectFrom('cities as ci')
+      .selectAll('ci')
+      .select((eb) =>
+        eb
+          .selectFrom('clubs as c')
+          .whereRef('c.city_id', '=', 'ci.id')
+          .where('c.status', '=', 'active')
+          .where((x) => x.exists(x.selectFrom('halls as h').innerJoin('hall_tables as t', 't.hall_id', 'h.id').whereRef('h.club_id', '=', 'c.id').where('t.bookable', '=', true).select('t.id')))
+          .select((x) => x.fn.countAll<number>().as('n'))
+          .as('booking_clubs'),
+      )
+      .orderBy('ci.sort_order')
+      .orderBy('ci.name_ru')
+      .execute()
+    res.json(
+      rows.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        name: { ru: c.name_ru, kk: c.name_kk, en: c.name_en },
+        region: c.region_ru,
+        regionName: { ru: c.region_ru, kk: c.region_kk, en: c.region_en },
+        timezone: c.timezone,
+        bookingClubs: Number(c.booking_clubs ?? 0),
+      })),
+    )
   }),
 )
 

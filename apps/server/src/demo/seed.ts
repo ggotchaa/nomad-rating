@@ -170,16 +170,8 @@ export async function seedDemo(): Promise<void> {
   const passwordHash = await hashPassword(DEMO_PASSWORD)
 
   // --- Reference data -------------------------------------------------------
-  const cities = await db
-    .insertInto('cities')
-    .values([
-      { slug: 'almaty', name_ru: 'Алматы', name_kk: 'Алматы', name_en: 'Almaty', region_ru: 'Алматы', sort_order: 1 },
-      { slug: 'astana', name_ru: 'Астана', name_kk: 'Астана', name_en: 'Astana', region_ru: 'Астана', sort_order: 2 },
-      { slug: 'shymkent', name_ru: 'Шымкент', name_kk: 'Шымкент', name_en: 'Shymkent', region_ru: 'Шымкент', sort_order: 3 },
-      { slug: 'karaganda', name_ru: 'Караганда', name_kk: 'Қарағанды', name_en: 'Karaganda', region_ru: 'Карагандинская область', sort_order: 4 },
-    ])
-    .returning(['id', 'slug'])
-    .execute()
+  // Cities come from the reference migration (0007).
+  const cities = await db.selectFrom('cities').select(['id', 'slug']).execute()
   const cityId = Object.fromEntries(cities.map((c) => [c.slug, c.id])) as Record<string, number>
   await db
     .insertInto('platform_settings')
