@@ -312,8 +312,8 @@ hallBookingsRouter.post(
   '/bookings',
   handler(async (req, res) => {
     const hallId = intParam(req, 'hallId')
-    const user = await requireClubRight(req, await hallClubId(hallId), 'bookings', { hallId })
     const body = parseBody(phoneBooking, req)
+    const user = await requireClubRight(req, await hallClubId(hallId), 'bookings', { hallId, tableId: body.tableId })
     const booking = await db.transaction().execute((trx) =>
       createBooking(trx, {
         hallId,
@@ -340,7 +340,7 @@ bookingsRouter.post(
     const { status, reason } = parseBody(z.object({ status: z.enum(['arrived', 'no_show', 'cancelled_by_club']), reason: z.string().max(500).optional() }), req)
     const b = await db.selectFrom('bookings').selectAll().where('id', '=', id).executeTakeFirst()
     if (!b) throw notFound('booking.not_found')
-    const user = await requireClubRight(req, b.club_id, 'bookings', { hallId: b.hall_id })
+    const user = await requireClubRight(req, b.club_id, 'bookings', { hallId: b.hall_id, tableId: b.table_id })
     assertTransition('booking', bookingStatus, b.status, status)
     await db.transaction().execute(async (trx) => {
       await trx.updateTable('bookings').set({ status, updated_at: new Date() }).where('id', '=', id).execute()

@@ -13,6 +13,13 @@ import { clubsRouter, hallsRouter, myRouter } from '../modules/clubs.ts'
 import { clubTournamentsRouter, formatsRouter, tournamentsRouter } from '../modules/tournaments.ts'
 import { bookingsRouter, hallBookingsRouter, myBookingsRouter } from '../modules/bookings.ts'
 import { demoRouter } from '../demo/routes.ts'
+import { accountRouter, myAccountRouter } from '../modules/account.ts'
+import { clubManageRouter } from '../modules/club-manage.ts'
+import { claimRouter, clubPlayersRouter } from '../modules/club-players.ts'
+import { helpersRouter, invitationsRouter } from '../modules/helpers.ts'
+import { adminRouter } from '../modules/admin.ts'
+import { adminRttfRouter, rttfRouter } from '../modules/rttf.ts'
+import { UPLOADS_ROOT } from '../storage/index.ts'
 import { ratingRouter } from '../modules/rating.ts'
 import { notificationsRouter } from '../modules/notifications.ts'
 import { errorHandler, notFound } from './errors.ts'
@@ -32,7 +39,18 @@ export function createApp() {
     await db.selectFrom('cities').select('id').limit(1).execute()
     res.json({ ok: true, demo: config.DEMO_MODE })
   })
+  api.use('/uploads', express.static(UPLOADS_ROOT, { maxAge: '7d', fallthrough: false }))
   api.use('/auth', authRouter)
+  api.use('/auth', accountRouter)
+  api.use('/clubs', clubManageRouter)
+  api.use('/clubs', helpersRouter)
+  api.use('/clubs', clubPlayersRouter)
+  api.use('/invitations', invitationsRouter)
+  api.use('/my', myAccountRouter)
+  api.use('/my', claimRouter)
+  api.use('/rttf', rttfRouter)
+  api.use('/admin/rttf', adminRttfRouter)
+  api.use('/admin', adminRouter)
   api.use('/', catalogRouter)
   api.use('/players', playersRouter)
   api.use('/clubs/:clubId/tournaments', clubTournamentsRouter)

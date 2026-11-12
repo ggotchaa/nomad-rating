@@ -16,6 +16,8 @@ export type SessionUser = {
   playerId: number | null
   sessionId: string
   activeClubId: number | null
+  totpEnabled: boolean
+  mfaVerified: boolean
 }
 
 declare module 'express-serve-static-core' {
@@ -25,6 +27,8 @@ declare module 'express-serve-static-core' {
 }
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex')
+
+export const sessionDigest = (token: string) => digest(token)
 
 export async function createSession(res: Response, userId: number, userAgent?: string): Promise<void> {
   const token = randomBytes(32).toString('base64url')
@@ -66,7 +70,7 @@ export async function userFromToken(token: string | undefined): Promise<SessionU
     .selectFrom('sessions as s')
     .innerJoin('users as u', 'u.id', 's.user_id')
     .leftJoin('players as p', 'p.user_id', 'u.id')
-    .select(['s.id as sessionId', 's.active_club_id', 'u.id', 'u.email', 'u.platform_role', 'u.locale', 'u.blocked_at', 'p.id as playerId'])
+    .select(['s.id as sessionId', 's.active_club_id', 'u.id', 'u.email', 'u.platform_role', 'u.locale', 'u.blocked_at', 'u.totp_enabled_at', 's.mfa_verified_at', 'p.id as playerId'])
     .where('s.id', '=', digest(token))
     .where('s.expires_at', '>', new Date())
     .executeTakeFirst()
@@ -79,6 +83,8 @@ export async function userFromToken(token: string | undefined): Promise<SessionU
     playerId: row.playerId,
     sessionId: row.sessionId,
     activeClubId: row.active_club_id,
+    totpEnabled: row.totp_enabled_at != null,
+    mfaVerified: row.mfa_verified_at != null,
   }
 }
 

@@ -1,17 +1,17 @@
 // Clubs, halls and tables (spec 4.13, C-1…C-10) and club-added players (R-8, R-9).
 
-import { randomInt } from 'node:crypto'
 import { Router } from 'express'
 import { z } from 'zod'
 import { DEFAULT_BOOKING_SETTINGS } from '@nomad/engine'
 import type { BookingSettings } from '@nomad/engine'
-import { START_LEVELS, normalizeText, searchName } from '@nomad/shared'
+import { START_LEVELS } from '@nomad/shared'
 import { db, json } from '../db/index.ts'
 import { audit } from '../audit.ts'
 import { requireClubRight, requireUser } from '../auth/access.ts'
 import { conflict, handler, notFound } from '../http/errors.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { playerName } from './players.ts'
+import { createClubPlayer, findDuplicates } from './club-players.ts'
 
 export const clubsRouter = Router()
 export const hallsRouter = Router()
@@ -140,6 +140,7 @@ clubsRouter.get(
       logoUrl: club.logo_url,
       coverUrl: club.cover_url,
       status: club.status,
+      commentForPlayers: club.comment_for_players,
       contacts: { telegram: club.contact_telegram, email: club.contact_email, telegramChannel: club.telegram_url, instagram: club.instagram_url },
       hallPaymentEnabled: club.hall_payment_enabled,
       halls: await Promise.all(halls.map((h) => hallView(h.id))),
@@ -162,6 +163,7 @@ const clubUpdate = z.object({
   contactEmail: z.email().nullable().optional(),
   contactTelegram: z.string().max(100).nullable().optional(),
   tournamentDefaults: z.record(z.string(), z.unknown()).optional(),
+  commentForPlayers: z.string().max(5000).optional(),
 })
 
 clubsRouter.patch(
@@ -181,6 +183,7 @@ clubsRouter.patch(
       ...(body.contactEmail !== undefined && { contact_email: body.contactEmail }),
       ...(body.contactTelegram !== undefined && { contact_telegram: body.contactTelegram }),
       ...(body.tournamentDefaults !== undefined && { tournament_defaults: json(body.tournamentDefaults) }),
+      ...(body.commentForPlayers !== undefined && { comment_for_players: body.commentForPlayers }),
     }
     if (Object.keys(values).length) await db.updateTable('clubs').set(values).where('id', '=', clubId).execute()
     await audit({ actorUserId: user.id, clubId, entity: 'club', entityId: clubId, action: 'update', before: pick(before, Object.keys(body)), after: body })
@@ -198,6 +201,7 @@ const hallUpdate = z.object({
   location: z.object({ lat: z.number(), lng: z.number() }).nullable().optional(),
   howToFind: z.string().max(2000).optional(),
   parking: z.string().max(1000).optional(),
+  timezone: z.string().max(60).optional(),
   openingHours: hoursSchema.optional(),
   commentForPlayers: z.string().max(5000).optional(),
   plan: z
@@ -238,6 +242,7 @@ hallsRouter.patch(
         ...(body.location !== undefined && { lat: body.location?.lat ?? null, lng: body.location?.lng ?? null }),
         ...(body.howToFind !== undefined && { how_to_find: body.howToFind }),
         ...(body.parking !== undefined && { parking: body.parking }),
+        ...(body.timezone !== undefined && { timezone: body.timezone }),
         ...(body.openingHours !== undefined && { opening_hours: json(body.openingHours) }),
         ...(body.commentForPlayers !== undefined && { comment_for_players: body.commentForPlayers }),
         ...(body.plan !== undefined && { plan: json(body.plan) }),
@@ -438,39 +443,12 @@ clubsRouter.post(
     const user = await requireClubRight(req, clubId, 'players')
     const body = parseBody(newPlayer, req)
     if (!body.force) {
-      // R-9: same surname + first name, birth year ±1 or same city.
-      const similar = await db
-        .selectFrom('players as p')
-        .leftJoin('cities as c', 'c.id', 'p.city_id')
-        .select(['p.id', 'p.first_name', 'p.last_name', 'p.birth_year', 'c.name_ru as city'])
-        .where('p.search_name', 'like', `${normalizeText(body.lastName)} ${normalizeText(body.firstName)}%`)
-        .where((eb) => eb.or([eb('p.birth_year', 'in', [body.birthYear - 1, body.birthYear, body.birthYear + 1]), eb('p.city_id', '=', body.cityId)]))
-        .limit(10)
-        .execute()
-      if (similar.length) throw conflict('player.possible_duplicates', similar.map((s) => ({ id: s.id, name: playerName(s), birthYear: s.birth_year, city: s.city })))
+      const similar = await findDuplicates(db, body)
+      if (similar.length) throw conflict('player.possible_duplicates', similar)
     }
-    const player = await db.transaction().execute(async (trx) => {
-      const p = await trx
-        .insertInto('players')
-        .values({
-          first_name: body.firstName,
-          last_name: body.lastName,
-          middle_name: body.middleName ?? null,
-          gender: body.gender,
-          birth_year: body.birthYear,
-          city_id: body.cityId,
-          start_level: START_LEVELS[body.startLevel],
-          added_by_club_id: clubId,
-          contact_email: body.email ?? null,
-          claim_code: String(randomInt(100000, 999999)) + String(Date.now() % 1000).padStart(3, '0'),
-          search_name: searchName(body),
-        })
-        .returning(['id', 'claim_code'])
-        .executeTakeFirstOrThrow()
-      await trx.insertInto('player_ratings').values({ player_id: p.id, kind: 'singles', rating: null, calibration: json({ tournaments: 0 }) }).execute()
-      await audit({ actorUserId: user.id, clubId, entity: 'player', entityId: p.id, action: 'create_by_club', after: body }, trx)
-      return p
-    })
+    const player = await db.transaction().execute((trx) =>
+      createClubPlayer(trx, clubId, user.id, { ...body, middleName: body.middleName ?? null, email: body.email ?? null }),
+    )
     res.status(201).json({ id: player.id, claimCode: player.claim_code })
   }),
 )

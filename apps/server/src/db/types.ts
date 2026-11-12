@@ -36,6 +36,8 @@ export interface UsersTable {
   platform_role: Generated<'user' | 'admin'>
   locale: Generated<'ru' | 'kk' | 'en'>
   totp_secret: string | null
+  totp_enabled_at: Timestamp | null
+  consent_at: Timestamp | null
   blocked_at: Timestamp | null
   created_at: DefaultTimestamp
 }
@@ -45,6 +47,7 @@ export interface SessionsTable {
   user_id: number
   active_club_id: number | null
   user_agent: string | null
+  mfa_verified_at: Timestamp | null
   created_at: DefaultTimestamp
   expires_at: Timestamp
 }
@@ -111,6 +114,8 @@ export interface ClubsTable {
   hall_payment_enabled: Generated<boolean>
   tournament_defaults: JsonDefault<Record<string, unknown>>
   verified_at: Timestamp | null
+  status_reason: string | null
+  comment_for_players: Generated<string>
   created_at: DefaultTimestamp
 }
 
@@ -119,7 +124,7 @@ export interface ClubMembersTable {
   user_id: number
   role: 'organizer' | 'helper'
   rights: ColumnType<string[], string[] | undefined, string[]>
-  scope: JsonDefault<{ kind: 'club' | 'halls' | 'tournaments'; ids?: number[]; tables?: number[] }>
+  scope: JsonDefault<ClubScope>
   invited_by: number | null
   created_at: DefaultTimestamp
 }
@@ -420,6 +425,11 @@ export interface Database {
   bookings: BookingsTable
   audit_log: AuditLogTable
   platform_settings: PlatformSettingsTable
+  auth_tokens: AuthTokensTable
+  club_invitations: ClubInvitationsTable
+  player_merge_requests: PlayerMergeRequestsTable
+  rttf_profiles: RttfProfilesTable
+  rttf_claims: RttfClaimsTable
   disputes: DisputesTable
   notifications: NotificationsTable
   notification_prefs: NotificationPrefsTable
@@ -444,6 +454,43 @@ export type Entry = Selectable<EntriesTable>
 export type Match = Selectable<MatchesTable>
 export type User = Selectable<UsersTable>
 
+// --- Stage 1 ---
+
+export type ClubScope = { kind: 'club' | 'halls' | 'tournaments' | 'tables'; ids?: number[] }
+
+export interface AuthTokensTable {
+  id: Id
+  user_id: number
+  kind: 'verify_email' | 'reset_password'
+  token_hash: string
+  expires_at: Timestamp
+  used_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface ClubInvitationsTable {
+  id: Id
+  club_id: number
+  email: string | null
+  token_hash: string
+  rights: ColumnType<string[], string[] | undefined, string[]>
+  scope: JsonDefault<ClubScope>
+  template: string | null
+  status: Generated<'sent' | 'accepted' | 'declined' | 'expired' | 'revoked'>
+  expires_at: Timestamp
+  invited_by: number | null
+  accepted_by: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface PlayerMergeRequestsTable {
+  id: Id
+  club_id: number | null
+  source_player_id: number
+  target_player_id: number
+  reason: Generated<string>
+  status: Generated<'open' | 'merged' | 'rejected'>
+  requested_by: number | null
 // --- Stage 3 ---
 
 /** Full player_ratings row values, stored in snapshots so a replay can restore the state before a tournament. */
@@ -474,6 +521,28 @@ export interface DisputesTable {
   created_at: DefaultTimestamp
 }
 
+export interface RttfProfilesTable {
+  id: Id
+  rttf_id: string | null
+  full_name: string
+  search_name: string
+  birth_year: number | null
+  city: Generated<string>
+  rating: number
+  player_id: number | null
+  updated_at: DefaultTimestamp
+}
+
+export interface RttfClaimsTable {
+  id: Id
+  kind: 'claim' | 'add_request'
+  rttf_profile_id: number | null
+  player_id: number
+  status: 'approved' | 'pending' | 'conflict' | 'rejected'
+  reason: Generated<string>
+  payload: JsonDefault<Record<string, unknown>>
+  resolved_by: number | null
+  resolved_at: Timestamp | null
 export interface NotificationsTable {
   id: Id
   user_id: number

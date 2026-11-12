@@ -4,7 +4,12 @@
 import type { Request } from 'express'
 import { CLUB_RIGHTS } from '@nomad/shared'
 import type { ClubRight } from '@nomad/shared'
+import { config } from '../config.ts'
 import { db } from '../db/index.ts'
+import { scopeAllows } from './scope.ts'
+import type { ClubScopeTarget } from './scope.ts'
+
+export type { ClubScopeTarget }
 import { forbidden, unauthorized } from '../http/errors.ts'
 import type { SessionUser } from './sessions.ts'
 
@@ -16,10 +21,10 @@ export function requireUser(req: Request): SessionUser {
 export function requirePlatformAdmin(req: Request): SessionUser {
   const user = requireUser(req)
   if (user.platformRole !== 'admin') throw forbidden()
+  if (user.totpEnabled && !user.mfaVerified) throw forbidden('auth.mfa_required')
+  if (config.ADMIN_2FA_REQUIRED && !user.totpEnabled) throw forbidden('auth.mfa_setup_required')
   return user
 }
-
-export type ClubScopeTarget = { hallId?: number; tournamentId?: number }
 
 export type ClubAccessResult = { role: 'organizer' | 'helper'; rights: ClubRight[] }
 
@@ -52,9 +57,6 @@ export async function requireClubRight(
   if (!member) throw forbidden('club.not_member')
   if (member.role === 'organizer') return user
   if (right === 'organizer_only' || !member.rights.includes(right)) throw forbidden('club.right_missing')
-  const scope = member.scope
-  if (scope.kind === 'halls' && target.hallId != null && !scope.ids?.includes(target.hallId)) throw forbidden('club.out_of_scope')
-  if (scope.kind === 'tournaments' && (target.tournamentId == null || !scope.ids?.includes(target.tournamentId)))
-    throw forbidden('club.out_of_scope')
+  if (!scopeAllows(member.scope, target)) throw forbidden('club.out_of_scope')
   return user
 }

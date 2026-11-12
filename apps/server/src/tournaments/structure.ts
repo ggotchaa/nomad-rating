@@ -29,6 +29,7 @@ import type { Database, Match } from '../db/types.ts'
 import { audit } from '../audit.ts'
 import { badRequest, conflict, unprocessable } from '../http/errors.ts'
 import { applyTournamentRatings } from '../rating/service.ts'
+import { revokeTournamentHelpers } from '../modules/helpers.ts'
 
 type Trx = Transaction<Database>
 
@@ -360,6 +361,7 @@ export async function finishTournament(trx: Trx, tournamentId: number, actorUser
     .where('id', '=', tournamentId)
     .execute()
   await applyTournamentRatings(trx, tournamentId)
+  await revokeTournamentHelpers(trx, tournamentId)
   await audit({ actorUserId, clubId: t.club_id, entity: 'tournament', entityId: tournamentId, action: 'finish', before: { status: t.status }, after: { status: 'finished' } }, trx)
 }
 

@@ -1,4 +1,4 @@
-// Accounts (R-1): e-mail + password. Google sign-in, e-mail confirmation and password reset come in stage 1.
+// Accounts (R-1): e-mail + password registration and login. Confirmation, reset, Google and 2FA: account.ts.
 
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
@@ -11,6 +11,8 @@ import { requireUser } from '../auth/access.ts'
 import { conflict, handler, unauthorized } from '../http/errors.ts'
 import { parseBody } from '../http/validate.ts'
 import { audit } from '../audit.ts'
+import { issueToken } from '../auth/tokens.ts'
+import { mails, sendMail } from '../mail/index.ts'
 
 const registerSchema = z.object({
   email: z.email().max(200),
@@ -23,14 +25,19 @@ const registerSchema = z.object({
   cityId: z.number().int().positive(),
   hand: z.enum(['right', 'left']).optional(),
   startLevel: z.enum(Object.keys(START_LEVELS) as [keyof typeof START_LEVELS]).default('amateur'),
+  consent: z.literal(true),
 })
 
 const loginSchema = z.object({ email: z.email(), password: z.string().min(1) })
 
-const limiter = rateLimit({ windowMs: 15 * 60000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false })
+export const limiter = rateLimit({ windowMs: 15 * 60000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false })
 
-export async function currentUserView(userId: number) {
-  const user = await db.selectFrom('users').select(['id', 'email', 'platform_role', 'locale']).where('id', '=', userId).executeTakeFirstOrThrow()
+export async function currentUserView(userId: number, session?: { activeClubId: number | null; mfaVerified: boolean }) {
+  const user = await db
+    .selectFrom('users')
+    .select(['id', 'email', 'platform_role', 'locale', 'email_verified_at', 'password_hash', 'google_sub', 'totp_enabled_at', 'consent_at'])
+    .where('id', '=', userId)
+    .executeTakeFirstOrThrow()
   const player = await db
     .selectFrom('players as p')
     .leftJoin('cities as c', 'c.id', 'p.city_id')
@@ -44,7 +51,23 @@ export async function currentUserView(userId: number) {
     .select(['c.id', 'c.slug', 'c.name', 'm.role', 'm.rights'])
     .where('m.user_id', '=', userId)
     .execute()
-  return { user: { id: user.id, email: user.email, role: user.platform_role, locale: user.locale }, player: player ?? null, clubs }
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.platform_role,
+      locale: user.locale,
+      emailVerified: user.email_verified_at != null,
+      hasPassword: user.password_hash != null,
+      googleLinked: user.google_sub != null,
+      totpEnabled: user.totp_enabled_at != null,
+      mfaRequired: user.totp_enabled_at != null && session?.mfaVerified === false,
+      needsWelcome: !player || user.consent_at == null,
+    },
+    player: player ?? null,
+    clubs,
+    activeClubId: session?.activeClubId ?? clubs[0]?.id ?? null,
+  }
 }
 
 export const authRouter = Router()
@@ -58,7 +81,7 @@ authRouter.post(
     if (exists) throw conflict('auth.email_taken')
     const passwordHash = await hashPassword(body.password)
     const userId = await db.transaction().execute(async (trx) => {
-      const user = await trx.insertInto('users').values({ email: body.email, password_hash: passwordHash }).returning('id').executeTakeFirstOrThrow()
+      const user = await trx.insertInto('users').values({ email: body.email, password_hash: passwordHash, consent_at: new Date() }).returning('id').executeTakeFirstOrThrow()
       // R-10: a profile the club created with this e-mail becomes the new account automatically.
       const clubProfile = await trx
         .selectFrom('players')
@@ -90,6 +113,7 @@ authRouter.post(
       }
       return user.id
     })
+    await sendMail(mails.confirmEmail(body.email, await issueToken(userId, 'verify_email')))
     await createSession(res, userId, req.get('user-agent'))
     res.status(201).json(await currentUserView(userId))
   }),
@@ -107,7 +131,7 @@ authRouter.post(
       .executeTakeFirst()
     if (!user || user.blocked_at || !(await verifyPassword(body.password, user.password_hash))) throw unauthorized('auth.invalid_credentials')
     await createSession(res, user.id, req.get('user-agent'))
-    res.json(await currentUserView(user.id))
+    res.json(await currentUserView(user.id, { activeClubId: null, mfaVerified: false }))
   }),
 )
 
@@ -123,9 +147,10 @@ authRouter.get(
   '/me',
   handler(async (req, res) => {
     if (!req.user) {
-      res.json({ user: null, player: null, clubs: [] })
+      res.json({ user: null, player: null, clubs: [], activeClubId: null })
       return
     }
-    res.json(await currentUserView(requireUser(req).id))
+    const user = requireUser(req)
+    res.json(await currentUserView(user.id, user))
   }),
 )

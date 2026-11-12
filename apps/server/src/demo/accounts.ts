@@ -32,6 +32,27 @@ export const DEMO_ACCOUNTS = [
     email: 'hall@demo.nomad.kz',
   },
   {
+    key: 'referee',
+    role: 'helper',
+    title: 'Судья',
+    description: 'Помощник с правом «Проведение» только на ближайший турнир',
+    email: 'referee@demo.nomad.kz',
+  },
+  {
+    key: 'rttf',
+    role: 'player',
+    title: 'Игрок с профилем RTTF',
+    description: 'Без матчей, может перенести рейтинг RTTF («Это я»)',
+    email: 'rttf@demo.nomad.kz',
+  },
+  {
+    key: 'new_club',
+    role: 'organizer',
+    title: 'Новый клуб на проверке',
+    description: 'Организатор клуба «Ping Pong Lab» (статус «На проверке»)',
+    email: 'newclub@demo.nomad.kz',
+  },
+  {
     key: 'admin',
     role: 'admin',
     title: 'Администратор платформы',

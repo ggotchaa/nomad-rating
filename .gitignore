@@ -6,4 +6,5 @@ dist/
 *.tsbuildinfo
 .tmp/
 coverage/
+uploads/
 .claude/worktrees/
