@@ -106,6 +106,7 @@ tournamentAdminRouter.post(
       const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
       const start = startsAt ?? new Date(t.starts_at.getTime() + 7 * 86400000).toISOString()
       const copy = await createTournament(trx, club_id, user.id, {
+        type: t.type,
         hallId: t.hall_id,
         title: t.title,
         startsAt: start,

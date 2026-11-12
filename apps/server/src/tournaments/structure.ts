@@ -30,6 +30,7 @@ import { audit } from '../audit.ts'
 import { badRequest, conflict, unprocessable } from '../http/errors.ts'
 import { applyTournamentRatings } from '../rating/service.ts'
 import { revokeTournamentHelpers } from '../modules/helpers.ts'
+import { teamSeedRating } from '../teams/ratings.ts'
 
 type Trx = Transaction<Database>
 
@@ -63,10 +64,12 @@ export async function startTournament(
     .selectFrom('entries as e')
     .innerJoin('players as p', 'p.id', 'e.player_id')
     .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-    .select(['e.id', 'e.status', 'r.rating', 'p.start_level', 'p.added_by_club_id'])
+    .select(['e.id', 'e.status', 'e.roster', 'r.rating', 'p.start_level', 'p.added_by_club_id'])
     .where('e.tournament_id', '=', tournamentId)
     .where('e.status', 'in', [...present])
     .execute()
+  // Pairs and teams are seeded by the pair sum / top-3 sum (D-10).
+  if (t.type !== 'singles') for (const e of entries) e.rating = await teamSeedRating(trx, t.type === 'doubles' ? 'pair' : 'team', e.roster ?? [])
   if (entries.length < Math.max(2, t.min_participants)) throw unprocessable('tournament.too_few_players', { present: entries.length, min: t.min_participants })
   const seeded = entries
     .map((e) => ({ id: e.id, rating: e.rating ?? e.start_level, clubId: e.added_by_club_id }))
@@ -218,6 +221,8 @@ export type ScoreInput = {
   resultType?: 'normal' | 'walkover' | 'retired'
   /** For walkover / retired: who won. */
   winner?: 'home' | 'away'
+  /** Team meeting: «sets» are games won, checked by the meeting scheme instead of the match rules. */
+  teamMeeting?: boolean
 }
 
 /** Saves a match result (M-5); completes the stage and builds the next ones when everything is played (M-2). */
@@ -229,10 +234,10 @@ export async function recordResult(trx: Trx, matchId: number, input: ScoreInput,
   if (match.home_entry_id == null || match.away_entry_id == null) throw conflict('match.players_unknown')
   const type = input.resultType ?? 'normal'
   const games = input.games ?? []
-  if (type === 'normal') {
+  if (type === 'normal' && !input.teamMeeting) {
     const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, t.format.match)
     if (errors.length) throw unprocessable('match.invalid_score', errors)
-  } else if (!input.winner) throw badRequest('match.winner_required')
+  } else if (type !== 'normal' && !input.winner) throw badRequest('match.winner_required')
   const winnerSide = type === 'normal' ? (input.setsHome > input.setsAway ? 'home' : 'away') : input.winner!
   const winnerEntry = winnerSide === 'home' ? match.home_entry_id : match.away_entry_id
   // Walkovers and no-shows are not rated; a retirement is rated if at least one full game was played (spec 4.4).

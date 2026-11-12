@@ -17,6 +17,7 @@ import { runRecalc } from '@nomad/server/src/rating/recalc.ts'
 import { remindBookings } from '@nomad/server/src/jobs/booking-reminders.ts'
 import { loadTemplateOverrides } from '@nomad/server/src/modules/admin-system.ts'
 import { createBot } from '@nomad/server/src/telegram/bot.ts'
+import { stage5Tick } from '@nomad/server/src/jobs/stage5.ts'
 
 if (!config.REDIS_URL) {
   logger.error('REDIS_URL is required for the worker')
@@ -31,6 +32,7 @@ await queue.upsertJobScheduler('expire-holds', { every: 60_000 }, { name: 'expir
 await queue.upsertJobScheduler('scheduled-notifications', { every: 5 * 60_000 }, { name: 'scheduled-notifications' })
 await queue.upsertJobScheduler('conduct-tick', { every: 30_000 }, { name: 'conduct-tick' })
 await queue.upsertJobScheduler('booking-reminders', { every: 5 * 60_000 }, { name: 'booking-reminders' })
+await queue.upsertJobScheduler('stage5-tick', { every: 60_000 }, { name: 'stage5-tick' })
 
 const worker = new Worker(
   QUEUE,
@@ -43,6 +45,7 @@ const worker = new Worker(
     if (job.name === 'scheduled-notifications') return runScheduledNotifications()
     if (job.name === 'booking-reminders') return remindBookings()
     if (job.name === 'conduct-tick') return { recalled: await recallUnanswered(), cancelled: await autoCancelUnderfilled() }
+    if (job.name === 'stage5-tick') return stage5Tick()
     throw new Error(`unknown job ${job.name}`)
   },
   { connection, concurrency: 1 },

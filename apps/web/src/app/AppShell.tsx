@@ -35,6 +35,7 @@ export function AppShell() {
             <NavLink to="/tournaments">{t.nav.tournaments}</NavLink>
             <NavLink to="/rating">{t.nav.rating}</NavLink>
             <NavLink to="/clubs">{t.nav.clubs}</NavLink>
+            <NavLink to="/leagues">{t.leagues.title}</NavLink>
             {me.player && <NavLink to="/me">{t.nav.cabinet}</NavLink>}
             {me.clubs.length > 0 && <NavLink to="/manage">{t.nav.manage}</NavLink>}
             {me.user?.role === 'admin' && <NavLink to="/admin">{t.admin.title}</NavLink>}

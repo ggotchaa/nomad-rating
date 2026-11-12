@@ -178,6 +178,8 @@ export type TournamentRestrictions = {
   gender?: 'm' | 'f' | null
   ageMin?: number | null
   ageMax?: number | null
+  /** Pairs: maximum of the pair rating sum; teams: maximum of the top-3 sum (D-9). */
+  ratingSumMax?: number | null
 }
 
 export type TournamentSettings = {
@@ -188,6 +190,7 @@ export type TournamentSettings = {
   avgMatchMinutes?: number
   restMinutes?: number
   requireCheckin?: boolean
+  meeting?: MeetingSchemeJson
 }
 
 export type RefundRule = { hoursBefore: number; percent: number }
@@ -228,6 +231,8 @@ export interface TournamentsTable {
   published_at: Timestamp | null
   started_at: Timestamp | null
   finished_at: Timestamp | null
+  league_tour_id: Generated<number | null>
+  league_division_id: Generated<number | null>
 }
 
 export interface PaymentsTable {
@@ -261,6 +266,8 @@ export interface EntriesTable {
   rating_at_start: number | null
   registered_by: number | null
   checked_in_at: Timestamp | null
+  team_id: Generated<number | null>
+  roster: ColumnType<number[] | null, number[] | null | undefined, number[] | null>
   created_at: DefaultTimestamp
   updated_at: DefaultTimestamp
 }
@@ -456,6 +463,19 @@ export interface Database {
   series: SeriesTable
   recurring_blocks: RecurringBlocksTable
   rating_adjustments: RatingAdjustmentsTable
+  teams: TeamsTable
+  team_members: TeamMembersTable
+  team_invitations: TeamInvitationsTable
+  meeting_lineups: MeetingLineupsTable
+  meeting_games: MeetingGamesTable
+  leagues: LeaguesTable
+  league_seasons: LeagueSeasonsTable
+  league_divisions: LeagueDivisionsTable
+  league_participants: LeagueParticipantsTable
+  league_tours: LeagueToursTable
+  league_results: LeagueResultsTable
+  league_moves: LeagueMovesTable
+  league_fixtures: LeagueFixturesTable
 }
 
 export type Tournament = Selectable<TournamentsTable>
@@ -681,5 +701,181 @@ export interface RatingAdjustmentsTable {
   from_tournament_id: number | null
   reason: string
   created_by: number | null
+  created_at: DefaultTimestamp
+}
+// --- Stage 5 ---
+
+type IntArray = ColumnType<number[], number[], number[]>
+
+export type MeetingSchemeJson = import('@nomad/engine').MeetingScheme
+
+export interface TeamsTable {
+  id: Id
+  kind: 'pair' | 'team'
+  name: string
+  captain_player_id: number
+  min_size: number
+  max_size: number
+  join_token: string
+  approve_joins: Generated<boolean>
+  payer: Generated<'captain' | 'each'>
+  copied_from: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface TeamMembersTable {
+  team_id: number
+  player_id: number
+  role: Generated<'captain' | 'member'>
+  status: Generated<'active' | 'left'>
+  joined_at: DefaultTimestamp
+}
+
+export interface TeamInvitationsTable {
+  id: Id
+  team_id: number
+  player_id: number
+  direction: 'invite' | 'request'
+  status: Generated<import('@nomad/shared').InvitationStatus>
+  invited_by: number | null
+  expires_at: Timestamp
+  responded_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface MeetingLineupsTable {
+  match_id: number
+  side: 'home' | 'away'
+  lineup: IntArray
+  submitted_by: number | null
+  by_organizer: Generated<boolean>
+  submitted_at: DefaultTimestamp
+}
+
+export interface MeetingGamesTable {
+  id: Id
+  match_id: number
+  game_index: number
+  kind: 'singles' | 'doubles'
+  home_players: IntArray
+  away_players: IntArray
+  status: Generated<'scheduled' | 'called' | 'finished' | 'skipped'>
+  table_id: number | null
+  called_at: Timestamp | null
+  sets_home: number | null
+  sets_away: number | null
+  games: JsonDefault<import('@nomad/engine').GameScore[]>
+  winner: 'home' | 'away' | null
+  finished_at: Timestamp | null
+}
+
+export type LeagueFormat = 'divisions' | 'common_tour' | 'season_rr' | 'free_dates'
+
+export type SeasonRules = {
+  boundaries?: { promote: number; relegate: number }[]
+  missedRule?: 'relegate' | 'last' | 'stay'
+  pointsTable?: number[]
+  participationPoints?: number
+  bestTours?: number | null
+  minDivisionSize?: number
+  playoffSize?: number
+  toursPlanned?: number
+  transferWindow?: { from: string; to: string } | null
+  confirmBy?: string | null
+  reminderHours?: number
+}
+
+export type SeasonPayment = { mode?: 'season' | 'per_tour' | 'combined'; seasonPrice?: number; tourPrice?: number; topUp?: number }
+
+export interface LeaguesTable {
+  id: Id
+  club_id: number
+  slug: string
+  name: string
+  description: Generated<string>
+  format: LeagueFormat
+  created_by: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface LeagueSeasonsTable {
+  id: Id
+  league_id: number
+  name: string
+  status: Generated<'draft' | 'registration' | 'active' | 'finished'>
+  starts_on: ColumnType<Date, string, string>
+  ends_on: ColumnType<Date, string, string>
+  rules: JsonDefault<SeasonRules>
+  payment: JsonDefault<SeasonPayment>
+  previous_season_id: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface LeagueDivisionsTable {
+  id: Id
+  season_id: number
+  name: string
+  level: number
+  merged_into: number | null
+}
+
+export interface LeagueParticipantsTable {
+  id: Id
+  season_id: number
+  player_id: number
+  division_id: number | null
+  status: Generated<'invited' | 'active' | 'frozen' | 'left' | 'declined'>
+  joined_tour: Generated<number>
+  missed_tours: Generated<number>
+  created_at: DefaultTimestamp
+}
+
+export interface LeagueToursTable {
+  id: Id
+  season_id: number
+  number: number
+  kind: Generated<'regular' | 'playoff'>
+  starts_at: Timestamp
+  deadline_at: Timestamp | null
+  status: Generated<'planned' | 'running' | 'applied'>
+  reminded_at: Timestamp | null
+}
+
+export interface LeagueResultsTable {
+  tour_id: number
+  participant_id: number
+  division_id: number | null
+  place: number | null
+  points: Generated<number>
+  missed: Generated<boolean>
+}
+
+export interface LeagueMovesTable {
+  id: Id
+  season_id: number
+  tour_id: number | null
+  participant_id: number
+  from_division: number | null
+  to_division: number | null
+  reason: string
+  created_at: DefaultTimestamp
+}
+
+export interface LeagueFixturesTable {
+  id: Id
+  season_id: number
+  division_id: number | null
+  home_participant: number
+  away_participant: number
+  round: number
+  status: Generated<'pending' | 'proposed' | 'scheduled' | 'reported' | 'confirmed'>
+  proposed_by: number | null
+  starts_at: Timestamp | null
+  table_id: number | null
+  booking_id: number | null
+  deadline_at: Timestamp | null
+  sets_home: number | null
+  sets_away: number | null
+  reported_by: number | null
   created_at: DefaultTimestamp
 }

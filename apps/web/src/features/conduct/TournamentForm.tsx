@@ -9,6 +9,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatDuration, localDate, parseHhmm, hhmm } from '../../i18n/format.ts'
 import { Field } from '../../ui/kit.tsx'
+import { MEETING_SCHEMES } from '../teams/Meeting.tsx'
 
 type Stage =
   | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: 'snake' | 'random' | 'manual'; separateClubs?: boolean }
@@ -250,14 +251,17 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
         seriesId = name ? (await api<{ id: number }>(`/clubs/${clubId}/series`, { method: 'POST', json: { name } })).id : null
         series.reload()
       }
+      const type = String(f.get('type') ?? 'singles')
+      const scheme = MEETING_SCHEMES[String(f.get('scheme') ?? 'wc') as keyof typeof MEETING_SCHEMES]
       const body = {
+        ...(!editing && { type }),
         title: f.get('title'),
         startsAt: zonedToUtc(String(f.get('date')), parseHhmm(String(f.get('time'))), TZ).toISOString(),
         ...(effective ? { format: effective } : { template, templateParams: { match: { winsNeeded, gamePoints } } }),
         maxParticipants: max,
         minParticipants: num('minParticipants') ?? 4,
         ...(!editing || initial?.status === 'draft' ? { fee: Math.round(Number(f.get('fee') || 0) * 100) } : {}),
-        restrictions: { ratingMin: num('ratingMin'), ratingMax: num('ratingMax'), gender: f.get('gender') || null, ageMin: num('ageMin'), ageMax: num('ageMax') },
+        restrictions: { ratingMin: num('ratingMin'), ratingMax: num('ratingMax'), gender: f.get('gender') || null, ageMin: num('ageMin'), ageMax: num('ageMax'), ratingSumMax: num('ratingSumMax') },
         description: f.get('description') ?? '',
         refundRules: refund,
         tableIds: tableIds ?? undefined,
@@ -268,6 +272,7 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
           restMinutes: num('restMinutes') ?? 10,
           sameDayRegistration: f.get('sameDayRegistration') === 'on',
           requireCheckin: f.get('requireCheckin') === 'on',
+          ...(!editing && type === 'team' && { meeting: { ...scheme, playAll: f.get('playAll') === 'on', tables: f.get('twoTables') === 'on' ? 2 : 1 } }),
         },
       }
       if (editing) {
@@ -298,6 +303,37 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
         <Field label={t.m.time}>
           <input name="time" type="time" required defaultValue={local ? hhmm(local.minutes) : '11:00'} />
         </Field>
+        {!editing && (
+          <>
+            <Field label={t.teams.title}>
+              <select name="type" defaultValue="singles">
+                <option value="singles">{t.doubles.singles}</option>
+                <option value="doubles">{t.teams.pair}</option>
+                <option value="team">{t.teams.team}</option>
+              </select>
+            </Field>
+            <Field label={t.meeting.title}>
+              <select name="scheme" defaultValue="wc">
+                {Object.values(MEETING_SCHEMES).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <label className="check">
+              <input type="checkbox" name="playAll" />
+              {t.meeting.playAll}
+            </label>
+            <label className="check">
+              <input type="checkbox" name="twoTables" />
+              {t.meeting.tables(2)}
+            </label>
+            <Field label={t.teams.ratingSumMax}>
+              <input name="ratingSumMax" type="number" min={0} />
+            </Field>
+          </>
+        )}
         <Field label={t.ctor.template} wide>
           <select
             value={template}

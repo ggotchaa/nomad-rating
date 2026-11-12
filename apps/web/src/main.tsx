@@ -42,6 +42,10 @@ import { AdminIndex, AdminLayout } from './features/admin/AdminLayout.tsx'
 import { AdminClubs, AdminMerges, AdminRttf } from './features/admin/AdminQueues.tsx'
 import { AdminAudit, AdminDisputes, AdminPlayers, AdminSettings, AdminViewAs } from './features/admin/AdminTools.tsx'
 import { CancelBooking } from './features/booking/CancelBooking.tsx'
+import { JoinTeam, MyTeams } from './features/teams/Teams.tsx'
+import { MeetingPage } from './features/teams/Meeting.tsx'
+import { LeaguePage, LeaguesList } from './features/leagues/Leagues.tsx'
+import { ManageLeagues } from './features/leagues/ManageLeagues.tsx'
 
 const Landing = lazy(() => import('./features/landing/Landing.tsx').then((m) => ({ default: m.Landing })))
 
@@ -84,6 +88,11 @@ const router = createBrowserRouter([
       { path: 'welcome', element: <Welcome /> },
       { path: 'mfa', element: <MfaVerify /> },
       { path: 'invite/:token', element: <AcceptInvitation /> },
+      { path: 'me/teams', element: <MyTeams /> },
+      { path: 'teams/join/:token', element: <JoinTeam /> },
+      { path: 'meeting/:tournamentId/:matchId', element: <MeetingPage /> },
+      { path: 'leagues', element: <LeaguesList /> },
+      { path: 'leagues/:slug', element: <LeaguePage /> },
       {
         path: 'admin',
         element: <AdminLayout />,
@@ -116,6 +125,7 @@ const router = createBrowserRouter([
           { path: 'import', element: <Guard right="players"><ImportPlayers /></Guard> },
           { path: 'helpers', element: <Guard right="organizer"><Helpers /></Guard> },
           { path: 'audit', element: <Guard right="organizer"><ManageAudit /></Guard> },
+          { path: 'leagues', element: <Guard right="tournaments"><ManageLeagues /></Guard> },
           { path: 'more', element: <ManageMore /> },
         ],
       },

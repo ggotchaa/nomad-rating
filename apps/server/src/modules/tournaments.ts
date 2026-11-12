@@ -6,7 +6,7 @@ import { Router } from 'express'
 import { sql } from 'kysely'
 import type { ExpressionBuilder } from 'kysely'
 import { z } from 'zod'
-import { estimateFormat, FORMAT_TEMPLATES, formatTemplate, validateFormat } from '@nomad/engine'
+import { estimateFormat, FORMAT_TEMPLATES, formatTemplate, MEETING_SCHEMES, validateFormat, validateScheme } from '@nomad/engine'
 import type { Bracket, FormatTemplateId, StandingsResult, TemplateParams, TournamentFormat } from '@nomad/engine'
 import { assertTransition, ENTRY_ACTIVE, ENTRY_OCCUPYING, entryStatus, slugify, tournamentStatus } from '@nomad/shared'
 import type { EntryStatus } from '@nomad/shared'
@@ -241,7 +241,11 @@ export async function participants(tournamentId: number) {
     .leftJoin('cities as c', 'c.id', 'p.city_id')
     .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
     .leftJoin('payments as pay', 'pay.id', 'e.payment_id')
+    .leftJoin('teams as tm', 'tm.id', 'e.team_id')
     .select([
+      'tm.name as team_name',
+      'e.team_id',
+      'e.roster',
       'e.id as entry_id',
       'e.status',
       'e.waitlist_position',
@@ -270,7 +274,9 @@ export async function participants(tournamentId: number) {
       return {
         entryId: r.entry_id,
         playerId: r.id,
-        name: playerName(r),
+        name: r.team_name ?? playerName(r),
+        teamId: r.team_id,
+        roster: r.roster,
         city: r.city,
         birthYear: r.birth_year,
         photoUrl: r.photo_url,
@@ -298,10 +304,11 @@ export async function structure(t: Tournament) {
       await db
         .selectFrom('entries as e')
         .innerJoin('players as p', 'p.id', 'e.player_id')
-        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'e.rating_at_start', 'e.seed'])
+        .leftJoin('teams as tm', 'tm.id', 'e.team_id')
+        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'e.rating_at_start', 'e.seed', 'tm.name as team_name'])
         .where('e.tournament_id', '=', t.id)
         .execute()
-    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew' }]),
+    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: e.team_name ?? playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew' }]),
   )
   const matches = await db
     .selectFrom('matches as m')
@@ -449,7 +456,19 @@ tournamentsRouter.get(
 // ---------------------------------------------------------------------------
 // Club side: creation, publication, running
 
+/** Team meeting scheme (D-5): a ready one or a custom list of games between line-up slots. */
+export const meetingSchemeSchema = z.object({
+  id: z.string().max(30),
+  name: z.string().max(60),
+  slots: z.number().int().min(1).max(8),
+  games: z.array(z.object({ kind: z.enum(['singles', 'doubles']), home: z.array(z.number().int().min(0)).min(1).max(2), away: z.array(z.number().int().min(0)).min(1).max(2) })).min(1).max(15),
+  firstTo: z.number().int().min(1).max(8),
+  playAll: z.boolean(),
+  tables: z.union([z.literal(1), z.literal(2)]),
+})
+
 export const createSchema = z.object({
+  type: z.enum(['singles', 'doubles', 'team']).default('singles'),
   hallId: z.number().int().positive(),
   title: z.string().trim().min(3).max(150),
   startsAt: z.iso.datetime({ offset: true }),
@@ -468,6 +487,7 @@ export const createSchema = z.object({
       gender: z.enum(['m', 'f']).nullable().optional(),
       ageMin: z.number().int().nullable().optional(),
       ageMax: z.number().int().nullable().optional(),
+      ratingSumMax: z.number().int().nullable().optional(),
     })
     .default({}),
   prizes: z.string().max(2000).default(''),
@@ -487,6 +507,7 @@ export const createSchema = z.object({
       restMinutes: z.number().int().min(0).max(30).optional(),
       requireCheckin: z.boolean().optional(),
       callResponseMinutes: z.number().int().min(1).max(15).optional(),
+      meeting: meetingSchemeSchema.optional(),
     })
     .default({}),
 })
@@ -501,7 +522,7 @@ async function uniqueSlug(trx: Trx, title: string, startsAt: Date): Promise<stri
 }
 
 /** Creates a draft tournament; address, tables and defaults come from the club (C-3). Used by the API and the demo seed. */
-export async function createTournament(trx: Trx, clubId: number, userId: number | null, input: z.infer<typeof createSchema>): Promise<Tournament> {
+export async function createTournament(trx: Trx, clubId: number, userId: number | null, input: Omit<z.infer<typeof createSchema>, 'type'> & { type?: Tournament['type'] }): Promise<Tournament> {
   const hall = await trx.selectFrom('halls').selectAll().where('id', '=', input.hallId).where('club_id', '=', clubId).executeTakeFirst()
   if (!hall) throw badRequest('tournament.hall_not_in_club')
   const club = await trx.selectFrom('clubs').select(['tournament_defaults']).where('id', '=', clubId).executeTakeFirstOrThrow()
@@ -520,6 +541,12 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
   const errors = validateFormat(format)
   if (errors.length) throw unprocessable('format.invalid', errors)
   const settings = { ...(defaults.settings ?? {}), ...input.settings }
+  const type = input.type ?? 'singles'
+  if (type === 'team') {
+    settings.meeting ??= MEETING_SCHEMES.wc
+    const schemeErrors = validateScheme(settings.meeting)
+    if (schemeErrors.length) throw unprocessable('meeting.invalid_scheme', schemeErrors)
+  }
   const estimate = estimateFormat(format, input.maxParticipants, { tables: tableIds.length, avgMatchMinutes: (settings.avgMatchMinutes as number | undefined) ?? 20 })
   const startsAt = new Date(input.startsAt)
   return trx
@@ -529,6 +556,7 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
       hall_id: hall.id,
       slug: await uniqueSlug(trx, input.title, startsAt),
       title: input.title,
+      type,
       starts_at: startsAt,
       estimated_end_at: new Date(startsAt.getTime() + estimate.minutes * 60000),
       registration_closes_at: input.registrationClosesAt ? new Date(input.registrationClosesAt) : startsAt,
@@ -679,6 +707,7 @@ export type RegisterResult = { entryId: number; status: EntryStatus; paymentMeth
 /** Registers a player (self or by the club). Used by the API and by the demo seed. */
 export async function registerPlayer(trx: Trx, tournamentId: number, playerId: number, actorUserId: number | null, options: { byClub?: boolean } = {}): Promise<RegisterResult> {
   const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', tournamentId).forUpdate().executeTakeFirstOrThrow()
+  if (t.type !== 'singles') throw badRequest('entry.team_required')
   if (t.status !== 'published' && !(options.byClub && t.status === 'registration_closed')) throw conflict('entry.registration_closed')
   if (!options.byClub && t.registration_closes_at && t.registration_closes_at < new Date()) throw conflict('entry.registration_closed')
   const errors = await eligibility(trx, t, playerId)

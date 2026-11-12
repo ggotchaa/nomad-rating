@@ -10,6 +10,7 @@ import { formatDateTime, formatDuration, formatTenge, formatTime, restrictionLab
 import { Async, Delta, StatusChip } from '../../ui/kit.tsx'
 import { Structure } from './Structure.tsx'
 import { ShareBox } from './ShareBox.tsx'
+import { TeamTournamentBlock } from '../teams/Teams.tsx'
 
 function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const { me } = useSession()
@@ -218,6 +219,7 @@ export function TournamentPage() {
                 )}
               </section>
 
+              {d.type !== 'singles' && <TeamTournamentBlock d={d} reload={state.reload} />}
               {d.structure && <Structure stages={d.structure} me={me.player?.id} />}
             </>
           )
