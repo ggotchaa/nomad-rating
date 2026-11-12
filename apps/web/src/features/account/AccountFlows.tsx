@@ -397,7 +397,7 @@ export function ProfileEdit() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   if (ready && !me.user) return <Navigate to="/login" state={{ from: '/me/profile' }} replace />
   const p = me.player
-  if (!p) return <Navigate to="/welcome" replace />
+  if (!p) return ready ? <Navigate to="/welcome" replace /> : null
   return (
     <main className="page page--narrow">
       <h1>{t.acc.profileEdit}</h1>
