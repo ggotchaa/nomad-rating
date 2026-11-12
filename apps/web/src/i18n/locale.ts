@@ -21,7 +21,9 @@ function resolve(): Locale {
 }
 
 export const locale: Locale = resolve()
-export const intlTag = INTL_TAG[locale]
+/** Engines without Kazakh ICU data fall back to ru-RU for numbers and times; dates are formatted by hand (format.ts). */
+export const kkSupported = /[а-яә]/i.test(new Intl.DateTimeFormat('kk-KZ', { month: 'long' }).format(new Date(2026, 10, 15)))
+export const intlTag = locale === 'kk' && !kkSupported ? 'ru-RU' : INTL_TAG[locale]
 if (typeof document !== 'undefined') document.documentElement.lang = locale
 
 export function storeLocale(next: Locale): void {

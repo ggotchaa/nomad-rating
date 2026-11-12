@@ -1,12 +1,21 @@
 // Formatting in the hall's time zone and tenge (spec 1: UTC stored, shown in Asia/Almaty, KZT).
 
-import { intlTag } from './locale.ts'
+import { intlTag, kkSupported, locale as current } from './locale.ts'
 import { t } from './index.ts'
 
 const TZ = 'Asia/Almaty'
 
-export const formatDate = (iso: string, locale = intlTag) =>
-  new Intl.DateTimeFormat(locale, { timeZone: TZ, day: 'numeric', month: 'long', weekday: 'short' }).format(new Date(iso))
+const KK_MONTHS = ['қаңтар', 'ақпан', 'наурыз', 'сәуір', 'мамыр', 'маусым', 'шілде', 'тамыз', 'қыркүйек', 'қазан', 'қараша', 'желтоқсан']
+const KK_DAYS = ['жс', 'дс', 'сс', 'ср', 'бс', 'жм', 'сб']
+
+export const formatDate = (iso: string, locale = intlTag) => {
+  if (current === 'kk' && !kkSupported) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: TZ, day: 'numeric', month: 'numeric', weekday: 'short' }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]))
+    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday ?? '')
+    return `${KK_DAYS[dow]}, ${p.day} ${KK_MONTHS[Number(p.month) - 1]}`
+  }
+  return new Intl.DateTimeFormat(locale, { timeZone: TZ, day: 'numeric', month: 'long', weekday: 'short' }).format(new Date(iso))
+}
 
 export const formatDateShort = (iso: string, locale = intlTag) =>
   new Intl.DateTimeFormat(locale, { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
