@@ -41,9 +41,21 @@ export type ClubCard = {
 export type ClubRight = 'club' | 'tournaments' | 'conduct' | 'score_fix' | 'players' | 'bookings' | 'refunds' | 'finance'
 
 export type Me = {
-  user: { id: number; email: string; role: 'user' | 'admin'; locale: string } | null
+  user: {
+    id: number
+    email: string
+    role: 'user' | 'admin'
+    locale: string
+    emailVerified?: boolean
+    hasPassword?: boolean
+    googleLinked?: boolean
+    totpEnabled?: boolean
+    mfaRequired?: boolean
+    needsWelcome?: boolean
+  } | null
   player: { id: number; first_name: string; last_name: string; gender: 'm' | 'f'; birth_year: number; photo_url: string | null; start_level: number; city: string | null; rating: number | null } | null
   clubs: { id: number; slug: string; name: string; role: 'organizer' | 'helper'; rights: ClubRight[] }[]
+  activeClubId?: number | null
 }
 
 export type DemoAccount = { key: string; role: string; title: string; description: string; email: string }

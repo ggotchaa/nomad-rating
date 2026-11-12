@@ -45,6 +45,18 @@ export function Cabinet() {
           <Link className="button button--sm" to="/notifications">
             {t.notif.settings}
           </Link>
+          <Link className="button button--sm" to="/me/profile">
+            {t.acc.profileEdit}
+          </Link>
+          <Link className="button button--sm" to="/me/security">
+            {t.acc.security}
+          </Link>
+          <Link className="button button--sm" to="/me/rttf">
+            {t.rttf.title}
+          </Link>
+          <Link className="button button--sm" to="/clubs/new">
+            {t.clubreg.cta}
+          </Link>
         </div>
       </header>
       <LiveDeltas />

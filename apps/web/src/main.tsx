@@ -29,6 +29,14 @@ import { TournamentPage } from './features/tournaments/TournamentPage.tsx'
 import { Notifications } from './features/notifications/Notifications.tsx'
 import { MyTournament } from './features/rating/MyTournament.tsx'
 import { t } from './i18n/index.ts'
+import { AcceptInvitation, ConfirmEmail, ForgotPassword, MfaVerify, ProfileEdit, ResetPassword, Security, Welcome } from './features/account/AccountFlows.tsx'
+import { RttfClaim } from './features/account/Rttf.tsx'
+import { RegisterClub } from './features/clubs/RegisterClub.tsx'
+import { ClubSettings } from './features/manage/ClubSettings.tsx'
+import { Helpers, ManageAudit } from './features/manage/Helpers.tsx'
+import { ImportPlayers } from './features/manage/ImportPlayers.tsx'
+import { AdminIndex, AdminLayout } from './features/admin/AdminLayout.tsx'
+import { AdminClubs, AdminMerges, AdminRttf } from './features/admin/AdminQueues.tsx'
 
 const Landing = lazy(() => import('./features/landing/Landing.tsx').then((m) => ({ default: m.Landing })))
 
@@ -50,6 +58,7 @@ const router = createBrowserRouter([
       { path: 'rating', element: <RatingList /> },
       { path: 'players/:id', element: <Profile /> },
       { path: 'clubs', element: <Clubs /> },
+      { path: 'clubs/new', element: <RegisterClub /> },
       { path: 'club/:slug', element: <ClubPage /> },
       { path: 'club/:slug/booking', element: <Booking /> },
       { path: 'bookings/:id', element: <Navigate to="/me" replace /> },
@@ -58,6 +67,25 @@ const router = createBrowserRouter([
       { path: 'me', element: <Cabinet /> },
       { path: 'me/t/:slug', element: <MyTournament /> },
       { path: 'notifications', element: <Notifications /> },
+      { path: 'me/profile', element: <ProfileEdit /> },
+      { path: 'me/security', element: <Security /> },
+      { path: 'me/rttf', element: <RttfClaim /> },
+      { path: 'confirm-email', element: <ConfirmEmail /> },
+      { path: 'forgot-password', element: <ForgotPassword /> },
+      { path: 'reset-password', element: <ResetPassword /> },
+      { path: 'welcome', element: <Welcome /> },
+      { path: 'mfa', element: <MfaVerify /> },
+      { path: 'invite/:token', element: <AcceptInvitation /> },
+      {
+        path: 'admin',
+        element: <AdminLayout />,
+        children: [
+          { index: true, element: <AdminIndex /> },
+          { path: 'clubs', element: <AdminClubs /> },
+          { path: 'merges', element: <AdminMerges /> },
+          { path: 'rttf', element: <AdminRttf /> },
+        ],
+      },
       {
         path: 'manage',
         element: <ManageLayout />,
@@ -69,6 +97,10 @@ const router = createBrowserRouter([
           { path: 'bookings', element: <Guard right="bookings"><BookingDesk /></Guard> },
           { path: 'players', element: <Guard right="players"><ManagePlayers /></Guard> },
           { path: 'settings', element: <Guard right="club"><HallSettings /></Guard> },
+          { path: 'club', element: <ClubSettings /> },
+          { path: 'import', element: <Guard right="players"><ImportPlayers /></Guard> },
+          { path: 'helpers', element: <Guard right="organizer"><Helpers /></Guard> },
+          { path: 'audit', element: <Guard right="organizer"><ManageAudit /></Guard> },
           { path: 'more', element: <ManageMore /> },
         ],
       },

@@ -156,14 +156,14 @@ adminRttfRouter.post(
         }
         const values = { full_name: fullName, search_name: rttfSearchName(fullName), birth_year: birthYear, city: get('city'), rating: Math.round(rating), updated_at: new Date() }
         const rttfId = get('rttfId') || null
-        let existing = rttfId
+        const existing = rttfId
           ? await trx.selectFrom('rttf_profiles').select('id').where('rttf_id', '=', rttfId).executeTakeFirst()
           : await trx.selectFrom('rttf_profiles').select('id').where('search_name', '=', values.search_name).where('birth_year', birthYear == null ? 'is' : '=', birthYear).executeTakeFirst()
         if (existing) {
           await trx.updateTable('rttf_profiles').set(values).where('id', '=', existing.id).execute()
           updated++
         } else {
-          existing = await trx.insertInto('rttf_profiles').values({ ...values, rttf_id: rttfId }).returning('id').executeTakeFirstOrThrow()
+          await trx.insertInto('rttf_profiles').values({ ...values, rttf_id: rttfId }).execute()
           created++
         }
       }

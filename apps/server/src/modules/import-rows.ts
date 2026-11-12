@@ -2,7 +2,7 @@
 
 import { START_LEVELS, normalizeText } from '@nomad/shared'
 import type { StartLevel } from '@nomad/shared'
-import { headerIndex } from './tabular.ts'
+import { headerIndex } from './table-text.ts'
 
 export type ImportPlayer = {
   lastName: string

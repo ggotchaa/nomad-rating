@@ -7,20 +7,25 @@ import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { Async, Soon } from '../../ui/kit.tsx'
 
-export type ClubCtx = { club: MyClub; can: (right: ClubRight) => boolean }
+type Need = ClubRight | 'organizer'
+export type ClubCtx = { club: MyClub; can: (right: Need) => boolean }
 export const useClub = () => useOutletContext<ClubCtx>()
 
-const SECTIONS: { to: string; right: ClubRight; label: string }[] = [
+const SECTIONS: { to: string; right: Need; label: string }[] = [
+  { to: 'club', right: 'organizer', label: t.clubreg.clubSection },
   { to: 'tournaments', right: 'tournaments', label: t.m.tournaments },
   { to: 'bookings', right: 'bookings', label: t.m.desk },
   { to: 'players', right: 'players', label: t.m.players },
   { to: 'settings', right: 'club', label: t.m.settings },
+  { to: 'import', right: 'players', label: t.imp.title },
+  { to: 'helpers', right: 'organizer', label: t.helpers.title },
+  { to: 'audit', right: 'organizer', label: t.helpers.audit },
 ]
 
 export function ManageLayout() {
-  const { me, ready } = useSession()
+  const { me, ready, setActiveClub } = useSession()
   const clubs = useApi<MyClub[]>(me.user ? '/my/clubs' : null)
-  const [clubId, setClubId] = useState<number | null>(null)
+  const clubId = me.activeClubId ?? null
   if (ready && !me.user) return <Navigate to="/login" replace />
   return (
     <main className="page">
@@ -28,7 +33,7 @@ export function ManageLayout() {
         {(list) => {
           const club = list.find((c) => c.id === clubId) ?? list[0]
           if (!club) return <p className="note">{t.m.noClub}</p>
-          const can = (right: ClubRight) => club.role === 'organizer' || club.rights.includes(right)
+          const can = (right: Need) => club.role === 'organizer' || (right !== 'organizer' && club.rights.includes(right))
           return (
             <>
               <header className="pagehead">
@@ -36,7 +41,7 @@ export function ManageLayout() {
                 <div className="row row--between">
                   <h1>{club.name}</h1>
                   {list.length > 1 && (
-                    <select style={{ width: 'auto' }} value={club.id} onChange={(e) => setClubId(Number(e.target.value))}>
+                    <select style={{ width: 'auto' }} value={club.id} onChange={(e) => void setActiveClub(Number(e.target.value))}>
                       {list.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
@@ -69,7 +74,7 @@ export function ManageIndex() {
   return <Navigate to={first?.to ?? 'more'} replace />
 }
 
-export function Guard({ right, children }: { right: ClubRight; children: React.ReactNode }) {
+export function Guard({ right, children }: { right: Need; children: React.ReactNode }) {
   const { can } = useClub()
   return can(right) ? <>{children}</> : <p className="note note--error">{t.m.noRight}</p>
 }

@@ -1,16 +1,28 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import type { Me } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
 import { errorText, t } from '../../i18n/index.ts'
+import { useApi } from '../../app/hooks.ts'
 import { Field } from '../../ui/kit.tsx'
+
+/** R-21: only same-site paths are accepted as return targets. */
+export const safePath = (v: string | null | undefined) => (v && /^\/(?!\/)/.test(v) ? v : undefined)
+
+export function afterLogin(me: Me, from: string | undefined): string {
+  const back = from ? `?returnTo=${encodeURIComponent(from)}` : ''
+  if (me.user?.mfaRequired) return `/mfa${back}`
+  if (me.user?.needsWelcome) return `/welcome${back}`
+  return from ?? (me.clubs.length ? '/manage' : '/me')
+}
 
 function useAuthSubmit() {
   const { setMe } = useSession()
   const navigate = useNavigate()
-  const from = (useLocation().state as { from?: string } | null)?.from
+  const [params] = useSearchParams()
+  const from = safePath((useLocation().state as { from?: string } | null)?.from ?? params.get('returnTo'))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submit = async (path: string, json: unknown) => {
@@ -19,7 +31,7 @@ function useAuthSubmit() {
     try {
       const me = await api<Me>(path, { method: 'POST', json })
       setMe(me)
-      navigate(from ?? (me.clubs.length ? '/manage' : '/me'), { replace: true })
+      navigate(afterLogin(me, from), { replace: true })
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -31,6 +43,9 @@ function useAuthSubmit() {
 
 export function Login() {
   const { busy, error, submit, from } = useAuthSubmit()
+  const [params] = useSearchParams()
+  const providers = useApi<{ google: boolean }>('/auth/providers')
+  const queryError = params.get('error')
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
@@ -46,13 +61,18 @@ export function Login() {
         <Field label={t.a.password}>
           <input name="password" type="password" autoComplete="current-password" required />
         </Field>
-        {error && <p className="note note--error">{error}</p>}
+        {(error || queryError) && <p className="note note--error">{error ?? t.errors[queryError!] ?? t.errorFallback}</p>}
         <button className="button button--primary" disabled={busy}>
           {t.a.signIn}
         </button>
-        <button className="button" type="button" disabled>
-          {t.a.google}
-        </button>
+        {providers.data?.google && (
+          <a className="button" href={`/api/auth/google${from ? `?returnTo=${encodeURIComponent(from)}` : ''}`}>
+            {t.a.google}
+          </a>
+        )}
+        <Link to="/forgot-password" className="small" style={{ color: 'var(--holo)' }}>
+          {t.acc.forgot}
+        </Link>
         <p className="small muted">
           {t.a.noAccount}{' '}
           <Link to="/register" state={{ from }} style={{ color: 'var(--holo)' }}>
@@ -79,6 +99,7 @@ export function Register() {
       birthYear: Number(f.get('birthYear')),
       cityId: Number(f.get('cityId')),
       startLevel: f.get('startLevel'),
+      consent: f.get('consent') === 'on',
     })
   }
   return (
@@ -124,6 +145,9 @@ export function Register() {
         <Field label={`${t.a.password} — ${t.a.passwordHint}`} wide>
           <input name="password" type="password" autoComplete="new-password" minLength={8} required />
         </Field>
+        <label className="check field--wide">
+          <input type="checkbox" name="consent" required /> {t.acc.consent}
+        </label>
         {error && <p className="note note--error field--wide">{error}</p>}
         <button className="button button--primary field--wide" disabled={busy}>
           {t.a.signUp}

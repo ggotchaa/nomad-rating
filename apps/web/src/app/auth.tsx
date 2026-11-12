@@ -15,6 +15,7 @@ type Session = {
   setCity: (slug: string) => void
   setMe: (me: Me) => void
   logout: () => Promise<void>
+  setActiveClub: (clubId: number) => Promise<void>
 }
 
 const Ctx = createContext<Session | null>(null)
@@ -44,7 +45,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setMe(GUEST)
   }, [])
 
-  const value = useMemo(() => ({ me, ready, demo, cities, city, setCity, setMe, logout }), [me, ready, demo, cities, city, setCity, logout])
+  const setActiveClub = useCallback(async (clubId: number) => {
+    await api('/my/active-club', { method: 'PUT', json: { clubId } })
+    setMe((m) => ({ ...m, activeClubId: clubId }))
+  }, [])
+
+  const value = useMemo(() => ({ me, ready, demo, cities, city, setCity, setMe, logout, setActiveClub }), [me, ready, demo, cities, city, setCity, logout, setActiveClub])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 

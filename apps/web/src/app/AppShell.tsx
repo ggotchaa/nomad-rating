@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Navigate } from 'react-router'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { DemoBar } from '../demo/DemoBar.tsx'
 import { t } from '../i18n/index.ts'
@@ -7,13 +8,16 @@ import { NotificationBell } from '../features/notifications/Bell.tsx'
 import '../styles/app.css'
 
 export function AppShell() {
-  const { me, demo, cities, city, setCity, logout } = useSession()
+  const { me, demo, cities, city, setCity, logout, setActiveClub } = useSession()
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [pathname])
+
+  const gate = me.user?.mfaRequired ? '/mfa' : me.user?.needsWelcome ? '/welcome' : null
+  if (gate && !['/mfa', '/welcome', '/logout'].includes(pathname)) return <Navigate to={`${gate}?returnTo=${encodeURIComponent(pathname)}`} replace />
 
   return (
     <div className="app">
@@ -31,6 +35,7 @@ export function AppShell() {
             <NavLink to="/clubs">{t.nav.clubs}</NavLink>
             {me.player && <NavLink to="/me">{t.nav.cabinet}</NavLink>}
             {me.clubs.length > 0 && <NavLink to="/manage">{t.nav.manage}</NavLink>}
+            {me.user?.role === 'admin' && <NavLink to="/admin">{t.admin.title}</NavLink>}
           </nav>
           <div className="topbar__right">
             <NotificationBell />
@@ -41,6 +46,15 @@ export function AppShell() {
                 </option>
               ))}
             </select>
+            {me.clubs.length > 1 && (
+              <select aria-label={t.nav.manage} value={me.activeClubId ?? me.clubs[0]!.id} onChange={(e) => void setActiveClub(Number(e.target.value))}>
+                {me.clubs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
             {me.user ? (
               <>
                 <span className="usertag">{me.player ? `${me.player.first_name} ${me.player.last_name}` : me.user.email}</span>
