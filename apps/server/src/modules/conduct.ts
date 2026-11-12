@@ -288,7 +288,7 @@ myCallsRouter.get(
       .innerJoin('tournaments as t', 't.id', 'm.tournament_id')
       .innerJoin('entries as e', (j) => j.on((eb) => eb.or([eb('e.id', '=', eb.ref('m.home_entry_id')), eb('e.id', '=', eb.ref('m.away_entry_id'))])))
       .leftJoin('hall_tables as ht', 'ht.id', 'm.table_id')
-      .select(['m.id', 'm.status', 'm.home_entry_id', 'm.away_entry_id', 'm.call_responses', 'm.reported_score', 'm.reported_by', 'e.id as my_entry', 't.id as tournament_id', 't.slug', 't.title', 't.settings', 'ht.number as table'])
+      .select(['m.id', 'm.status', 'm.home_entry_id', 'm.away_entry_id', 'm.call_responses', 'm.reported_score', 'm.reported_by', 'e.id as my_entry', 't.id as tournament_id', 't.slug', 't.title', 't.settings', 't.format', 'ht.number as table'])
       .where('t.status', '=', 'running')
       .where('e.player_id', '=', user.playerId)
       .where('m.status', 'in', ['called', 'playing'])
@@ -309,6 +309,7 @@ myCallsRouter.get(
         opponent: opponent ? playerName(opponent) : null,
         myAnswer: (r.call_responses as CallResponses)[side]?.answer ?? null,
         scoreEntry: r.settings.scoreEntry ?? 'staff',
+        rules: r.format.match,
         reportedScore: r.reported_score,
         reportedByMe: r.reported_by === r.my_entry,
       })

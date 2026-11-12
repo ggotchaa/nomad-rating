@@ -1158,3 +1158,137 @@
   border-color: var(--holo);
   font-weight: 700;
 }
+/* --- Stage 2: conduct, live, check-in, call popup --- */
+.tables-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.tablecard {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.tablecard--called {
+  border-color: var(--ball);
+}
+.tablecard--playing {
+  border-color: var(--ok);
+}
+.seedlist {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+.seedlist li {
+  display: grid;
+  grid-template-columns: 2.5em 1fr auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+.score {
+  display: grid;
+  gap: 14px;
+}
+.score__board {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.score__board b {
+  font-size: clamp(32px, 8vw, 56px);
+}
+.score__games {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.score__points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.score__points input {
+  width: 5em;
+}
+.score__big {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.score__big .button,
+.button--huge {
+  min-height: 72px;
+  font-size: 18px;
+}
+.ctor__stage {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.ctor input[type='number'] {
+  width: 6em;
+}
+.qr {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  max-width: 100%;
+  height: auto;
+}
+.qrscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 16px;
+  padding: 16px;
+  text-align: center;
+  background: var(--bg);
+}
+.sharebox {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+.callpop {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 70;
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+  margin-left: auto;
+  padding: 20px;
+  border: 1px solid var(--ball);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.callpop--mini {
+  left: auto;
+  padding: 12px 18px;
+}
+.callpop__table {
+  font-family: var(--font-display);
+  font-size: 32px;
+  color: var(--ball);
+}
+.live .live__pair {
+  font-size: 18px;
+}
+

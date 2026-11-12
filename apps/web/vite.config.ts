@@ -2,6 +2,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const api = process.env.API_ORIGIN ?? 'http://127.0.0.1:3010'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -26,8 +28,8 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     proxy: {
-      '/api': 'http://127.0.0.1:3010',
-      '/ws': { target: 'ws://127.0.0.1:3010', ws: true },
+      '/api': api,
+      '/ws': { target: api.replace(/^http/, 'ws'), ws: true },
     },
   },
   build: { target: 'es2022', chunkSizeWarningLimit: 900 },

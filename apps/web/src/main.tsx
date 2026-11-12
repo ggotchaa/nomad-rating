@@ -28,6 +28,9 @@ import { Calendar } from './features/tournaments/Calendar.tsx'
 import { TournamentPage } from './features/tournaments/TournamentPage.tsx'
 import { Notifications } from './features/notifications/Notifications.tsx'
 import { MyTournament } from './features/rating/MyTournament.tsx'
+import { ConductPage } from './features/conduct/ConductPage.tsx'
+import { CheckinPage, CheckinQrScreen } from './features/conduct/Checkin.tsx'
+import { LivePage } from './features/live/LivePage.tsx'
 import { t } from './i18n/index.ts'
 import { AcceptInvitation, ConfirmEmail, ForgotPassword, MfaVerify, ProfileEdit, ResetPassword, Security, Welcome } from './features/account/AccountFlows.tsx'
 import { RttfClaim } from './features/account/Rttf.tsx'
@@ -55,6 +58,8 @@ const router = createBrowserRouter([
       { path: 'home', element: <Home /> },
       { path: 'tournaments', element: <Calendar /> },
       { path: 't/:slug', element: <TournamentPage /> },
+      { path: 't/:slug/live', element: <LivePage /> },
+      { path: 't/:slug/checkin', element: <CheckinPage /> },
       { path: 'rating', element: <RatingList /> },
       { path: 'players/:id', element: <Profile /> },
       { path: 'clubs', element: <Clubs /> },
@@ -94,6 +99,8 @@ const router = createBrowserRouter([
           { path: 'tournaments', element: <Guard right="tournaments"><ManageTournaments /></Guard> },
           { path: 'tournaments/new', element: <Guard right="tournaments"><NewTournament /></Guard> },
           { path: 'tournaments/:id', element: <Guard right="tournaments"><ManageTournamentPage /></Guard> },
+          { path: 'tournaments/:id/conduct', element: <Guard right="conduct"><ConductPage /></Guard> },
+          { path: 'tournaments/:id/qr', element: <Guard right="conduct"><CheckinQrScreen /></Guard> },
           { path: 'bookings', element: <Guard right="bookings"><BookingDesk /></Guard> },
           { path: 'players', element: <Guard right="players"><ManagePlayers /></Guard> },
           { path: 'settings', element: <Guard right="club"><HallSettings /></Guard> },

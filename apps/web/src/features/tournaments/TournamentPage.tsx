@@ -9,6 +9,7 @@ import { errorText, t } from '../../i18n/index.ts'
 import { formatDateTime, formatDuration, formatTenge, formatTime, restrictionLabel } from '../../i18n/format.ts'
 import { Async, Delta, StatusChip } from '../../ui/kit.tsx'
 import { Structure } from './Structure.tsx'
+import { ShareBox } from './ShareBox.tsx'
 
 function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const { me } = useSession()
@@ -143,7 +144,10 @@ export function TournamentPage() {
                   )}
                 </section>
                 <div className="stack">
-                  {!finished && d.status !== 'running' && <Register d={d} reload={state.reload} />}
+                  <div className="stack">
+                    {!finished && d.status !== 'running' && <Register d={d} reload={state.reload} />}
+                    <ShareBox slug={d.slug} url={(d as { shareUrl?: string }).shareUrl ?? location.href} live={d.status === 'running' || finished} />
+                  </div>
                   <section className="panel">
                     <h2>{t.t.scheme}</h2>
                     <div className="stack">

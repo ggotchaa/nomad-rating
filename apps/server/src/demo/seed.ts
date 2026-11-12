@@ -15,6 +15,7 @@ import { createTournament, publishTournament, registerPlayer } from '../modules/
 import { finishTournament, playableMatches, recordResult, startTournament } from '../tournaments/structure.ts'
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from './accounts.ts'
 import { seedStage1 } from './seed-stage1.ts'
+import { seedStage2 } from './seed-stage2.ts'
 import { FEMALE_FIRST, GUEST_NAMES, MALE_FIRST, SURNAMES, surnameFor } from './names.ts'
 
 type Trx = Transaction<Database>
@@ -704,5 +705,6 @@ export async function seedDemo(): Promise<void> {
   log(`bookings: ${bookingsMade} upcoming`)
   await seedStage1()
   await (await import('./seed-stage3.ts')).seedStage3((s) => log(s))
+  await seedStage2()
   log(`done in ${Math.round((Date.now() - started) / 1000)} s`)
 }

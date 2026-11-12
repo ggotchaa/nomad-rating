@@ -81,7 +81,7 @@ export function Guard({ right, children }: { right: Need; children: React.ReactN
 
 export const ManageMore = () => (
   <div className="grid grid--cards">
-    {[t.m.conduct, ...t.m.other, t.m.editor].map((title) => (
+    {[...t.m.other, t.m.editor].map((title) => (
       <Soon key={title} title={title} />
     ))}
   </div>

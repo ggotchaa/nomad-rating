@@ -5,6 +5,7 @@ import { DemoBar } from '../demo/DemoBar.tsx'
 import { t } from '../i18n/index.ts'
 import { useSession } from './auth.tsx'
 import { NotificationBell } from '../features/notifications/Bell.tsx'
+import { CallPopup } from '../features/conduct/CallPopup.tsx'
 import '../styles/app.css'
 
 export function AppShell() {
@@ -22,6 +23,7 @@ export function AppShell() {
   return (
     <div className="app">
       {demo && <DemoBar />}
+      <CallPopup />
       <header className="topbar">
         <div className="topbar__in">
           <Link className="logo" to="/" aria-label="Nomad">

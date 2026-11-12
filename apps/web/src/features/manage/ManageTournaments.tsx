@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { zonedToUtc } from '@nomad/shared'
 import { api } from '../../api/client.ts'
-import type { FormatOption, FormatPreview, Hall, ManageTournament, TournamentDetail } from '../../api/types.ts'
+import type { ManageTournament, TournamentDetail } from '../../api/types.ts'
 import { useApi, useRoom } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
-import { formatDateTime, formatDuration, formatTenge, localDate, parseHhmm } from '../../i18n/format.ts'
-import { Async, Field, Soon, StatusChip } from '../../ui/kit.tsx'
+import { formatDateTime, formatDuration, formatTenge } from '../../i18n/format.ts'
+import { Async, StatusChip } from '../../ui/kit.tsx'
+import { TournamentForm } from '../conduct/TournamentForm.tsx'
+import type { TournamentInput } from '../conduct/TournamentForm.tsx'
 import { PlayerSearch, useClub } from './ManageLayout.tsx'
 
 export function ManageTournaments() {
@@ -63,151 +63,17 @@ export function NewTournament() {
   const { club } = useClub()
   const navigate = useNavigate()
   const hallId = club.halls[0]?.id
-  const formats = useApi<FormatOption[]>('/formats')
-  const hall = useApi<Hall>(hallId ? `/halls/${hallId}` : null)
-  const [template, setTemplate] = useState('gs1')
-  const [max, setMax] = useState(16)
-  const [preview, setPreview] = useState<FormatPreview | null>(null)
-  const [previewError, setPreviewError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const tables = hall.data?.tables.filter((x) => x.status === 'active').length ?? 0
-
-  useEffect(() => {
-    if (!tables || max < 4) return
-    let alive = true
-    const id = setTimeout(() => {
-      api<FormatPreview>('/formats/preview', { method: 'POST', json: { template, params: {}, players: max, tables } })
-        .then((p) => {
-          if (!alive) return
-          setPreview(p)
-          setPreviewError(p.errors.length ? t.errors['format.invalid']! : null)
-        })
-        .catch((e: unknown) => {
-          if (!alive) return
-          setPreview(null)
-          setPreviewError(errorText(e))
-        })
-    }, 250)
-    return () => {
-      alive = false
-      clearTimeout(id)
-    }
-  }, [template, max, tables])
-
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const f = new FormData(e.currentTarget)
-    const num = (k: string) => (f.get(k) ? Number(f.get(k)) : null)
-    setBusy(true)
-    setError(null)
-    try {
-      const created = await api<{ id: number }>(`/clubs/${club.id}/tournaments`, {
-        method: 'POST',
-        json: {
-          hallId,
-          title: f.get('title'),
-          startsAt: zonedToUtc(String(f.get('date')), parseHhmm(String(f.get('time'))), 'Asia/Almaty').toISOString(),
-          template,
-          templateParams: {},
-          maxParticipants: max,
-          fee: Math.round(Number(f.get('fee') || 0) * 100),
-          restrictions: { ratingMin: num('ratingMin'), ratingMax: num('ratingMax') },
-          description: f.get('description') ?? '',
-        },
-      })
-      navigate(`../tournaments/${created.id}`)
-    } catch (err) {
-      setError(errorText(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="grid grid--2">
-      <form className="panel form form--cols" onSubmit={(e) => void onSubmit(e)}>
-        <h2 className="field--wide">{t.m.newTournament}</h2>
-        <Field label={t.m.name} wide>
-          <input name="title" required minLength={3} maxLength={150} placeholder="Субботний рейтинговый турнир" />
-        </Field>
-        <Field label={t.m.date}>
-          <input name="date" type="date" required min={localDate()} defaultValue={localDate(new Date(Date.now() + 7 * 86400000))} />
-        </Field>
-        <Field label={t.m.time}>
-          <input name="time" type="time" required defaultValue="11:00" />
-        </Field>
-        <Field label={t.m.format} wide>
-          <select value={template} onChange={(e) => setTemplate(e.target.value)}>
-            {formats.data?.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t.m.max}>
-          <input type="number" min={4} max={256} value={max} onChange={(e) => setMax(Number(e.target.value))} required />
-        </Field>
-        <Field label={t.m.fee}>
-          <input name="fee" type="number" min={0} step={100} defaultValue={3000} />
-        </Field>
-        <Field label={t.m.ratingFrom}>
-          <input name="ratingMin" type="number" min={0} max={3000} placeholder="—" />
-        </Field>
-        <Field label={t.m.ratingTo}>
-          <input name="ratingMax" type="number" min={0} max={3000} placeholder="—" />
-        </Field>
-        <Field label={t.m.description} wide>
-          <textarea name="description" maxLength={10000} />
-        </Field>
-        {error && <p className="note note--error field--wide">{error}</p>}
-        <button className="button button--primary field--wide" disabled={busy || !hallId || Boolean(previewError)}>
-          {t.m.create}
-        </button>
-      </form>
-      <aside className="panel">
-        <h2>{t.m.preview}</h2>
-        <p className="small muted">
-          {t.m.previewHint} · {tables} {t.common.tables}
-        </p>
-        {previewError && <p className="note note--error">{previewError}</p>}
-        {preview && !previewError && (
-          <>
-            <div className="stack">
-              {preview.estimate.stages.map((s, i) => (
-                <div className="row row--between" key={s.id}>
-                  <span>
-                    {i + 1}. {s.name}
-                    {s.groups ? ` · ${s.groups.join(' + ')}` : s.bracketSize ? ` · ${s.bracketSize}` : ''}
-                  </span>
-                  <span className="chip">
-                    {s.matches} {t.t.matches}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="facts">
-              <div className="fact stat">
-                <span>{t.t.matches}</span>
-                <b>{preview.estimate.totalMatches}</b>
-              </div>
-              <div className="fact stat">
-                <span>{t.t.duration}</span>
-                <b>{formatDuration(preview.estimate.minutes)}</b>
-              </div>
-            </div>
-          </>
-        )}
-      </aside>
-    </div>
-  )
+  if (!hallId) return <p className="note">{t.m.noClub}</p>
+  return <TournamentForm clubId={club.id} hallId={hallId} onSaved={(id) => navigate(`../tournaments/${id}`)} />
 }
 
 export function ManageTournamentPage() {
   const { id } = useParams()
-  const state = useApi<TournamentDetail>(`/tournaments/${id}`)
+  const { club } = useClub()
+  const navigate = useNavigate()
+  const state = useApi<TournamentDetail & TournamentInput>(`/tournaments/${id}`)
   useRoom(`tournament:${id}`, state.reload)
+  const [editing, setEditing] = useState(false)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
   const run = async (path: string, json?: unknown, ok?: string) => {
@@ -267,8 +133,40 @@ export function ManageTournamentPage() {
                   {t.m.publicPage} →
                 </Link>
               )}
+              {['published', 'registration_closed', 'running', 'finished', 'finished_early'].includes(d.status) && (
+                <Link className="button button--primary" to="conduct">
+                  {t.conduct.open}
+                </Link>
+              )}
+              {['draft', 'published', 'registration_closed'].includes(d.status) && (
+                <button className="button" onClick={() => setEditing(!editing)}>
+                  {t.ctor.edit}
+                </button>
+              )}
+              <button
+                className="button"
+                onClick={() =>
+                  void api<{ id: number }>(`/tournaments/${d.id}/copy`, { method: 'POST', json: {} })
+                    .then((c) => navigate(`/manage/tournaments/${c.id}`))
+                    .catch((e: unknown) => setMessage({ ok: false, text: errorText(e) }))
+                }
+              >
+                {t.ctor.copy}
+              </button>
+              {['draft', 'published', 'registration_closed'].includes(d.status) && (
+                <button
+                  className="button button--danger"
+                  onClick={() => {
+                    const reason = prompt(t.ctor.cancelReason)?.trim()
+                    if (reason && reason.length >= 3) void run(`/tournaments/${d.id}/cancel`, { reason }, t.ctor.cancelled)
+                  }}
+                >
+                  {t.ctor.cancel}
+                </button>
+              )}
             </div>
           </section>
+          {editing && <TournamentForm clubId={club.id} hallId={d.hall.id} initial={d} onSaved={() => state.reload()} />}
           <section className="panel">
             <h2>
               {t.t.participants} · {d.participants.length}
@@ -302,6 +200,13 @@ export function ManageTournamentPage() {
                         <span className={`chip ${p.status === 'waitlist' ? 'chip--warn' : 'chip--ok'}`}>{t.t.entryStatus[p.status] ?? p.status}</span>
                       </td>
                       <td className="muted small">{p.paymentMethod ? t.m.paymentMethod[p.paymentMethod] : '—'}</td>
+                      <td>
+                        {p.status === 'paid' && (
+                          <button className="button button--sm" onClick={() => void run(`/tournaments/${d.id}/entries/${p.entryId}/checkin`)}>
+                            {t.conduct.checkin}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -309,7 +214,6 @@ export function ManageTournamentPage() {
             </div>
             {d.participants.length === 0 && <p className="empty">—</p>}
           </section>
-          <Soon title={t.m.conduct} />
         </>
       )}
     </Async>
