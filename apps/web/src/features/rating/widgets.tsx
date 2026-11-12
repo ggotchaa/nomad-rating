@@ -5,6 +5,7 @@ import { useSession } from '../../app/auth.tsx'
 import { useApi, useRoom } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { Delta } from '../../ui/kit.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 /** «Рейтинг обновляется» while a replay after a correction runs. */
 export function RecalcBanner() {
@@ -66,7 +67,7 @@ export function LiveDeltas() {
 export function DisputeButton({ matchId }: { matchId: number }) {
   const [state, setState] = useState<string | null>(null)
   const send = async () => {
-    const reason = prompt(t.rating2.disputeReason)
+    const reason = await ask.prompt(t.rating2.disputeReason)
     if (!reason?.trim()) return
     try {
       await api(`/rating/matches/${matchId}/dispute`, { method: 'POST', json: { reason } })

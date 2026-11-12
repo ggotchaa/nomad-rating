@@ -10,6 +10,7 @@ import { useScoreQueue } from './offline.ts'
 import { ScoreEntry } from './ScoreEntry.tsx'
 import type { ConductEntry, ConductMatch, ConductState } from './types.ts'
 import { TournamentPlan } from '../booking/TournamentPlan.tsx'
+import { ask as dialog } from '../../ui/dialogs.tsx'
 
 const label = (m: ConductMatch) => (m.label?.startsWith('group:') ? `${t.t.group} ${m.label.slice(6)}` : (m.label ?? ''))
 
@@ -49,7 +50,7 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
         <button
           className="button button--primary"
           disabled={order.length < Math.max(2, d.tournament.minParticipants)}
-          onClick={() => confirm(t.conduct.startConfirm) && void run(`/tournaments/${d.tournament.id}/start`, { order: order.map((e) => e.entryId) })}
+          onClick={async () => (await dialog.confirm(t.conduct.startConfirm)) && void run(`/tournaments/${d.tournament.id}/start`, { order: order.map((e) => e.entryId) })}
         >
           {t.conduct.start} · {order.length}
         </button>
@@ -119,8 +120,8 @@ export function ConductPage() {
       return false
     }
   }
-  const ask = (q: string) => {
-    const r = prompt(q)?.trim()
+  const ask = async (q: string) => {
+    const r = (await dialog.prompt(q))?.trim()
     return r && r.length >= 3 ? r : null
   }
 
@@ -149,8 +150,8 @@ export function ConductPage() {
             </button>
             <button
               className="button button--sm"
-              onClick={() => {
-                const who = prompt(`${t.conduct.noShowWho}\n1 — ${m.home?.name}\n2 — ${m.away?.name}`)
+              onClick={async () => {
+                const who = await dialog.prompt(`${t.conduct.noShowWho}\n1 — ${m.home?.name}\n2 — ${m.away?.name}`)
                 if (who === '1' || who === '2') void run(`${base}/matches/${m.id}/no-show`, { absent: who === '1' ? 'home' : 'away' })
               }}
             >
@@ -177,13 +178,13 @@ export function ConductPage() {
                 </Link>
                 {running && (
                   <>
-                    <button className="button button--primary" onClick={() => confirm(t.conduct.finishConfirm) && void run(`${base}/finish`, undefined, t.conduct.finished)}>
+                    <button className="button button--primary" onClick={async () => (await dialog.confirm(t.conduct.finishConfirm)) && void run(`${base}/finish`, undefined, t.conduct.finished)}>
                       {t.conduct.finish}
                     </button>
                     <button
                       className="button button--danger"
-                      onClick={() => {
-                        const reason = ask(t.conduct.finishEarlyReason)
+                      onClick={async () => {
+                        const reason = await ask(t.conduct.finishEarlyReason)
                         if (reason) void run(`${base}/finish-early`, { reason }, t.conduct.finished)
                       }}
                     >
@@ -307,8 +308,8 @@ export function ConductPage() {
                         </span>
                         <button
                           className="button button--sm button--danger"
-                          onClick={() => {
-                            const reason = ask(t.conduct.withdrawReason)
+                          onClick={async () => {
+                            const reason = await ask(t.conduct.withdrawReason)
                             if (reason) void run(`${base}/entries/${e.entryId}/withdraw`, { reason })
                           }}
                         >

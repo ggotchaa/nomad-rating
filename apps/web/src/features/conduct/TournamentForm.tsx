@@ -10,6 +10,7 @@ import { errorText, t } from '../../i18n/index.ts'
 import { formatDuration, localDate, parseHhmm, hhmm } from '../../i18n/format.ts'
 import { Field } from '../../ui/kit.tsx'
 import { MEETING_SCHEMES } from '../teams/Meeting.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 type Stage =
   | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: 'snake' | 'random' | 'manual'; separateClubs?: boolean }
@@ -247,7 +248,7 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
     setMessage(null)
     try {
       if (f.get('seriesId') === 'new') {
-        const name = prompt(t.ctor.seriesName)
+        const name = await ask.prompt(t.ctor.seriesName)
         seriesId = name ? (await api<{ id: number }>(`/clubs/${clubId}/series`, { method: 'POST', json: { name } })).id : null
         series.reload()
       }

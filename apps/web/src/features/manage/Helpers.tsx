@@ -7,6 +7,7 @@ import { t } from '../../i18n/index.ts'
 import { Async, Field } from '../../ui/kit.tsx'
 import { useAction } from '../account/AccountFlows.tsx'
 import { useClub } from './ManageLayout.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 type Scope = { kind: 'club' | 'halls' | 'tournaments' | 'tables'; ids?: number[] }
 type Member = { userId: number; role: 'organizer' | 'helper'; rights: string[]; scope: Scope; email: string; name: string | null }
@@ -70,8 +71,8 @@ function HelperRow({ m, clubId, onChange }: { m: Member; clubId: number; onChang
             <button
               className="button button--sm button--danger"
               disabled={busy}
-              onClick={() =>
-                confirm(t.helpers.revokeConfirm) &&
+              onClick={async () =>
+                (await ask.confirm(t.helpers.revokeConfirm)) &&
                 void run(async () => {
                   await api(`/clubs/${clubId}/helpers/${m.userId}`, { method: 'DELETE' })
                   onChange()

@@ -6,6 +6,7 @@ import { formatDateTime } from '../../i18n/format.ts'
 import { t } from '../../i18n/index.ts'
 import { Async, Seg } from '../../ui/kit.tsx'
 import { useAction } from '../account/AccountFlows.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 const useReloadOverview = () => useOutletContext<{ reloadOverview: () => void }>().reloadOverview
 
@@ -16,8 +17,8 @@ export function AdminClubs() {
   const state = useApi<AdminClub[]>(`/admin/clubs?status=${status}`)
   const reloadOverview = useReloadOverview()
   const { busy, run, notes } = useAction()
-  const act = (id: number, to: string) => {
-    const reason = to === 'active' ? '' : prompt(t.admin.reasonPrompt)
+  const act = async (id: number, to: string) => {
+    const reason = to === 'active' ? '' : await ask.prompt(t.admin.reasonPrompt)
     if (reason === null) return
     void run(async () => {
       await api(`/admin/clubs/${id}/status`, { method: 'POST', json: { status: to, reason } })
@@ -145,8 +146,8 @@ export function AdminRttf() {
       list.reload()
       reloadOverview()
     })
-  const editRating = (p: Profile) => {
-    const v = prompt(`${p.fullName}: ${t.rttf.rating}`, String(p.rating))
+  const editRating = async (p: Profile) => {
+    const v = await ask.prompt(`${p.fullName}: ${t.rttf.rating}`, String(p.rating))
     if (v == null || !Number.isFinite(Number(v))) return
     void edit.run(async () => {
       await api(`/admin/rttf/${p.id}`, { method: 'PATCH', json: { rating: Number(v) } })

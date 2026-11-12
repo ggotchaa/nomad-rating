@@ -8,6 +8,7 @@ import { errorText, t } from '../../i18n/index.ts'
 import { formatDate, formatDateTime, formatTenge, formatTime } from '../../i18n/format.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
 import { LiveDeltas } from '../rating/widgets.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 const BOOKING_TONE: Record<string, string> = { confirmed: 'chip--ok', arrived: 'chip--ok', no_show: 'chip--bad', cancelled_by_player: '', cancelled_by_club: 'chip--bad' }
 
@@ -21,7 +22,7 @@ export function Cabinet() {
   if (!me.player) return <main className="page">{ready && <p className="note">{t.errors['player.profile_required']}</p>}</main>
 
   const cancel = async (id: number) => {
-    if (!confirm(t.me.cancelBookingConfirm)) return
+    if (!(await ask.confirm(t.me.cancelBookingConfirm))) return
     setError(null)
     try {
       await api(`/bookings/${id}`, { method: 'DELETE' })

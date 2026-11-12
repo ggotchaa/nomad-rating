@@ -9,6 +9,7 @@ import { Async, StatusChip } from '../../ui/kit.tsx'
 import { TournamentForm } from '../conduct/TournamentForm.tsx'
 import type { TournamentInput } from '../conduct/TournamentForm.tsx'
 import { PlayerSearch, useClub } from './ManageLayout.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 export function ManageTournaments() {
   const { club } = useClub()
@@ -156,8 +157,8 @@ export function ManageTournamentPage() {
               {['draft', 'published', 'registration_closed'].includes(d.status) && (
                 <button
                   className="button button--danger"
-                  onClick={() => {
-                    const reason = prompt(t.ctor.cancelReason)?.trim()
+                  onClick={async () => {
+                    const reason = (await ask.prompt(t.ctor.cancelReason))?.trim()
                     if (reason && reason.length >= 3) void run(`/tournaments/${d.id}/cancel`, { reason }, t.ctor.cancelled)
                   }}
                 >

@@ -5,6 +5,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatDate, formatDateTime } from '../../i18n/format.ts'
 import { Async, Field } from '../../ui/kit.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 export const VIEW_AS_KEY = 'nomad.viewAsClub'
 
@@ -96,8 +97,8 @@ export function AdminPlayers() {
   const [merge, setMerge] = useState({ sourceId: '', targetId: '', reason: '' })
   const state = useApi<PlayerRow[]>(query ? `/admin/players?q=${encodeURIComponent(query)}` : null)
   const { run, note } = useAction()
-  const block = (u: NonNullable<PlayerRow['user']>) => {
-    const reason = u.blocked ? '' : (prompt(t.admin2.reason) ?? '')
+  const block = async (u: NonNullable<PlayerRow['user']>) => {
+    const reason = u.blocked ? '' : ((await ask.prompt(t.admin2.reason)) ?? '')
     if (!u.blocked && !reason) return
     void run(() => api(`/admin/users/${u.id}/block`, { method: 'POST', json: { blocked: !u.blocked, reason } })).then(state.reload)
   }
@@ -165,7 +166,7 @@ export function AdminPlayers() {
           </Field>
         </div>
         <div>
-          <button className="button button--sm button--danger" disabled={!merge.sourceId || !merge.targetId || merge.reason.trim().length < 3} onClick={() => confirm(t.admin2.mergeHint) && void run(() => api('/admin/players/merge', { method: 'POST', json: { sourceId: Number(merge.sourceId), targetId: Number(merge.targetId), reason: merge.reason } }))}>
+          <button className="button button--sm button--danger" disabled={!merge.sourceId || !merge.targetId || merge.reason.trim().length < 3} onClick={async () => (await ask.confirm(t.admin2.mergeHint)) && void run(() => api('/admin/players/merge', { method: 'POST', json: { sourceId: Number(merge.sourceId), targetId: Number(merge.targetId), reason: merge.reason } }))}>
             {t.admin2.merge}
           </button>
         </div>

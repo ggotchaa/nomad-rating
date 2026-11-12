@@ -11,6 +11,7 @@ import { Async, Delta, StatusChip } from '../../ui/kit.tsx'
 import { Structure } from './Structure.tsx'
 import { ShareBox } from './ShareBox.tsx'
 import { TeamTournamentBlock } from '../teams/Teams.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const { me } = useSession()
@@ -18,7 +19,7 @@ function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const act = async (method: 'POST' | 'DELETE') => {
-    if (method === 'DELETE' && !confirm(t.t.cancelConfirm)) return
+    if (method === 'DELETE' && !(await ask.confirm(t.t.cancelConfirm))) return
     setBusy(true)
     setError(null)
     try {

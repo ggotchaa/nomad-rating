@@ -8,6 +8,7 @@ import { Async, Field } from '../../ui/kit.tsx'
 import { PlayerSearch, useClub } from '../manage/ManageLayout.tsx'
 import type { LeagueRow, SeasonView, TableRow } from './Leagues.tsx'
 import { SeasonTables } from './Leagues.tsx'
+import { ask } from '../../ui/dialogs.tsx'
 
 type LeagueData = LeagueRow & { seasons: { id: number; name: string; status: string }[]; current: SeasonView | null }
 
@@ -100,8 +101,8 @@ function SeasonAdmin({ s, hallId, reload }: { s: SeasonView; hallId: number; rel
         )}
         <button
           className="button button--sm"
-          onClick={() => {
-            const name = prompt(t.leagues.newSeason)
+          onClick={async () => {
+            const name = await ask.prompt(t.leagues.newSeason)
             if (name) void post(`${base}/next`, { name, startsOn: localDate(), endsOn: localDate(new Date(Date.now() + 120 * 86400000)) })
           }}
         >
