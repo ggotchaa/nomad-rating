@@ -857,6 +857,7 @@ export const en: Messages = {
     kind: 'Rating',
   },
   leagues: {
+    tourStatus: { planned: 'Planned', running: 'In progress', applied: 'Results applied' } as Record<string, string>,
     title: 'Leagues',
     lead: 'Seasons with divisions, promotion and relegation, and a points table.',
     empty: 'No leagues yet',

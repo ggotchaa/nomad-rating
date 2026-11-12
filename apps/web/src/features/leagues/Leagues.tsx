@@ -219,7 +219,7 @@ export function LeaguePage() {
                               <b>
                                 {tour.kind === 'playoff' ? t.leagues.playoff : t.leagues.tour(tour.number)} · {new Date(tour.startsAt).toLocaleDateString(intlTag)}
                               </b>
-                              <span className="chip">{tour.status}</span>
+                              <span className="chip">{t.leagues.tourStatus[tour.status] ?? tour.status}</span>
                             </div>
                             <div className="row">
                               {tour.tournaments.map((x) => (

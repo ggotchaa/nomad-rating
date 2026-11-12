@@ -855,6 +855,7 @@ export const ru = {
     kind: 'Рейтинг',
   },
   leagues: {
+    tourStatus: { planned: 'Запланирован', running: 'Идёт', applied: 'Итоги применены' } as Record<string, string>,
     title: 'Лиги',
     lead: 'Сезоны с дивизионами, переходами и таблицей очков.',
     empty: 'Лиг пока нет',

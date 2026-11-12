@@ -857,6 +857,7 @@ export const kk: Messages = {
     kind: 'Рейтинг',
   },
   leagues: {
+    tourStatus: { planned: 'Жоспарланған', running: 'Өтуде', applied: 'Қорытынды енгізілді' } as Record<string, string>,
     title: 'Лигалар',
     lead: 'Дивизиондары, ауысулары және ұпай кестесі бар маусымдар.',
     empty: 'Лигалар әзірге жоқ',
