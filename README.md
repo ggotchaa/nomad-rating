@@ -3,7 +3,7 @@
 Platform for amateur rating table tennis tournaments in Kazakhstan: clubs, tournaments, Elo rating,
 table booking. Plan: [docs/plans/implementation-plan.md](docs/plans/implementation-plan.md).
 
-Current state: **stage 0 + stage D (client demo)** — players, tournaments, clubs, booking without payment; backend and web screens are done, staging deploy is not.
+Current state: **stages 0, D, 1, 2, 3, 5, 6 implemented** (accounts and clubs with helper rights, RTTF, full tournament conduct with check-in and live page, Elo with calibration and replay, notifications with Web Push and Telegram, doubles, teams and leagues, booking with hall plan editor, platform admin, RU/KK/EN). **Stage 4 (payments) is not started** — registrations and bookings are «оплата в клубе». Not deployed yet. Open items per stage: section 8 of the plan.
 Presenter script: [docs/demo-presenter-guide.md](docs/demo-presenter-guide.md).
 
 ## Layout
@@ -31,6 +31,9 @@ npm run dev
 - API: `http://127.0.0.1:3010/api` (health: `/api/health`), WebSocket: `ws://127.0.0.1:3010/ws`
 - Worker (optional, needs Redis): `npm run dev:worker`
 - Tests: `npm test` · types: `npm run typecheck` · lint: `npm run lint`
+- Acceptance tests (Playwright, own DB `nomad_e2e`, ports 3030/5190): `npm run e2e` (first time: `npx playwright install chromium`)
+- API reference: `/api/docs` (`apps/server/openapi.yaml`) · user guides per role: [docs/guides](docs/guides)
+- Production setup: `ops/` (Dockerfiles, `compose.prod.yaml`, nginx, `backup.sh`)
 
 `npm run demo:reset` wipes the database and creates demo data through the real services: 5 clubs, ~180 players,
 ~57 finished tournaments played match by match and rated by Elo, one tournament running now, upcoming tournaments
@@ -50,17 +53,7 @@ Demo accounts (password `nomad-demo-2026`), or `POST /api/demo/login-as {"key": 
 `DEMO_MODE=true` enables `/api/demo/*` only; the server refuses to start with it in production.
 Demo-only code lives in `apps/server/src/demo/`.
 
-## API (stage D)
+## API
 
-| Area | Endpoints |
-|---|---|
-| Auth | `POST /auth/register`, `/auth/login`, `/auth/logout`, `GET /auth/me` |
-| Catalog | `GET /cities`, `GET /home?city=` |
-| Players | `GET /players` (rating list: city, gender, age, q), `/players/search?q=`, `/players/:id`, `/:id/rating-history?period=3m\|1y\|all`, `/:id/tournaments`, `/:id/tournaments/:tid/matches`, `/:id/best-matches`, `/:id/h2h/:otherId` |
-| Clubs | `GET /clubs?city=`, `/clubs/:slug`, `PATCH /clubs/:id`, `GET/POST /clubs/:id/players`, `GET /my/clubs` |
-| Halls | `GET/PATCH /halls/:id`, `PUT /halls/:id/tables`, `PUT /halls/:id/booking-settings` |
-| Tournaments | `GET /formats`, `POST /formats/preview`, `GET /tournaments?when=&city=&club=&fitsMe=&hasSpots=`, `GET /tournaments/:slug`, `GET/POST /clubs/:clubId/tournaments`, `POST /tournaments/:id/publish`, `GET /tournaments/:id/participants`, `POST /tournaments/:id/entries`, `POST /tournaments/:id/entries/manual`, `DELETE /tournaments/:id/entries/me`, `POST /tournaments/:id/start`, `POST /tournaments/:id/matches/:mid/result`, `POST /tournaments/:id/finish` |
-| Booking | `GET /halls/:id/availability?date=`, `POST /bookings`, `DELETE /bookings/:id`, `GET /my/bookings`, `GET /my/entries`; club desk: `GET/POST /halls/:id/bookings`, `POST /bookings/:id/status`, `POST /halls/:id/blocks` |
-
-Errors are `{ "error": "<code>", "details": ... }` with stable codes for translation (RU/KK/EN) in the web app.
+Full reference: `/api/docs`. Errors are `{ "error": "<code>", "details": ... }` with stable codes for translation (RU/KK/EN) in the web app.
 Money is in tiyn (1 ₸ = 100), times are UTC (shown in the hall time zone).
