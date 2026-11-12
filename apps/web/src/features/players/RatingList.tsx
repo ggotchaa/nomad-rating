@@ -18,6 +18,7 @@ export function RatingList() {
   const [inactive, setInactive] = useState(false)
   const [calibrating, setCalibrating] = useState(false)
   const [offset, setOffset] = useState(0)
+  const [kind, setKind] = useState<'singles' | 'doubles'>('singles')
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -28,6 +29,7 @@ export function RatingList() {
   }, [q])
 
   const query = new URLSearchParams({ limit: String(PAGE), offset: String(offset) })
+  if (kind === 'doubles') query.set('kind', kind)
   if (city) query.set('city', city)
   if (gender) query.set('gender', gender)
   if (term) query.set('q', term)
@@ -53,6 +55,7 @@ export function RatingList() {
               </option>
             ))}
           </select>
+          <Seg label={t.doubles.kind} value={kind} onChange={reset(setKind)} options={[['singles', t.doubles.singles], ['doubles', t.doubles.doubles]]} />
           <Seg
             label={t.r.gender}
             value={gender}

@@ -51,9 +51,10 @@ export function Profile() {
   const id = Number(useParams().id)
   const { me } = useSession()
   const [period, setPeriod] = useState<Period>('1y')
+  const [kind, setKind] = useState<'singles' | 'doubles'>('singles')
   const [open, setOpen] = useState<number | null>(null)
   const profile = useApi<PlayerProfile>(`/players/${id}`)
-  const history = useApi<RatingPoint[]>(`/players/${id}/rating-history?period=${period}`)
+  const history = useApi<RatingPoint[]>(`/players/${id}/rating-history?period=${period}&kind=${kind}`)
   const tournaments = useApi<PlayerTournament[]>(`/players/${id}/tournaments`)
   const best = useApi<PlayerMatch[]>(`/players/${id}/best-matches`)
   const myId = me.player?.id
@@ -130,6 +131,7 @@ export function Profile() {
               <section className="panel">
                 <div className="panel__head">
                   <h2>{t.p.graph}</h2>
+                  <Seg label={t.doubles.kind} value={kind} onChange={setKind} options={[['singles', t.doubles.singles], ['doubles', t.doubles.doubles]]} />
                   <Seg label={t.p.graph} value={period} onChange={setPeriod} options={(['3m', '1y', 'all'] as const).map((k) => [k, t.p.period[k]!] as const)} />
                 </div>
                 <Async state={history}>{(points) => <RatingChart points={points} />}</Async>

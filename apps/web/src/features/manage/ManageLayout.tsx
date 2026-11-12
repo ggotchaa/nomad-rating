@@ -14,6 +14,7 @@ export const useClub = () => useOutletContext<ClubCtx>()
 const SECTIONS: { to: string; right: Need; label: string }[] = [
   { to: 'club', right: 'organizer', label: t.clubreg.clubSection },
   { to: 'tournaments', right: 'tournaments', label: t.m.tournaments },
+  { to: 'leagues', right: 'tournaments', label: t.leagues.title },
   { to: 'bookings', right: 'bookings', label: t.m.desk },
   { to: 'players', right: 'players', label: t.m.players },
   { to: 'settings', right: 'club', label: t.m.settings },
