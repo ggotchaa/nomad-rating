@@ -4,6 +4,9 @@ import { forwardRef, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { api } from '../../api/client.ts'
 import type { City, ClubCard, Home } from '../../api/types.ts'
+import { t as m } from '../../i18n/index.ts'
+import { locale } from '../../i18n/locale.ts'
+import { LangLinks } from '../../ui/Lang.tsx'
 import { formatDate, formatTenge, formatTime, restrictionLabel } from '../../i18n/format.ts'
 
 export const LiveSection = forwardRef<HTMLElement>(function LiveSection(_props, ref) {
@@ -36,27 +39,27 @@ export const LiveSection = forwardRef<HTMLElement>(function LiveSection(_props, 
       <div className="live__inner">
         <header className="live__head">
           <div>
-            <p className="eyebrow">// Сейчас на платформе</p>
+            <p className="eyebrow">{m.landing.liveEyebrow}</p>
             <h2>
-              Ближайшие турниры <em>{cities.find((c) => c.slug === city)?.name.ru ?? ''}</em>
+              {m.landing.liveTitle} <em>{cities.find((c) => c.slug === city)?.name[locale] ?? ''}</em>
             </h2>
           </div>
-          <div className="tabs" role="tablist" aria-label="Город">
+          <div className="tabs" role="tablist" aria-label={m.landing.cityAria}>
             {cities
               .filter((c) => clubs.some((club) => club.citySlug === c.slug))
               .map((c) => (
                 <button key={c.slug} role="tab" aria-selected={c.slug === city} className={c.slug === city ? 'is-active' : ''} onClick={() => setCity(c.slug)}>
-                  {c.name.ru}
+                  {c.name[locale]}
                 </button>
               ))}
           </div>
         </header>
 
-        {error && <p className="live__error">Не удалось загрузить данные. Запущен ли API (npm run dev)?</p>}
+        {error && <p className="live__error">{m.landing.loadFail}</p>}
 
         {home && home.live.length > 0 && (
           <div className="live__now">
-            <span className="dot" /> Идут сейчас: {home.live.map((t) => t.title).join(', ')}
+            <span className="dot" /> {m.landing.liveNow}: {home.live.map((t) => t.title).join(', ')}
           </div>
         )}
 
@@ -74,23 +77,23 @@ export const LiveSection = forwardRef<HTMLElement>(function LiveSection(_props, 
                   {restrictionLabel(t.restrictions) && <span className="badge">{restrictionLabel(t.restrictions)}</span>}
                   <span className="badge badge--ghost">{formatTenge(t.fee)}</span>
                 </div>
-                <div className="meter" aria-label={`Занято ${t.taken} из ${t.max_participants}`}>
+                <div className="meter" aria-label={m.landing.taken(t.taken, t.max_participants)}>
                   <div style={{ width: `${Math.min(100, (t.taken / t.max_participants) * 100)}%` }} />
                 </div>
                 <p className="card__spots">
-                  {t.taken >= t.max_participants ? 'Мест нет — лист ожидания' : `Занято ${t.taken} из ${t.max_participants}`}
+                  {t.taken >= t.max_participants ? m.landing.full : m.landing.taken(t.taken, t.max_participants)}
                 </p>
               </Link>
             ) : (
               <div className="card card--skeleton" key={i} />
             ),
           )}
-          {home && home.upcoming.length === 0 && <p className="live__empty">В этом городе пока нет открытых турниров.</p>}
+          {home && home.upcoming.length === 0 && <p className="live__empty">{m.home.noUpcoming}</p>}
         </div>
 
         <div className="live__grid">
           <section className="panel" aria-labelledby="top-title">
-            <h3 id="top-title">Топ-10 рейтинга</h3>
+            <h3 id="top-title">{m.landing.top10}</h3>
             <ol className="top">
               {(home?.topPlayers ?? []).map((p) => (
                 <li key={p.id}>
@@ -102,7 +105,7 @@ export const LiveSection = forwardRef<HTMLElement>(function LiveSection(_props, 
             </ol>
           </section>
           <section className="panel" id="clubs" aria-labelledby="clubs-title">
-            <h3 id="clubs-title">Клубы с бронированием</h3>
+            <h3 id="clubs-title">{m.landing.clubsBooking}</h3>
             <ul className="clubs">
               {cityClubs.map((c) => (
                 <li key={c.id}>
@@ -110,7 +113,7 @@ export const LiveSection = forwardRef<HTMLElement>(function LiveSection(_props, 
                     <Link to={`/club/${c.slug}`}><b>{c.name}</b></Link>
                     <span>{c.address}</span>
                   </div>
-                  <span className="badge badge--ghost">{c.tables} столов</span>
+                  <span className="badge badge--ghost">{m.landing.tablesCount(c.tables)}</span>
                 </li>
               ))}
             </ul>
@@ -119,7 +122,7 @@ export const LiveSection = forwardRef<HTMLElement>(function LiveSection(_props, 
       </div>
       <footer className="footer">
         <span>© 2026 Nomad</span>
-        <span>Рейтинговые турниры по настольному теннису · RU · KZ · EN</span>
+        <span>{m.landing.footer} · <LangLinks /></span>
       </footer>
     </section>
   )

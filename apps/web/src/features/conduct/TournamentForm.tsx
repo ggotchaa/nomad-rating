@@ -296,7 +296,7 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
       <form className="panel form form--cols" onSubmit={(e) => void onSubmit(e)}>
         <h2 className="field--wide">{editing ? t.ctor.edit : t.m.newTournament}</h2>
         <Field label={t.m.name} wide>
-          <input name="title" required minLength={3} maxLength={150} defaultValue={initial?.title} placeholder="Субботний рейтинговый турнир" />
+          <input name="title" required minLength={3} maxLength={150} defaultValue={initial?.title} placeholder={t.misc.tournamentPlaceholder} />
         </Field>
         <Field label={t.m.date}>
           <input name="date" type="date" required defaultValue={local ? local.date : localDate(new Date(Date.now() + 7 * 86400000))} />

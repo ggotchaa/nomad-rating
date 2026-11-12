@@ -265,7 +265,7 @@ function BookingCard({ b, tableNumber, onClose, onDone }: { b: DeskBooking; tabl
           <b>{formatTenge(b.price)}</b>
         </div>
         <div className="fact">
-          <span>Источник</span>
+          <span>{t.misc.source}</span>
           <b>{t.m.source[b.source] ?? b.source}</b>
         </div>
       </div>
@@ -344,11 +344,11 @@ export function BookingDesk() {
           <button className="button button--sm" onClick={() => setClosing(true)}>
             {t.desk2.closeHall}
           </button>
-          <button className="button button--sm" onClick={() => shift(-1)} aria-label="Предыдущий день">
+          <button className="button button--sm" onClick={() => shift(-1)} aria-label={t.misc.prevDay}>
             ←
           </button>
           <input type="date" style={{ width: 'auto' }} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label={t.m.date} />
-          <button className="button button--sm" onClick={() => shift(1)} aria-label="Следующий день">
+          <button className="button button--sm" onClick={() => shift(1)} aria-label={t.misc.nextDay}>
             →
           </button>
         </div>
@@ -449,7 +449,7 @@ export function BookingDesk() {
                   <i style={{ borderColor: 'var(--holo-2)', borderStyle: 'dashed' }} />
                   {t.m.block.tournament} / {t.m.block.training}
                 </span>
-                <span className="muted">Нажмите на пустую ячейку — {t.m.phoneBooking.toLowerCase()}. {t.desk2.dragHint}</span>
+                <span className="muted">{t.misc.clickEmptyCell(t.m.phoneBooking.toLowerCase())} {t.desk2.dragHint}</span>
               </div>
               {cell && hallId && <PhoneBooking hallId={hallId} tableId={cell.tableId} tableNumber={cell.number} date={desk.date} startMinutes={cell.start} onClose={() => setCell(null)} onDone={refresh} />}
               {opened && <BookingCard b={opened} tableNumber={desk.tables.find((x) => x.id === opened.tableId)?.number ?? 0} onClose={() => setOpenId(null)} onDone={refresh} />}

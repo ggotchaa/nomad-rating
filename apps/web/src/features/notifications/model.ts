@@ -35,7 +35,7 @@ export function describe(n: NotificationItem): { title: string; text: string; li
     case 'tournament_results':
       return { title: `${t.notif.types.tournament_results}: ${title}`, text: `${t.t.place}: ${s(d.place) || '—'}${d.delta != null ? ` · ${Number(d.delta) > 0 ? '+' : ''}${s(d.delta)}` : ''}`, link }
     case 'tournament_reminder':
-      return { title: `${title}`, text: `${s(d.hours)} ч · ${s(d.startsAtText)}`, link }
+      return { title: `${title}`, text: `${s(d.hours)} ${t.common.hoursShort} · ${s(d.startsAtText)}`, link }
     case 'dispute_update':
       return { title: t.notif.types.dispute_update ?? '', text: s(d.resolution) || s(d.status), link: null }
     default:

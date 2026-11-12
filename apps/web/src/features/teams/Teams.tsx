@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { intlTag } from '../../i18n/locale.ts'
 import { Link, useParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import { useSession } from '../../app/auth.tsx'
@@ -40,7 +41,7 @@ function useAction(reload: () => void) {
 }
 
 const post = (path: string, json: unknown = {}) => api(path, { method: 'POST', json })
-const time = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+const time = (iso: string) => new Date(iso).toLocaleString(intlTag, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 function InviteSearch({ team, onDone }: { team: Team; onDone: () => void }) {
   const [q, setQ] = useState('')

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { RatingPoint } from '../../api/types.ts'
 import { formatDateShort, signed } from '../../i18n/format.ts'
+import { t } from '../../i18n/index.ts'
 
 const W = 720
 const H = 240
@@ -8,7 +9,7 @@ const PAD = { l: 44, r: 16, t: 14, b: 26 }
 
 export function RatingChart({ points }: { points: RatingPoint[] }) {
   const [hover, setHover] = useState<number | null>(null)
-  if (points.length < 2) return <p className="empty">Недостаточно данных для графика.</p>
+  if (points.length < 2) return <p className="empty">{t.misc.notEnoughData}</p>
   const times = points.map((p) => new Date(p.date).getTime())
   const values = points.map((p) => p.rating)
   const t0 = Math.min(...times)
@@ -36,7 +37,7 @@ export function RatingChart({ points }: { points: RatingPoint[] }) {
         {formatDateShort(p.date)} · {p.title} · <b style={{ color: 'var(--text)' }}>{p.rating}</b>
         {p.delta != null && ` (${signed(Math.round(p.delta))})`}
       </p>
-      <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="График рейтинга" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+      <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t.misc.ratingChart} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
         <defs>
           <linearGradient id="rating-fill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#5ef2ff" stopOpacity="0.28" />

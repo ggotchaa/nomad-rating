@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { intlTag } from '../../i18n/locale.ts'
 import { Link, useLocation, useParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import type { Availability, AvailabilityTable, BookingResult, ClubDetail } from '../../api/types.ts'
@@ -13,7 +14,7 @@ import type { TableState } from './HallPlan.tsx'
 const dayList = (count: number) =>
   Array.from({ length: count }, (_, i) => {
     const d = new Date(Date.now() + i * 86400000)
-    return { date: localDate(d), weekday: new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', weekday: 'short' }).format(d), day: new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', day: 'numeric' }).format(d) }
+    return { date: localDate(d), weekday: new Intl.DateTimeFormat(intlTag, { timeZone: 'Asia/Almaty', weekday: 'short' }).format(d), day: new Intl.DateTimeFormat(intlTag, { timeZone: 'Asia/Almaty', day: 'numeric' }).format(d) }
   })
 
 const tableState = (tb: AvailabilityTable): TableState => {

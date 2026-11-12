@@ -433,3 +433,14 @@ myAccountRouter.put(
     res.json({ activeClubId: clubId })
   }),
 )
+
+myAccountRouter.put(
+  '/locale',
+  handler(async (req, res) => {
+    const user = requireUser(req)
+    const { locale } = parseBody(z.object({ locale: z.enum(['ru', 'kk', 'en']) }), req)
+    await db.updateTable('users').set({ locale }).where('id', '=', user.id).execute()
+    await audit({ actorUserId: user.id, entity: 'user', entityId: user.id, action: 'locale', after: { locale } })
+    res.json({ locale })
+  }),
+)

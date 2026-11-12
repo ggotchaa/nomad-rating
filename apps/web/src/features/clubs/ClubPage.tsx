@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router'
+import { intlTag } from '../../i18n/locale.ts'
 import type { ClubDetail, OpeningHours } from '../../api/types.ts'
 import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
@@ -122,7 +123,7 @@ export function ClubPage() {
                     {c.pastTournaments.map((x) => (
                       <Link key={x.id} to={`/t/${x.slug}`}>
                         <b>{x.title}</b>
-                        <span className="mono">{new Date(x.starts_at).toLocaleDateString('ru-RU')}</span>
+                        <span className="mono">{new Date(x.starts_at).toLocaleDateString(intlTag)}</span>
                       </Link>
                     ))}
                   </div>

@@ -1,4 +1,5 @@
 import { Navigate, useNavigate } from 'react-router'
+import { locale } from '../../i18n/locale.ts'
 import { api } from '../../api/client.ts'
 import type { Me } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
@@ -43,7 +44,7 @@ export function RegisterClub() {
           <select name="cityId" defaultValue={cities.find((c) => c.slug === city)?.id}>
             {cities.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name.ru}
+                {c.name[locale]}
               </option>
             ))}
           </select>
@@ -52,7 +53,7 @@ export function RegisterClub() {
           <input name="contactEmail" type="email" />
         </Field>
         <Field label={t.clubreg.hallName}>
-          <input name="hallName" defaultValue="Основной зал" required />
+          <input name="hallName" defaultValue={t.misc.hallDefault} required />
         </Field>
         <Field label={t.clubreg.address}>
           <input name="address" minLength={3} required />

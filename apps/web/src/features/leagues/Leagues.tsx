@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { intlTag } from '../../i18n/locale.ts'
 import { Link, useParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import { useSession } from '../../app/auth.tsx'
@@ -102,7 +103,7 @@ function FixtureRow({ f, me, reload }: { f: Fixture; me: number | null; reload: 
     <li className="stack">
       <div className="row row--between">
         <span>
-          {f.round}. {f.home.name} — {f.away.name} {f.setsHome != null && <b>{f.setsHome}:{f.setsAway}</b>} {f.startsAt && <span className="muted small">{new Date(f.startsAt).toLocaleString('ru-RU')}</span>}
+          {f.round}. {f.home.name} — {f.away.name} {f.setsHome != null && <b>{f.setsHome}:{f.setsAway}</b>} {f.startsAt && <span className="muted small">{new Date(f.startsAt).toLocaleString(intlTag)}</span>}
         </span>
         <span className="chip">{t.leagues.fixtureStatus[f.status]}</span>
       </div>
@@ -111,7 +112,7 @@ function FixtureRow({ f, me, reload }: { f: Fixture; me: number | null; reload: 
           {['pending', 'proposed', 'scheduled'].includes(f.status) && (
             <>
               <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
-              <input type="number" placeholder="id стола" value={table} onChange={(e) => setTable(e.target.value)} style={{ width: 90 }} />
+              <input type="number" placeholder={t.misc.tableIdPlaceholder} value={table} onChange={(e) => setTable(e.target.value)} style={{ width: 90 }} />
               <button className="button button--sm" disabled={!when || !table} onClick={() => void act('propose', { startsAt: new Date(when).toISOString(), tableId: Number(table) })}>
                 {t.leagues.propose}
               </button>
@@ -216,7 +217,7 @@ export function LeaguePage() {
                           <li key={tour.id} className="stack">
                             <div className="row row--between">
                               <b>
-                                {tour.kind === 'playoff' ? t.leagues.playoff : t.leagues.tour(tour.number)} · {new Date(tour.startsAt).toLocaleDateString('ru-RU')}
+                                {tour.kind === 'playoff' ? t.leagues.playoff : t.leagues.tour(tour.number)} · {new Date(tour.startsAt).toLocaleDateString(intlTag)}
                               </b>
                               <span className="chip">{tour.status}</span>
                             </div>

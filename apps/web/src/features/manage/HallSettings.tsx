@@ -88,8 +88,8 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
               return (
                 <div className="hours" key={d}>
                   <span className="muted">{t.c.days[d]}</span>
-                  <input type="time" aria-label={`${t.c.days[d]} открытие`} disabled={!h} value={hhmm(h?.open ?? 540)} onChange={(e) => setHours({ ...hours, [d]: { open: parseHhmm(e.target.value), close: h?.close ?? 1320 } })} />
-                  <input type="time" aria-label={`${t.c.days[d]} закрытие`} disabled={!h} value={hhmm(h?.close ?? 1320)} onChange={(e) => setHours({ ...hours, [d]: { open: h?.open ?? 540, close: parseHhmm(e.target.value) } })} />
+                  <input type="time" aria-label={`${t.c.days[d]} ${t.misc.opens}`} disabled={!h} value={hhmm(h?.open ?? 540)} onChange={(e) => setHours({ ...hours, [d]: { open: parseHhmm(e.target.value), close: h?.close ?? 1320 } })} />
+                  <input type="time" aria-label={`${t.c.days[d]} ${t.misc.closes}`} disabled={!h} value={hhmm(h?.close ?? 1320)} onChange={(e) => setHours({ ...hours, [d]: { open: h?.open ?? 540, close: parseHhmm(e.target.value) } })} />
                   <label className="check">
                     <input type="checkbox" checked={Boolean(h)} onChange={(e) => setHours({ ...hours, [d]: e.target.checked ? { open: 540, close: 1320 } : null })} />
                   </label>

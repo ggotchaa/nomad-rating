@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { locale } from '../../i18n/locale.ts'
 import type { FormEvent, ReactNode } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { api } from '../../api/client.ts'
@@ -186,7 +187,7 @@ export function Welcome() {
               <select name="cityId" defaultValue={cities.find((c) => c.slug === city)?.id}>
                 {cities.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name.ru}
+                    {c.name[locale]}
                   </option>
                 ))}
               </select>
@@ -446,7 +447,7 @@ export function ProfileEdit() {
           <select name="cityId" defaultValue={cities.find((c) => c.name.ru === p.city)?.id}>
             {cities.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name.ru}
+                {c.name[locale]}
               </option>
             ))}
           </select>

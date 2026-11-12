@@ -13,7 +13,7 @@ export function Home() {
       <section className="hero">
         <span className="kicker">{t.home.eyebrow}</span>
         <h1>
-          Играй. Расти. <em>Поднимайся в рейтинге.</em>
+          {t.home.titleA} <em>{t.home.titleB}</em>
         </h1>
         <p>{t.home.lead}</p>
         <div className="row">

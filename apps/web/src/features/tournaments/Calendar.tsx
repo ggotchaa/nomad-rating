@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { locale } from '../../i18n/locale.ts'
 import type { TournamentCard as Card } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
 import { useApi } from '../../app/hooks.ts'
@@ -38,7 +39,7 @@ export function Calendar() {
             <option value="">{t.common.anyCity}</option>
             {cities.map((c) => (
               <option key={c.slug} value={c.slug}>
-                {c.name.ru}
+                {c.name[locale]}
               </option>
             ))}
           </select>

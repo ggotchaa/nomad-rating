@@ -1,11 +1,13 @@
 import { ApiError } from '../api/client.ts'
+import { en } from './en.ts'
+import { kk } from './kk.ts'
+import { locale } from './locale.ts'
 import { ru } from './ru.ts'
 import type { Messages } from './ru.ts'
 
-// KK and EN dictionaries plug in here; RU is the only filled locale for the demo.
-const dictionaries: Record<string, Messages> = { ru }
+const dictionaries: Record<string, Messages> = { ru, kk, en }
 
-export const t: Messages = dictionaries.ru!
+export const t: Messages = dictionaries[locale]!
 
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {

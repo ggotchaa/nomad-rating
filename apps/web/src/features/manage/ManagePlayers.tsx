@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { locale } from '../../i18n/locale.ts'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router'
 import { api, ApiError } from '../../api/client.ts'
@@ -68,7 +69,7 @@ function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (co
           <select name="cityId" defaultValue={cities.find((c) => c.slug === city)?.id}>
             {cities.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name.ru}
+                {c.name[locale]}
               </option>
             ))}
           </select>
@@ -82,7 +83,7 @@ function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (co
             ))}
           </select>
         </Field>
-        <Field label={`${t.a.email} (необязательно)`} wide>
+        <Field label={`${t.a.email} (${t.misc.optional})`} wide>
           <input name="email" type="email" />
         </Field>
         {duplicates.length > 0 && (

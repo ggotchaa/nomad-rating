@@ -160,7 +160,7 @@ function LeagueAdmin({ slug, hallId }: { slug: string; hallId: number }) {
   const data = useApi<LeagueData>(`/leagues/${slug}`)
   const [error, setError] = useState('')
   const [name, setName] = useState('')
-  const [divisions, setDivisions] = useState('Высший, Первый, Второй')
+  const [divisions, setDivisions] = useState(t.misc.leagueDivisions)
   return (
     <Async state={data}>
       {(l) => (

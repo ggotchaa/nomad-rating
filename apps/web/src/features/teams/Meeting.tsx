@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { intlTag } from '../../i18n/locale.ts'
 import { useParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import { useApi, useRoom } from '../../app/hooks.ts'
@@ -8,9 +9,9 @@ import { Async, StatusChip } from '../../ui/kit.tsx'
 const s = (h: number, a: number) => ({ kind: 'singles' as const, home: [h], away: [a] })
 /** Ready schemes (same as the engine's MEETING_SCHEMES). */
 export const MEETING_SCHEMES = {
-  wc: { id: 'wc', name: 'Формат ЧМ', slots: 3, games: [s(0, 0), s(1, 1), s(2, 2), s(0, 1), s(1, 0)], firstTo: 3, playAll: false, tables: 1 },
-  olympic: { id: 'olympic', name: 'Олимпийская', slots: 3, games: [{ kind: 'doubles' as const, home: [1, 2], away: [1, 2] }, s(0, 0), s(2, 2), s(0, 1), s(1, 0)], firstTo: 3, playAll: false, tables: 1 },
-  swaythling: { id: 'swaythling', name: 'Свэтлинг', slots: 3, games: [s(0, 0), s(1, 1), s(2, 2), s(1, 0), s(0, 2), s(2, 1), s(1, 2), s(2, 0), s(0, 1)], firstTo: 5, playAll: false, tables: 1 },
+  wc: { id: 'wc', name: t.misc.schemeWc, slots: 3, games: [s(0, 0), s(1, 1), s(2, 2), s(0, 1), s(1, 0)], firstTo: 3, playAll: false, tables: 1 },
+  olympic: { id: 'olympic', name: t.misc.schemeOlympic, slots: 3, games: [{ kind: 'doubles' as const, home: [1, 2], away: [1, 2] }, s(0, 0), s(2, 2), s(0, 1), s(1, 0)], firstTo: 3, playAll: false, tables: 1 },
+  swaythling: { id: 'swaythling', name: t.misc.schemeSwaythling, slots: 3, games: [s(0, 0), s(1, 1), s(2, 2), s(1, 0), s(0, 2), s(2, 1), s(1, 2), s(2, 0), s(0, 1)], firstTo: 5, playAll: false, tables: 1 },
 }
 
 type P = { id: number; name: string }
@@ -138,7 +139,7 @@ export function MeetingPage() {
             </div>
             {v.deadline && !v.games.length && (
               <p className="note">
-                {t.meeting.deadline} {new Date(v.deadline).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                {t.meeting.deadline} {new Date(v.deadline).toLocaleTimeString(intlTag, { hour: '2-digit', minute: '2-digit' })}
               </p>
             )}
             {v.games.length > 0 && (

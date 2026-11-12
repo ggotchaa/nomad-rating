@@ -2,13 +2,11 @@ import { Link } from 'react-router'
 import type { EntryRef, MatchView, StageView } from '../../api/types.ts'
 import { t } from '../../i18n/index.ts'
 
-const ROUND_NAMES: Record<string, string> = { final: 'Финал', '1/2': '1/2 финала', '1/4': '1/4 финала', '1/8': '1/8 финала', '1/16': '1/16 финала', '1/32': '1/32 финала' }
-
 function sourceLabel(source: unknown): string {
   const s = source as { kind?: string; match?: number; seed?: number } | null
-  if (s?.kind === 'winner') return `Поб. матча ${s.match}`
+  if (s?.kind === 'winner') return t.misc.winnerOf(s.match ?? 0)
   if (s?.kind === 'loser') return `−${s.match}`
-  if (s?.kind === 'seed') return `Посев ${s.seed}`
+  if (s?.kind === 'seed') return t.misc.seed(s.seed ?? 0)
   return '—'
 }
 
@@ -55,7 +53,7 @@ function Bracket({ matches }: { matches: MatchView[] }) {
           const label = col[0]?.label ?? ''
           return (
             <div className="bracket__col" key={r}>
-              <span>{ROUND_NAMES[label] ?? label}</span>
+              <span>{t.misc.rounds[label] ?? label}</span>
               {col.map((m) => (
                 <Match key={m.id} m={m} />
               ))}

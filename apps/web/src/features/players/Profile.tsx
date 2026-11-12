@@ -86,7 +86,7 @@ export function Profile() {
                       {[p.city, `${p.birthYear} ${t.p.born}`, p.hand && t.p.hand[p.hand]].filter(Boolean).join(' · ')}
                     </p>
                     <div className="row">
-                      {r?.provisional && r.rating != null && <span className="chip chip--warn">{t.t.calibrating} · рейтинг уточняется</span>}
+                      {r?.provisional && r.rating != null && <span className="chip chip--warn">{t.t.calibrating} · {t.misc.ratingRefining}</span>}
                       {p.addedByClub && <span className="chip">{t.p.addedByClub}</span>}
                     </div>
                   </div>
@@ -125,7 +125,7 @@ export function Profile() {
                       <b>{r.winRate == null ? '—' : `${r.winRate}%`}</b>
                     </div>
                   </div>
-                  {r.calibration && <p className="note">{t.p.calibration(r.calibration.played, r.calibration.of)} · стартовый уровень {r.calibration.startLevel}</p>}
+                  {r.calibration && <p className="note">{t.p.calibration(r.calibration.played, r.calibration.of)} · {t.misc.startLevel} {r.calibration.startLevel}</p>}
                 </section>
               )}
               <section className="panel">

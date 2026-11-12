@@ -3,6 +3,8 @@ import { Navigate } from 'react-router'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { DemoBar } from '../demo/DemoBar.tsx'
 import { t } from '../i18n/index.ts'
+import { locale } from '../i18n/locale.ts'
+import { LangLinks, LangSelect } from '../ui/Lang.tsx'
 import { useSession } from './auth.tsx'
 import { NotificationBell } from '../features/notifications/Bell.tsx'
 import { CallPopup } from '../features/conduct/CallPopup.tsx'
@@ -32,7 +34,7 @@ export function AppShell() {
             <i />
             NOMAD
           </Link>
-          <nav className="mainnav" aria-label="Разделы">
+          <nav className="mainnav" aria-label={t.common.sections}>
             <NavLink to="/home">{t.nav.home}</NavLink>
             <NavLink to="/tournaments">{t.nav.tournaments}</NavLink>
             <NavLink to="/rating">{t.nav.rating}</NavLink>
@@ -47,10 +49,11 @@ export function AppShell() {
             <select aria-label={t.common.city} value={city} onChange={(e) => setCity(e.target.value)}>
               {cities.map((c) => (
                 <option key={c.slug} value={c.slug}>
-                  {c.name.ru}
+                  {c.name[locale]}
                 </option>
               ))}
             </select>
+            <LangSelect />
             {me.clubs.length > 1 && (
               <select aria-label={t.nav.manage} value={me.activeClubId ?? me.clubs[0]!.id} onChange={(e) => void setActiveClub(Number(e.target.value))}>
                 {me.clubs.map((c) => (
@@ -83,7 +86,7 @@ export function AppShell() {
       <Outlet key={me.user?.id ?? 0} />
       <footer className="foot">
         <span>© 2026 Nomad</span>
-        <span>RU · KZ · EN</span>
+        <LangLinks />
       </footer>
     </div>
   )

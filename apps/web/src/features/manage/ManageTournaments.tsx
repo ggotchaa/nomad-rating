@@ -30,7 +30,7 @@ export function ManageTournaments() {
                 <tr>
                   <th>{t.m.date}</th>
                   <th>{t.m.name}</th>
-                  <th>Статус</th>
+                  <th>{t.misc.status}</th>
                   <th className="num">{t.t.participants}</th>
                   <th className="num">{t.t.fee}</th>
                 </tr>
@@ -185,7 +185,7 @@ export function ManageTournamentPage() {
                     <th>#</th>
                     <th>{t.t.player}</th>
                     <th className="num">{t.t.rating}</th>
-                    <th>Статус</th>
+                    <th>{t.misc.status}</th>
                     <th>{t.m.payment}</th>
                   </tr>
                 </thead>

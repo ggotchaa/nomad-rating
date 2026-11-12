@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import type { HoloScene } from './scene/HoloScene.ts'
 import { INITIAL_STATE } from './scene/state.ts'
+import { t } from '../../i18n/index.ts'
 import { CHAPTERS, buildStory } from './story.ts'
 import { LiveSection } from './LiveSection.tsx'
 import './landing.css'
@@ -72,18 +73,18 @@ export function Landing() {
       <div className="landing__fx" aria-hidden="true" />
 
       <header className="hud">
-        <a className="hud__logo" href="#top" aria-label="Nomad — в начало">
+        <a className="hud__logo" href="#top" aria-label={t.landing.toStart}>
           <span className="hud__mark" />
           NOMAD
         </a>
-        <nav className="hud__nav" aria-label="Разделы">
-          <Link to="/tournaments">Турниры</Link>
-          <Link to="/rating">Рейтинг</Link>
-          <Link to="/clubs">Клубы</Link>
-          <Link to="/clubs">Бронь</Link>
+        <nav className="hud__nav" aria-label={t.common.sections}>
+          <Link to="/tournaments">{t.nav.tournaments}</Link>
+          <Link to="/rating">{t.nav.rating}</Link>
+          <Link to="/clubs">{t.nav.clubs}</Link>
+          <Link to="/clubs">{t.landing.navBooking}</Link>
         </nav>
         <Link className="btn btn--ghost hud__login" to="/login">
-          Войти
+          {t.landing.login}
         </Link>
         <div className="hud__progress">
           <div ref={progressRef} />
@@ -107,7 +108,7 @@ export function Landing() {
           <article className="chapter chapter--hero" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                // Рейтинговый настольный теннис · Казахстан
+                {t.landing.kicker}
               </p>
               <h1 className="hero__title" data-reveal aria-label="Nomad">
                 {'NOMAD'.split('').map((letter, i) => (
@@ -117,19 +118,19 @@ export function Landing() {
                 ))}
               </h1>
               <p className="hero__lead" data-reveal>
-                Любительские турниры, в которых считается каждая партия: запись за&nbsp;2&nbsp;минуты, рейтинг Эло после каждого турнира и вызов на стол — прямо в&nbsp;телефон.
+                {t.landing.lead}
               </p>
               <div className="hero__actions" data-reveal>
                 <Link className="btn btn--primary" to="/tournaments">
-                  Найти турнир
+                  {t.landing.findTournament}
                 </Link>
                 <Link className="btn btn--ghost" to="/clubs">
-                  Забронировать стол
+                  {t.landing.bookTable}
                 </Link>
               </div>
             </div>
-            <a className="scroll-cue" href="#serve" aria-label="Листайте вниз">
-              <span>Листайте — подача</span>
+            <a className="scroll-cue" href="#serve" aria-label={t.landing.scrollDown}>
+              <span>{t.landing.scrollCue}</span>
               <i />
             </a>
           </article>
@@ -137,17 +138,16 @@ export function Landing() {
           <article className="chapter chapter--right" id="serve" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                01 · Подача
+                {t.landing.s1Eyebrow}
               </p>
               <h2 data-reveal>
-                Турнир рядом — <em>каждую неделю</em>
+                {t.landing.s1TitleA}<em>{t.landing.s1TitleB}</em>
               </h2>
-              <p data-reveal>Календарь клубов твоего города с фильтрами по рейтингу, дате и свободным местам. Видно, кто уже записался и какой средний рейтинг состава.</p>
+              <p data-reveal>{t.landing.s1Text}</p>
               <ul className="chips" data-reveal>
-                <li>Алматы</li>
-                <li>до 1300</li>
-                <li>есть места</li>
-                <li>суббота</li>
+                {t.landing.s1Chips.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
               </ul>
             </div>
           </article>
@@ -155,24 +155,18 @@ export function Landing() {
           <article className="chapter" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                02 · Запись
+                {t.landing.s2Eyebrow}
               </p>
               <h2 data-reveal>
-                От ссылки в чате до места в сетке — <em>2 минуты</em>
+                {t.landing.s2TitleA}<em>{t.landing.s2TitleB}</em>
               </h2>
               <ol className="steps" data-reveal>
-                <li>
-                  <b>Открой ссылку</b>
-                  <span>из Telegram-канала клуба или календаря</span>
-                </li>
-                <li>
-                  <b>Войди</b>
-                  <span>через Google или e-mail — и вернёшься к записи</span>
-                </li>
-                <li>
-                  <b>Запишись</b>
-                  <span>место держится 15 минут на оплату, нет мест — лист ожидания</span>
-                </li>
+                {t.landing.s2Steps.map(([b, d]) => (
+                  <li key={b}>
+                    <b>{b}</b>
+                    <span>{d}</span>
+                  </li>
+                ))}
               </ol>
             </div>
           </article>
@@ -180,10 +174,10 @@ export function Landing() {
           <article className="chapter chapter--top" id="rating" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                03 · Рейтинг
+                {t.landing.s3Eyebrow}
               </p>
               <h2 data-reveal>
-                Эло после <em>каждого</em> турнира
+                {t.landing.s3TitleA}<em>{t.landing.s3TitleB}</em>{t.landing.s3TitleC}
               </h2>
               <p className="formula" data-reveal>
                 E<sub>A</sub> = 1 / (1 + 10<sup>(R<sub>B</sub> − R<sub>A</sub>) / 400</sup>)
@@ -191,15 +185,15 @@ export function Landing() {
               <div className="deltas" data-reveal>
                 <div>
                   <b className="up">+6</b>
-                  <span>обыграл слабее</span>
+                  <span>{t.landing.s3Weaker}</span>
                 </div>
                 <div>
                   <b className="up up--big">+18</b>
-                  <span>обыграл сильнее</span>
+                  <span>{t.landing.s3Stronger}</span>
                 </div>
                 <div>
                   <b>3</b>
-                  <span>турнира калибровки для новичка</span>
+                  <span>{t.landing.s3Calibration}</span>
                 </div>
               </div>
             </div>
@@ -208,28 +202,28 @@ export function Landing() {
           <article className="chapter chapter--right" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                04 · Вызов
+                {t.landing.s4Eyebrow}
               </p>
               <h2 data-reveal>
-                «Ваш матч на <em>5-м столе</em>»
+                {t.landing.s4TitleA}<em>{t.landing.s4TitleB}</em>{t.landing.s4TitleC}
               </h2>
-              <p data-reveal>Уведомление на сайте, в Telegram и на заблокированном экране — не позже 10 секунд после нажатия «Вызвать». Очередь и live-счёт — на ТВ в зале.</p>
-              <div className="notice" data-reveal role="img" aria-label="Пример уведомления о вызове на стол">
+              <p data-reveal>{t.landing.s4Text}</p>
+              <div className="notice" data-reveal role="img" aria-label={t.landing.s4Aria}>
                 <div className="notice__head">
-                  <span className="dot" /> Вызов на стол · сейчас
+                  <span className="dot" /> {t.landing.s4Head}
                 </div>
                 <div className="notice__table">
-                  Стол <b>5</b>
+                  {t.landing.s4Table} <b>5</b>
                 </div>
                 <dl>
-                  <dt>Соперник</dt>
-                  <dd>Арман С. · 1240</dd>
-                  <dt>Этап</dt>
-                  <dd>Основная сетка, 1/4 финала</dd>
+                  <dt>{t.landing.s4Opponent}</dt>
+                  <dd>{t.landing.s4OpponentValue}</dd>
+                  <dt>{t.landing.s4Stage}</dt>
+                  <dd>{t.landing.s4StageValue}</dd>
                 </dl>
                 <div className="notice__actions">
-                  <span className="btn btn--primary btn--sm">Иду</span>
-                  <span className="btn btn--ghost btn--sm">Не могу</span>
+                  <span className="btn btn--primary btn--sm">{t.landing.s4Coming}</span>
+                  <span className="btn btn--ghost btn--sm">{t.landing.s4Cant}</span>
                 </div>
               </div>
             </div>
@@ -238,13 +232,13 @@ export function Landing() {
           <article className="chapter" id="booking" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                05 · Бронь
+                {t.landing.s5Eyebrow}
               </p>
               <h2 data-reveal>
-                Стол на вечер — <em>в пару касаний</em>
+                {t.landing.s5TitleA}<em>{t.landing.s5TitleB}</em>
               </h2>
-              <p data-reveal>План зала сверху, свободное время каждого стола и цена до оплаты. Двойная бронь невозможна — проверяет сама база данных.</p>
-              <div className="slots" data-reveal aria-label="Пример расписания стола">
+              <p data-reveal>{t.landing.s5Text}</p>
+              <div className="slots" data-reveal aria-label={t.landing.s5Aria}>
                 {[
                   ['18:00', 'busy'],
                   ['19:00', 'free'],
@@ -263,17 +257,17 @@ export function Landing() {
           <article className="chapter chapter--center" id="final" data-chapter>
             <div className="chapter__content">
               <p className="eyebrow" data-reveal>
-                06 · Игра
+                {t.landing.s6Eyebrow}
               </p>
               <h2 className="final__title" data-reveal>
-                Следующая партия <em>начинается здесь</em>
+                {t.landing.s6TitleA}<em>{t.landing.s6TitleB}</em>
               </h2>
               <div className="hero__actions hero__actions--center" data-reveal>
                 <Link className="btn btn--primary" to="/tournaments">
-                  Смотреть турниры
+                  {t.landing.s6Tournaments}
                 </Link>
                 <Link className="btn btn--ghost" to="/clubs">
-                  Клубы и бронь
+                  {t.landing.s6Clubs}
                 </Link>
               </div>
             </div>

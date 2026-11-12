@@ -166,7 +166,7 @@ export function TournamentPage() {
                       ))}
                     </div>
                     <p className="small muted">
-                      {d.estimate.totalMatches} {t.t.matches} · {t.t.duration} {formatDuration(d.estimate.minutes)} · до {d.format.match.winsNeeded} побед в партиях
+                      {d.estimate.totalMatches} {t.t.matches} · {t.t.duration} {formatDuration(d.estimate.minutes)} · {t.misc.winsTo(d.format.match.winsNeeded)} в партиях
                     </p>
                   </section>
                 </div>
@@ -197,7 +197,7 @@ export function TournamentPage() {
                           <td className="muted">{p.city}</td>
                           <td className="num">
                             {p.rating ?? p.startLevel}
-                            {p.calibrating && <span className="chip chip--warn" title="Калибровка" style={{ marginLeft: 6 }}>{t.t.calibrating}</span>}
+                            {p.calibrating && <span className="chip chip--warn" title={t.t.calibrating} style={{ marginLeft: 6 }}>{t.t.calibrating}</span>}
                           </td>
                           {finished && (
                             <td className="num">

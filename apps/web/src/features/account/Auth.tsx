@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { locale } from '../../i18n/locale.ts'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { api } from '../../api/client.ts'
@@ -125,7 +126,7 @@ export function Register() {
           <select name="cityId" defaultValue={cities.find((c) => c.slug === city)?.id}>
             {cities.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name.ru}
+                {c.name[locale]}
               </option>
             ))}
           </select>

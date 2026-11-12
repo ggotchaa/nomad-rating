@@ -4,12 +4,13 @@
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
+import { t } from '../../i18n/index.ts'
 import { INITIAL_STATE } from './scene/state.ts'
 import type { SceneState } from './scene/state.ts'
 
 gsap.registerPlugin(ScrollTrigger)
 
-export const CHAPTERS = ['Старт', 'Подача', 'Запись', 'Рейтинг', 'Вызов', 'Бронь', 'Игра'] as const
+export const CHAPTERS = t.landing.chapters
 
 type Key = Partial<SceneState>
 
