@@ -62,7 +62,8 @@ export async function currentUserView(userId: number, session?: { activeClubId: 
       googleLinked: user.google_sub != null,
       totpEnabled: user.totp_enabled_at != null,
       mfaRequired: user.totp_enabled_at != null && session?.mfaVerified === false,
-      needsWelcome: !player || user.consent_at == null,
+      // Staff (platform admin, club members) may work without a player profile.
+      needsWelcome: user.consent_at == null || (!player && user.platform_role !== 'admin' && clubs.length === 0),
     },
     player: player ?? null,
     clubs,
