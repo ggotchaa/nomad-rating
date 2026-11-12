@@ -44,6 +44,35 @@ export function snakeGroups<T>(seeded: readonly T[], sizes: readonly number[]): 
   return groups
 }
 
+/**
+ * Moves players of one club apart (spec 4.6): a clash is fixed by swapping with a player of the
+ * same seeding row in another group, so group strength stays balanced.
+ */
+export function separateClubs(groups: readonly string[][], clubOf: (id: string) => string | null | undefined): string[][] {
+  const result = groups.map((g) => [...g])
+  const clashes = (g: string[], club: string, skip: number) => g.some((id, i) => i !== skip && clubOf(id) === club)
+  const rows = Math.max(0, ...result.map((g) => g.length))
+  for (let row = 1; row < rows; row++) {
+    for (let gi = 0; gi < result.length; gi++) {
+      const group = result[gi] as string[]
+      const id = group[row]
+      const club = id == null ? null : clubOf(id)
+      if (id == null || !club || !clashes(group, club, row)) continue
+      for (let gj = 0; gj < result.length; gj++) {
+        const other = result[gj] as string[]
+        const candidate = other[row]
+        if (gj === gi || candidate == null) continue
+        const candidateClub = clubOf(candidate)
+        if (clashes(other, club, row) || (candidateClub && clashes(group, candidateClub, row))) continue
+        group[row] = candidate
+        other[row] = id
+        break
+      }
+    }
+  }
+  return result
+}
+
 export function randomGroups<T>(items: readonly T[], sizes: readonly number[], seed: number): T[][] {
   const list = shuffle(items, seededRandom(seed))
   const groups: T[][] = []

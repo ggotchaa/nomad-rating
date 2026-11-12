@@ -3,7 +3,7 @@
 
 import { allPlaces, bracketSizeFor, seedOrder, singleElimination } from './bracket.ts'
 import type { Bracket, BracketPlace } from './bracket.ts'
-import { groupCode, groupSizes, randomGroups, roundRobinTours, snakeGroups } from './groups.ts'
+import { groupCode, groupSizes, randomGroups, roundRobinTours, separateClubs, snakeGroups } from './groups.ts'
 import type { StandingRow, StandingsResult } from './groups.ts'
 import type { StageSpec, TournamentFormat, TransitionRule } from './formats.ts'
 
@@ -24,6 +24,10 @@ export function buildGroupStage(
   else {
     const sizes = groupSizes(ids.length, stage.groupSize)
     members = stage.seeding === 'random' ? randomGroups(ids, sizes, options.seed ?? 1) : snakeGroups(ids, sizes)
+    if (stage.separateClubs !== false) {
+      const clubs = new Map(seeded.map((p) => [p.id, p.clubId]))
+      members = separateClubs(members, (id) => clubs.get(id))
+    }
   }
   const groups = members.map((m, i) => ({ code: stage.kind === 'round_robin' ? 'A' : groupCode(i), members: m }))
   const matches: PlannedGroupMatch[] = []

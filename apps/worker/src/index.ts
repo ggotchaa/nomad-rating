@@ -5,6 +5,7 @@ import { Queue, Worker } from 'bullmq'
 import { config } from '@nomad/server/src/config.ts'
 import { db } from '@nomad/server/src/db/index.ts'
 import { expireHolds } from '@nomad/server/src/jobs/holds.ts'
+import { autoCancelUnderfilled, recallUnanswered } from '@nomad/server/src/jobs/conduct.ts'
 import { logger } from '@nomad/server/src/logger.ts'
 import { bus } from '@nomad/server/src/realtime/bus.ts'
 // --- Stage 3: notifications, rating replay, Telegram bot ---
@@ -26,6 +27,7 @@ const QUEUE = 'maintenance'
 const queue = new Queue(QUEUE, { connection })
 await queue.upsertJobScheduler('expire-holds', { every: 60_000 }, { name: 'expire-holds' })
 await queue.upsertJobScheduler('scheduled-notifications', { every: 5 * 60_000 }, { name: 'scheduled-notifications' })
+await queue.upsertJobScheduler('conduct-tick', { every: 30_000 }, { name: 'conduct-tick' })
 
 const worker = new Worker(
   QUEUE,
@@ -36,6 +38,7 @@ const worker = new Worker(
       return result
     }
     if (job.name === 'scheduled-notifications') return runScheduledNotifications()
+    if (job.name === 'conduct-tick') return { recalled: await recallUnanswered(), cancelled: await autoCancelUnderfilled() }
     throw new Error(`unknown job ${job.name}`)
   },
   { connection, concurrency: 1 },

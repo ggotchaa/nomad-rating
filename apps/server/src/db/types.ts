@@ -186,6 +186,8 @@ export type TournamentSettings = {
   sameDayRegistration?: boolean
   callResponseMinutes?: number
   avgMatchMinutes?: number
+  restMinutes?: number
+  requireCheckin?: boolean
 }
 
 export type RefundRule = { hoursBefore: number; percent: number }
@@ -219,6 +221,8 @@ export interface TournamentsTable {
   series_id: number | null
   address_snapshot: Json<Record<string, unknown>> | null
   cancelled_reason: string | null
+  checkin_secret: Generated<string>
+  copied_from: number | null
   created_by: number | null
   created_at: DefaultTimestamp
   published_at: Timestamp | null
@@ -256,6 +260,7 @@ export interface EntriesTable {
   final_place_to: number | null
   rating_at_start: number | null
   registered_by: number | null
+  checked_in_at: Timestamp | null
   created_at: DefaultTimestamp
   updated_at: DefaultTimestamp
 }
@@ -313,6 +318,12 @@ export interface MatchesTable {
   games: JsonDefault<import('@nomad/engine').GameScore[]>
   winner_entry_id: number | null
   is_rated: Generated<boolean>
+  version: Generated<number>
+  call_count: Generated<number>
+  call_responses: JsonDefault<CallResponses>
+  reported_score: Json<ReportedScore> | null
+  reported_by: number | null
+  disputed: Generated<boolean>
 }
 
 export interface RatingEventsTable {
@@ -440,6 +451,7 @@ export interface Database {
   player_merge_requests: PlayerMergeRequestsTable
   rttf_profiles: RttfProfilesTable
   rttf_claims: RttfClaimsTable
+  series: SeriesTable
 }
 
 export type Tournament = Selectable<TournamentsTable>
@@ -624,5 +636,18 @@ export interface SubscriptionsTable {
 
 export interface NotificationDedupeTable {
   key: string
+  created_at: DefaultTimestamp
+}
+
+// --- Stage 2 ---
+
+export type CallAnswer = 'delivered' | 'going' | 'cannot'
+export type CallResponses = Partial<Record<'home' | 'away', { answer: CallAnswer; reason?: string; at: string }>>
+export type ReportedScore = { setsHome: number; setsAway: number; games: import('@nomad/engine').GameScore[] }
+
+export interface SeriesTable {
+  id: Id
+  club_id: number
+  name: string
   created_at: DefaultTimestamp
 }

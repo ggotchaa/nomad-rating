@@ -7,7 +7,7 @@ import { sql } from 'kysely'
 import type { ExpressionBuilder } from 'kysely'
 import { z } from 'zod'
 import { estimateFormat, FORMAT_TEMPLATES, formatTemplate, validateFormat } from '@nomad/engine'
-import type { Bracket, FormatTemplateId, StandingsResult, TemplateParams } from '@nomad/engine'
+import type { Bracket, FormatTemplateId, StandingsResult, TemplateParams, TournamentFormat } from '@nomad/engine'
 import { assertTransition, ENTRY_ACTIVE, ENTRY_OCCUPYING, entryStatus, slugify, tournamentStatus } from '@nomad/shared'
 import type { EntryStatus } from '@nomad/shared'
 import { config } from '../config.ts'
@@ -20,6 +20,7 @@ import { badRequest, conflict, forbidden, handler, notFound, unprocessable } fro
 import { intParam, parseBody, parseQuery } from '../http/validate.ts'
 import { startPayment } from '../payments/service.ts'
 import { bus } from '../realtime/bus.ts'
+import { notify } from '../notify/index.ts'
 import { finishTournament, recordResult, startTournament } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
 
@@ -37,6 +38,37 @@ const FORMAT_NAMES: Record<FormatTemplateId, string> = {
   gs3: 'ГС-3. Группы, выходят все → сетка',
   groups_main_consolation: 'Группы по 4 → основная + утешительная',
 }
+
+const stageSchema = z.discriminatedUnion('kind', [
+  z.object({ id: z.string().min(1).max(30), kind: z.literal('groups'), name: z.string().min(1).max(60), groupSize: z.number().int(), seeding: z.enum(['snake', 'random', 'manual']), separateClubs: z.boolean().optional() }),
+  z.object({ id: z.string().min(1).max(30), kind: z.literal('round_robin'), name: z.string().min(1).max(60) }),
+  z.object({ id: z.string().min(1).max(30), kind: z.literal('single_elim'), name: z.string().min(1).max(60), thirdPlace: z.enum(['match', 'shared']) }),
+  z.object({ id: z.string().min(1).max(30), kind: z.literal('all_places'), name: z.string().min(1).max(60) }),
+])
+
+/** Custom format from the constructor (F-1…F-3); deeper rules are checked by validateFormat (F-5). */
+export const formatSchema = z.object({
+  version: z.literal(1).default(1),
+  template: z.string().default('custom'),
+  stages: z.array(stageSchema).min(1).max(6),
+  transitions: z.array(
+    z.object({
+      from: z.string(),
+      to: z.string(),
+      rule: z.discriminatedUnion('by', [
+        z.object({ by: z.literal('places'), places: z.array(z.number().int().min(1).max(8)).min(1) }),
+        z.object({ by: z.literal('top'), count: z.number().int().min(2).max(128) }),
+        z.object({ by: z.literal('all') }),
+        z.object({ by: z.literal('best_of_place'), place: z.number().int().min(1).max(8), count: z.number().int().min(1).max(64) }),
+      ]),
+    }),
+  ),
+  placement: z.array(z.object({ stage: z.string(), who: z.enum(['all', 'not_advanced']) })),
+  match: z.object({ winsNeeded: z.number().int(), pointsToWin: z.number().int().min(5).max(21).default(11), gamePoints: z.enum(['none', 'optional', 'required']) }),
+  groupPoints: z.object({ win: z.number().int(), loss: z.number().int(), walkover: z.number().int() }).default({ win: 2, loss: 1, walkover: 0 }),
+  tiebreaks: z.array(z.enum(['h2h_points', 'h2h_sets_ratio', 'h2h_points_ratio', 'rating', 'lots'])).min(1),
+  restMinutes: z.number().int(),
+})
 
 const templateParams = z
   .object({
@@ -58,7 +90,8 @@ formatsRouter.post(
   handler(async (req, res) => {
     const body = parseBody(
       z.object({
-        template: z.enum(FORMAT_TEMPLATES),
+        template: z.enum(FORMAT_TEMPLATES).optional(),
+        format: formatSchema.optional(),
         params: templateParams,
         players: z.number().int().min(2).max(256),
         tables: z.number().int().min(1).max(100),
@@ -66,7 +99,7 @@ formatsRouter.post(
       }),
       req,
     )
-    const format = formatTemplate(body.template, body.players, body.params as TemplateParams)
+    const format = body.format ? (body.format as TournamentFormat) : formatTemplate(body.template ?? 'gs1', body.players, body.params as TemplateParams)
     res.json({ format, errors: validateFormat(format), estimate: estimateFormat(format, body.players, { tables: body.tables, avgMatchMinutes: body.avgMatchMinutes }) })
   }),
 )
@@ -201,7 +234,7 @@ const STATUS_FOR_PUBLIC: Partial<Record<EntryStatus, string>> = {
   invited: 'invited', // a place freed up: 30 minutes to confirm
 }
 
-async function participants(tournamentId: number) {
+export async function participants(tournamentId: number) {
   const rows = await db
     .selectFrom('entries as e')
     .innerJoin('players as p', 'p.id', 'e.player_id')
@@ -257,7 +290,7 @@ async function participants(tournamentId: number) {
     .sort((a, b) => (a.status === 'waitlist' ? 1 : 0) - (b.status === 'waitlist' ? 1 : 0) || (a.waitlistPosition ?? 0) - (b.waitlistPosition ?? 0) || (b.rating ?? b.startLevel) - (a.rating ?? a.startLevel))
 }
 
-async function structure(t: Tournament) {
+export async function structure(t: Tournament) {
   const stages = await db.selectFrom('stages').selectAll().where('tournament_id', '=', t.id).orderBy('order_index').execute()
   if (!stages.length) return null
   const names = new Map(
@@ -265,10 +298,10 @@ async function structure(t: Tournament) {
       await db
         .selectFrom('entries as e')
         .innerJoin('players as p', 'p.id', 'e.player_id')
-        .select(['e.id', 'p.id as player_id', 'p.first_name', 'p.last_name', 'e.rating_at_start', 'e.seed'])
+        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'e.rating_at_start', 'e.seed'])
         .where('e.tournament_id', '=', t.id)
         .execute()
-    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: playerName(e), rating: e.rating_at_start, seed: e.seed }]),
+    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew' }]),
   )
   const matches = await db
     .selectFrom('matches as m')
@@ -297,6 +330,8 @@ async function structure(t: Tournament) {
     games: m.games,
     winnerEntryId: m.winner_entry_id,
     table: m.table_number,
+    calledAt: m.called_at,
+    version: m.version,
   })
   const result = []
   for (const s of stages) {
@@ -388,7 +423,11 @@ tournamentsRouter.get(
       coverUrl: t.cover_url,
       isRated: t.is_rated,
       refundRules: t.refund_rules,
-      settings: { scoreEntry: settings.scoreEntry ?? 'staff', checkinWindowMinutes: settings.checkinWindowMinutes ?? 60 },
+      settings: isStaff ? { scoreEntry: 'staff', checkinWindowMinutes: 60, ...settings } : { scoreEntry: settings.scoreEntry ?? 'staff', checkinWindowMinutes: settings.checkinWindowMinutes ?? 60, sameDayRegistration: settings.sameDayRegistration ?? false },
+      cancelledReason: t.cancelled_reason,
+      seriesId: t.series_id,
+      tableIds: isStaff ? t.table_ids : undefined,
+      isStaff,
       club: { id: club.id, slug: club.slug, name: club.name, city: club.city, contacts: { telegram: club.contact_telegram, email: club.contact_email } },
       hall: finished && t.address_snapshot
         ? { id: hall.id, ...(t.address_snapshot as object), timezone: hall.timezone, commentForPlayers: hall.comment_for_players }
@@ -410,13 +449,15 @@ tournamentsRouter.get(
 // ---------------------------------------------------------------------------
 // Club side: creation, publication, running
 
-const createSchema = z.object({
+export const createSchema = z.object({
   hallId: z.number().int().positive(),
   title: z.string().trim().min(3).max(150),
   startsAt: z.iso.datetime({ offset: true }),
   registrationClosesAt: z.iso.datetime({ offset: true }).optional(),
-  template: z.enum(FORMAT_TEMPLATES),
+  template: z.enum(FORMAT_TEMPLATES).default('gs1'),
   templateParams,
+  format: formatSchema.optional(),
+  seriesId: z.number().int().positive().nullable().optional(),
   maxParticipants: z.number().int().min(4).max(256),
   minParticipants: z.number().int().min(2).max(256).optional(),
   fee: z.number().int().min(0).optional(), // tiyn
@@ -443,6 +484,9 @@ const createSchema = z.object({
       checkinWindowMinutes: z.number().int().min(10).max(240).optional(),
       sameDayRegistration: z.boolean().optional(),
       avgMatchMinutes: z.number().int().min(5).max(90).optional(),
+      restMinutes: z.number().int().min(0).max(30).optional(),
+      requireCheckin: z.boolean().optional(),
+      callResponseMinutes: z.number().int().min(1).max(15).optional(),
     })
     .default({}),
 })
@@ -471,7 +515,8 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
   const tables = await trx.selectFrom('hall_tables').select('id').where('hall_id', '=', hall.id).where('status', '=', 'active').orderBy('number').execute()
   const tableIds = input.tableIds?.length ? input.tableIds.filter((id) => tables.some((t) => t.id === id)) : tables.map((t) => t.id)
   if (!tableIds.length) throw unprocessable('tournament.no_tables')
-  const format = formatTemplate(input.template, input.maxParticipants, input.templateParams as TemplateParams)
+  const format = input.format ? (input.format as TournamentFormat) : formatTemplate(input.template, input.maxParticipants, input.templateParams as TemplateParams)
+  if (input.settings.restMinutes != null) format.restMinutes = input.settings.restMinutes
   const errors = validateFormat(format)
   if (errors.length) throw unprocessable('format.invalid', errors)
   const settings = { ...(defaults.settings ?? {}), ...input.settings }
@@ -501,6 +546,7 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
       refund_rules: json(input.refundRules ?? defaults.refundRules ?? DEFAULT_REFUND),
       table_ids: tableIds,
       is_rated: input.isRated,
+      series_id: input.seriesId ?? null,
       created_by: userId,
     })
     .returningAll()
@@ -563,7 +609,7 @@ export async function publishTournament(trx: Trx, tournamentId: number, userId: 
   return { conflicts }
 }
 
-async function clubOfTournament(id: number) {
+export async function clubOfTournament(id: number) {
   const t = await db.selectFrom('tournaments').select(['club_id', 'hall_id']).where('id', '=', id).executeTakeFirst()
   if (!t) throw notFound('tournament.not_found')
   return t
@@ -594,7 +640,7 @@ tournamentsRouter.get(
 // Registration (R-3 … R-6, R-28)
 
 /** Returns error codes when the player may not play this tournament. */
-async function eligibility(trx: Trx, t: Tournament, playerId: number): Promise<string[]> {
+export async function eligibility(trx: Trx, t: Tournament, playerId: number): Promise<string[]> {
   const errors: string[] = []
   const p = await trx
     .selectFrom('players as p')
@@ -714,8 +760,16 @@ tournamentsRouter.post(
     const id = intParam(req, 'id')
     const t = await clubOfTournament(id)
     const user = await requireClubRight(req, t.club_id, 'tournaments', { tournamentId: id })
-    const { playerId } = parseBody(z.object({ playerId: z.number().int().positive() }), req)
-    const result = await db.transaction().execute((trx) => registerPlayer(trx, id, playerId, user.id, { byClub: true }))
+    const { playerId, checkin } = parseBody(z.object({ playerId: z.number().int().positive(), checkin: z.boolean().default(false) }), req)
+    const result = await db.transaction().execute(async (trx) => {
+      const r = await registerPlayer(trx, id, playerId, user.id, { byClub: true })
+      // R-26: day-of registration at the desk checks the player in at once.
+      if (checkin && r.status === 'paid') {
+        await trx.updateTable('entries').set({ status: 'checked_in', checked_in_at: new Date(), updated_at: new Date() }).where('id', '=', r.entryId).execute()
+        r.status = 'checked_in'
+      }
+      return r
+    })
     bus.publish(`tournament:${id}`, 'tournament.entries_changed', { tournamentId: id })
     res.status(201).json(result)
   }),
@@ -753,7 +807,7 @@ tournamentsRouter.delete(
         if (next) {
           await trx.updateTable('entries').set({ status: 'invited', hold_until: new Date(Date.now() + 30 * 60000), updated_at: new Date() }).where('id', '=', next.id).execute()
           const invitedUser = await trx.selectFrom('players').select('user_id').where('id', '=', next.player_id).executeTakeFirst()
-          if (invitedUser?.user_id) bus.publish(`user:${invitedUser.user_id}`, 'notification', { type: 'waitlist_invited', tournamentId: id, minutes: 30 })
+          if (invitedUser?.user_id) await notify({ userId: invitedUser.user_id, type: 'waitlist_invited', urgent: true, data: { tournamentId: id, slug: t.slug, title: t.title, minutes: 30 } })
         }
       }
       await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'entry', entityId: entry.id, action: 'cancel', before: { status: entry.status }, after: { status: 'cancelled_by_player', refund } }, trx)
@@ -772,12 +826,13 @@ tournamentsRouter.post(
     const id = intParam(req, 'id')
     const t = await clubOfTournament(id)
     const user = await requireClubRight(req, t.club_id, 'conduct', { tournamentId: id })
+    const { order } = parseBody(z.object({ order: z.array(z.number().int()).max(256).optional() }).default({}), req)
     await db.transaction().execute(async (trx) => {
       const row = await trx.selectFrom('tournaments').select('status').where('id', '=', id).executeTakeFirstOrThrow()
       if (row.status === 'published') {
         await trx.updateTable('tournaments').set({ status: 'registration_closed' }).where('id', '=', id).execute()
       }
-      await startTournament(trx, id, user.id)
+      await startTournament(trx, id, user.id, new Date(), { order })
     })
     bus.publish(`tournament:${id}`, 'tournament.started', { tournamentId: id })
     res.json({ ok: true })
@@ -798,11 +853,17 @@ tournamentsRouter.post(
         games: z.array(z.object({ home: z.number().int().min(0), away: z.number().int().min(0) })).default([]),
         resultType: z.enum(['normal', 'walkover', 'retired']).default('normal'),
         winner: z.enum(['home', 'away']).optional(),
+        version: z.number().int().optional(),
       }),
       req,
     )
-    const match = await db.transaction().execute((trx) => recordResult(trx, matchId, body, user.id))
-    if (match.tournament_id !== id) throw badRequest('match.wrong_tournament')
+    await db.transaction().execute(async (trx) => {
+      const current = await trx.selectFrom('matches').selectAll().where('id', '=', matchId).forUpdate().executeTakeFirst()
+      if (!current || current.tournament_id !== id) throw badRequest('match.wrong_tournament')
+      if (['finished', 'walkover', 'retired', 'annulled'].includes(current.status) || (body.version != null && body.version !== current.version))
+        throw conflict('match.already_recorded', { status: current.status, setsHome: current.sets_home, setsAway: current.sets_away, games: current.games, resultType: current.result_type, version: current.version })
+      await recordResult(trx, matchId, body, user.id)
+    })
     bus.publish(`tournament:${id}`, 'match.updated', { tournamentId: id, matchId })
     res.json({ ok: true })
   }),

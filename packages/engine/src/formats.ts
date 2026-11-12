@@ -8,7 +8,7 @@ import { DEFAULT_MATCH_RULES } from './scoring.ts'
 import type { MatchRules } from './scoring.ts'
 
 export type StageSpec =
-  | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: 'snake' | 'random' | 'manual' }
+  | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: 'snake' | 'random' | 'manual'; separateClubs?: boolean }
   | { id: string; kind: 'round_robin'; name: string }
   | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
   | { id: string; kind: 'all_places'; name: string }

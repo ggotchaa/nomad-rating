@@ -22,6 +22,10 @@ import { adminRttfRouter, rttfRouter } from '../modules/rttf.ts'
 import { UPLOADS_ROOT } from '../storage/index.ts'
 import { ratingRouter } from '../modules/rating.ts'
 import { notificationsRouter } from '../modules/notifications.ts'
+import { conductRouter, myCallsRouter } from '../modules/conduct.ts'
+import { checkinRouter } from '../modules/checkin.ts'
+import { liveRouter, ogRouter } from '../modules/live.ts'
+import { seriesRouter, tournamentAdminRouter } from '../modules/tournament-admin.ts'
 import { errorHandler, notFound } from './errors.ts'
 
 export function createApp() {
@@ -54,12 +58,19 @@ export function createApp() {
   api.use('/', catalogRouter)
   api.use('/players', playersRouter)
   api.use('/clubs/:clubId/tournaments', clubTournamentsRouter)
+  api.use('/clubs/:clubId/series', seriesRouter)
   api.use('/clubs', clubsRouter)
   api.use('/halls/:hallId', hallBookingsRouter)
   api.use('/halls', hallsRouter)
   api.use('/formats', formatsRouter)
   api.use('/tournaments', tournamentsRouter)
+  api.use('/tournaments', tournamentAdminRouter)
+  api.use('/tournaments', conductRouter)
+  api.use('/tournaments', checkinRouter)
+  api.use('/tournaments', liveRouter)
+  api.use('/og', ogRouter)
   api.use('/bookings', bookingsRouter)
+  api.use('/my/calls', myCallsRouter)
   api.use('/my', myRouter)
   api.use('/my', myBookingsRouter)
   api.use('/rating', ratingRouter)
