@@ -1,7 +1,7 @@
 # Nomad Amateur — implementation plan
 
 Source: «ТЗ Nomad — платформа любительских рейтинговых турниров по настольному теннису» (decisions of 2026-11-07).
-Status: plan only, stack approved. **UI work waits for the design concept**; backend engines and data model can start before it.
+Status (2026-11-12): stages 0, D, 1, 2, 3, 5 and 6 are implemented on `main` (local, not deployed). **Stage 4 (real payments, ledger, payouts, refunds of money) is not started** — payments are not connected; registrations and bookings use «оплата в клубе». See «Implementation status» at the end for the open items per stage.
 This is a standalone project: no code, data or dependencies are shared with other repositories.
 
 ---
@@ -258,3 +258,18 @@ For the demo, the design concept only needs to cover the stage D screens; the re
 3. **Payment provider** and legal entity/receipts (open in the spec, needed by stage 4; mock until then).
 4. Domain name, email sender, Google Cloud OAuth project, Telegram bot token, hosting (VPS).
 5. **Demo**: presentation date, staging domain, real club names/photos for the seed or fictional ones, RU only or RU + KK for the demo.
+
+---
+
+## 8. Implementation status (2026-11-12)
+
+| Stage | State | Open items |
+|---|---|---|
+| 0 Foundation | Done | — |
+| D Demo | Done | Staging deploy (needs VPS + domain), rehearsal on staging |
+| 1 Accounts, clubs, rights | Done | Google sign-in not tried with real credentials; halls cannot be deleted; player merge does not trigger rating replay |
+| 2 Singles tournaments | Done | «By rounds» transition from a bracket round; UI for lots / organiser decision on ties; «both players absent» no-show; offline score queue uses localStorage, not the service worker; repeat calls and auto-cancel need the worker (Redis) |
+| 3 Rating, notifications | Done | Web Push and Telegram not tested with real keys; call delivery p95 not measured in production; correcting a finished match does not re-run bracket progression; notifications are queued before the caller's transaction commits |
+| 4 Payments | **Not started** | Provider, legal entity and receipts are open decisions (section 7) |
+| 5 Doubles, teams, leagues | Done | Dedicated notification texts for `team_*` / `league_*`; table picker in league fixtures; a player can join two teams of one tournament; season payment modes stored only |
+| 6 Booking, plan, admin, hardening | Done | Settings editor is raw JSON; levels / hold days / text overrides are stored but not read yet; «view as club» does not hide write buttons; no load test or monitoring stack |
