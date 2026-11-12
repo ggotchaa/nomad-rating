@@ -20,11 +20,13 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
     "dev:web": "npm run dev -w @nomad/web",
     "build:web": "npm run build -w @nomad/web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^22.20.5",
     "eslint": "^10.14.0",
     "prettier": "^3.9.10",

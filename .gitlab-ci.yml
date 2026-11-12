@@ -23,6 +23,27 @@ unit:
   stage: check
   script: npm test
 
+e2e:
+  stage: test
+  when: manual
+  allow_failure: true
+  image: mcr.microsoft.com/playwright:v1.65.0-noble
+  services:
+    - name: postgres:17-alpine
+      alias: postgres
+  variables:
+    POSTGRES_USER: nomad
+    POSTGRES_PASSWORD: nomad
+    POSTGRES_DB: nomad_e2e
+    E2E_DATABASE_URL: postgres://nomad:nomad@postgres:5432/nomad_e2e
+  before_script:
+    - npx -y npm@11 ci --cache .npm --prefer-offline
+  script: npm run e2e
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths: [e2e/.report/, e2e/.results/]
+
 sast:
   stage: test
 
