@@ -210,6 +210,7 @@ export interface TournamentsTable {
   refund_rules: JsonDefault<RefundRule[]>
   table_ids: ColumnType<number[], number[] | undefined, number[]>
   is_rated: Generated<boolean>
+  rating_coefficient: Generated<number>
   series_id: number | null
   address_snapshot: Json<Record<string, unknown>> | null
   cancelled_reason: string | null
@@ -337,6 +338,8 @@ export interface RatingSnapshotsTable {
   wins: Generated<number>
   calibrated: Generated<boolean>
   at: Timestamp
+  state_before: Json<RatingStateJson | null> | null
+  state_after: Json<RatingStateJson | null> | null
 }
 
 export interface TableBlocksTable {
@@ -417,6 +420,16 @@ export interface Database {
   bookings: BookingsTable
   audit_log: AuditLogTable
   platform_settings: PlatformSettingsTable
+  disputes: DisputesTable
+  notifications: NotificationsTable
+  notification_prefs: NotificationPrefsTable
+  notification_log: NotificationLogTable
+  push_subscriptions: PushSubscriptionsTable
+  telegram_accounts: TelegramAccountsTable
+  telegram_bind_tokens: TelegramBindTokensTable
+  telegram_messages: TelegramMessagesTable
+  subscriptions: SubscriptionsTable
+  notification_dedupe: NotificationDedupeTable
 }
 
 export type Tournament = Selectable<TournamentsTable>
@@ -430,3 +443,109 @@ export type Booking = Selectable<BookingsTable>
 export type Entry = Selectable<EntriesTable>
 export type Match = Selectable<MatchesTable>
 export type User = Selectable<UsersTable>
+
+// --- Stage 3 ---
+
+/** Full player_ratings row values, stored in snapshots so a replay can restore the state before a tournament. */
+export type RatingStateJson = {
+  rating: number | null
+  source: 'calibration' | 'rttf' | 'admin' | null
+  rated_matches: number
+  tournaments: number
+  matches: number
+  wins: number
+  max_rating: number | null
+  calibration: CalibrationJson
+  last_rated_at: string | null
+}
+
+export interface DisputesTable {
+  id: Id
+  entity: string
+  entity_id: string
+  tournament_id: number | null
+  club_id: number | null
+  user_id: number
+  reason: string
+  status: Generated<'open' | 'resolved' | 'rejected'>
+  resolution: string | null
+  resolved_by: number | null
+  resolved_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface NotificationsTable {
+  id: Id
+  user_id: number
+  type: string
+  data: JsonDefault<Record<string, unknown>>
+  urgent: Generated<boolean>
+  read_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export type NotifyChannel = 'push' | 'telegram' | 'email'
+
+export interface NotificationPrefsTable {
+  user_id: number
+  type: string
+  channel: NotifyChannel
+  enabled: boolean
+}
+
+export interface NotificationLogTable {
+  id: Id
+  notification_id: number | null
+  user_id: number
+  type: string
+  channel: string
+  attempt: number
+  status: 'sent' | 'failed' | 'skipped'
+  error: string | null
+  latency_ms: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface PushSubscriptionsTable {
+  id: Id
+  user_id: number
+  endpoint: string
+  keys: Json<{ p256dh: string; auth: string }>
+  created_at: DefaultTimestamp
+}
+
+export interface TelegramAccountsTable {
+  chat_id: number
+  player_id: number
+  username: string | null
+  lang: Generated<string>
+  stopped: Generated<boolean>
+  blocked_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface TelegramBindTokensTable {
+  token: string
+  player_id: number
+  expires_at: Timestamp
+}
+
+export interface TelegramMessagesTable {
+  ref: string
+  chat_id: number
+  message_id: number
+  created_at: DefaultTimestamp
+}
+
+export interface SubscriptionsTable {
+  id: Id
+  user_id: number
+  kind: 'club' | 'rating'
+  club_id: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface NotificationDedupeTable {
+  key: string
+  created_at: DefaultTimestamp
+}

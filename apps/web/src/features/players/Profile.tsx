@@ -7,10 +7,11 @@ import { t } from '../../i18n/index.ts'
 import { formatDateShort } from '../../i18n/format.ts'
 import { Async, Delta, Seg } from '../../ui/kit.tsx'
 import { RatingChart } from './RatingChart.tsx'
+import { CalibratingMark, DisputeButton, RecalcBanner } from '../rating/widgets.tsx'
 
 type Period = '3m' | '1y' | 'all'
 
-function Matches({ rows, withTournament }: { rows: PlayerMatch[]; withTournament?: boolean }) {
+function Matches({ rows, withTournament, mine }: { rows: PlayerMatch[]; withTournament?: boolean; mine?: boolean }) {
   return (
     <table className="table">
       <tbody>
@@ -28,6 +29,11 @@ function Matches({ rows, withTournament }: { rows: PlayerMatch[]; withTournament
             </td>
             <td className="num">
               <Delta value={m.ratingDelta} />
+              {mine && m.resultType !== 'walkover' && (
+                <div>
+                  <DisputeButton matchId={m.matchId} />
+                </div>
+              )}
             </td>
           </tr>
         ))}
@@ -36,9 +42,9 @@ function Matches({ rows, withTournament }: { rows: PlayerMatch[]; withTournament
   )
 }
 
-function TournamentMatches({ playerId, tournamentId }: { playerId: number; tournamentId: number }) {
+function TournamentMatches({ playerId, tournamentId, mine }: { playerId: number; tournamentId: number; mine: boolean }) {
   const state = useApi<PlayerMatch[]>(`/players/${playerId}/tournaments/${tournamentId}/matches`)
-  return <Async state={state}>{(rows) => <Matches rows={rows} />}</Async>
+  return <Async state={state}>{(rows) => <Matches rows={rows} mine={mine} />}</Async>
 }
 
 export function Profile() {
@@ -72,7 +78,9 @@ export function Profile() {
                       .join('')}
                   </div>
                   <div className="stack">
-                    <h1>{p.name}</h1>
+                    <h1>
+                      {p.name} {r && r.rating == null && <CalibratingMark />}
+                    </h1>
                     <p>
                       {[p.city, `${p.birthYear} ${t.p.born}`, p.hand && t.p.hand[p.hand]].filter(Boolean).join(' · ')}
                     </p>
@@ -83,6 +91,7 @@ export function Profile() {
                   </div>
                 </div>
               </header>
+              <RecalcBanner />
               {r && (
                 <section className="panel">
                   <div className="facts">
@@ -166,7 +175,7 @@ export function Profile() {
                                   {open === x.tournamentId && (
                                     <tr>
                                       <td colSpan={5}>
-                                        <TournamentMatches playerId={id} tournamentId={x.tournamentId} />
+                                        <TournamentMatches playerId={id} tournamentId={x.tournamentId} mine={myId === id} />
                                       </td>
                                     </tr>
                                   )}

@@ -2,10 +2,12 @@ import { Migrator } from 'kysely/migration'
 import type { Migration, MigrationProvider } from 'kysely/migration'
 import { db } from './index.ts'
 import * as m0001 from './migrations/0001_init.ts'
+import * as m0004 from './migrations/0004_rating_notify.ts'
 
 // Migrations are listed explicitly (works the same from sources and from a bundle).
 const migrations: Record<string, Migration> = {
   '0001_init': m0001,
+  '0004_rating_notify': m0004,
 }
 
 const provider: MigrationProvider = { getMigrations: async () => migrations }

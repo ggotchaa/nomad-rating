@@ -26,6 +26,8 @@ import { Profile } from './features/players/Profile.tsx'
 import { RatingList } from './features/players/RatingList.tsx'
 import { Calendar } from './features/tournaments/Calendar.tsx'
 import { TournamentPage } from './features/tournaments/TournamentPage.tsx'
+import { Notifications } from './features/notifications/Notifications.tsx'
+import { MyTournament } from './features/rating/MyTournament.tsx'
 import { t } from './i18n/index.ts'
 
 const Landing = lazy(() => import('./features/landing/Landing.tsx').then((m) => ({ default: m.Landing })))
@@ -54,6 +56,8 @@ const router = createBrowserRouter([
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
       { path: 'me', element: <Cabinet /> },
+      { path: 'me/t/:slug', element: <MyTournament /> },
+      { path: 'notifications', element: <Notifications /> },
       {
         path: 'manage',
         element: <ManageLayout />,

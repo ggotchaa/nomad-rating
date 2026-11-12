@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { DemoBar } from '../demo/DemoBar.tsx'
 import { t } from '../i18n/index.ts'
 import { useSession } from './auth.tsx'
+import { NotificationBell } from '../features/notifications/Bell.tsx'
 import '../styles/app.css'
 
 export function AppShell() {
@@ -32,6 +33,7 @@ export function AppShell() {
             {me.clubs.length > 0 && <NavLink to="/manage">{t.nav.manage}</NavLink>}
           </nav>
           <div className="topbar__right">
+            <NotificationBell />
             <select aria-label={t.common.city} value={city} onChange={(e) => setCity(e.target.value)}>
               {cities.map((c) => (
                 <option key={c.slug} value={c.slug}>

@@ -8,6 +8,11 @@ const schema = z.object({
   REDIS_URL: z.string().default(''),
   SESSION_DAYS: z.coerce.number().int().positive().default(30),
   SITE_URL: z.string().default('http://localhost:5173'),
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
+  VAPID_SUBJECT: z.string().default('mailto:admin@nomad.kz'),
+  TELEGRAM_BOT_TOKEN: z.string().default(''),
+  TELEGRAM_BOT_USERNAME: z.string().default(''),
   DEMO_MODE: z
     .string()
     .default('false')

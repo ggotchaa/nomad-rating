@@ -1056,3 +1056,105 @@
   gap: 8px;
   align-items: center;
 }
+
+/* --- Stage 3: notification bell, inbox, rating marks --- */
+.bell {
+  position: relative;
+}
+.bell__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(94, 242, 255, 0.18);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.bell__count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--holo);
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.bell__pop,
+.bell__prompt {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(94, 242, 255, 0.18);
+  border-radius: 12px;
+  background: var(--bg, #0b0f14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.bell__list,
+.notiflist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.bell__list button {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bell__list button:hover {
+  background: rgba(94, 242, 255, 0.06);
+}
+.bell__list li.is-unread b::before,
+.notiflist li.is-unread b::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--holo);
+  vertical-align: middle;
+}
+.notiflist li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(94, 242, 255, 0.07);
+}
+.linkbtn {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--holo);
+  cursor: pointer;
+}
+.chip--mark {
+  padding: 0 6px;
+  font-weight: 700;
+}
+.note--call {
+  border-color: var(--holo);
+  font-weight: 700;
+}

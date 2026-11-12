@@ -153,13 +153,14 @@ export type TournamentDetail = {
 }
 
 export type RatingRow = {
-  rank: number
+  rank: number | null
+  calibrating?: boolean
   id: number
   name: string
   gender: 'm' | 'f'
   birthYear: number
   city: string | null
-  rating: number
+  rating: number | null
   provisional: boolean
   change30d: number | null
   matches: number

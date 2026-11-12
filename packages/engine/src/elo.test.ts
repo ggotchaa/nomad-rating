@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calibratedRating, emptyCalibration, expectedScore, kFactor, rateTournament, rttfToElo } from './elo.ts'
+import { calibratedRating, emptyCalibration, expectedScore, isRatedResult, kFactor, rateTournament, rttfToElo } from './elo.ts'
 import type { PlayerRatingState, RatedMatch } from './elo.ts'
 
 const rated = (rating: number, ratedMatches = 100): PlayerRatingState => ({
@@ -101,5 +101,35 @@ describe('calibration', () => {
 describe('RTTF transfer', () => {
   it('maps 50/150/250/350/450 to 800/1000/1200/1400/1600', () => {
     expect([50, 150, 250, 350, 450].map((r) => rttfToElo(r))).toEqual([800, 1000, 1200, 1400, 1600])
+  })
+})
+
+describe('stage 3 rules', () => {
+  it('tournament coefficient scales the change before rounding', () => {
+    const r = rateTournament(new Map([['A', rated(1000)], ['B', rated(1000)]]), [m('1', 'A', 'B', 'a')], { coefficient: 1.5 })
+    expect(r.get('A')!.delta).toBe(18)
+    expect(r.get('B')!.delta).toBe(-18)
+  })
+
+  it('«new city» bootstrap: calibrating opponents count with their start level', () => {
+    const states = new Map<string, PlayerRatingState>([
+      ['N', calibrating(2)],
+      ['M', { ...calibrating(0), startLevel: 1200 }],
+      ['L', { ...calibrating(0), startLevel: 900 }],
+    ])
+    const list = [m('1', 'N', 'M', 'a'), m('2', 'N', 'L', 'b')]
+    expect(rateTournament(states, list).get('N')!.after.rating).toBeNull()
+    expect(rateTournament(states, list, { bootstrap: true }).get('N')!.after.rating).toBe(1050)
+  })
+
+  it('only wins give the fallback +100, only losses −100', () => {
+    expect(calibratedRating({ bestWin: 1200, worstLoss: null })).toBe(1300)
+    expect(calibratedRating({ bestWin: null, worstLoss: 150 })).toBe(100)
+  })
+
+  it('retirement counts only after a completed game', () => {
+    expect(isRatedResult('retired', [])).toBe(false)
+    expect(isRatedResult('retired', [{ home: 11, away: 9 }, { home: 3, away: 1 }])).toBe(true)
+    expect(isRatedResult('walkover', [])).toBe(false)
   })
 })

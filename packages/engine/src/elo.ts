@@ -229,3 +229,13 @@ export function preliminaryDelta(results: ReadonlyMap<string, PlayerTournamentRe
   const r = results.get(playerId)
   return r ? Math.round(r.events.reduce((sum, e) => sum + e.delta, 0)) : 0
 }
+
+/**
+ * Excluded results (spec 5): walkovers, no-shows and byes never count; a retirement counts only
+ * when at least one game was completed before it.
+ */
+export function isRatedResult(resultType: 'normal' | 'walkover' | 'retired' | 'bye' | null, games: readonly { home: number; away: number }[], pointsToWin = 11): boolean {
+  if (resultType === 'walkover' || resultType === 'bye') return false
+  if (resultType !== 'retired') return true
+  return games.some((g) => Math.max(g.home, g.away) >= pointsToWin && Math.abs(g.home - g.away) >= 2)
+}

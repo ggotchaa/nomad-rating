@@ -22,6 +22,7 @@ const listQuery = z.object({
   ageMax: z.coerce.number().int().optional(),
   q: z.string().trim().max(100).optional(),
   inactive: z.enum(['true', 'false']).default('false'),
+  calibrating: z.enum(['true', 'false']).default('false'),
   ...pageQuery,
 })
 
@@ -39,12 +40,12 @@ playersRouter.get(
       .innerJoin('players as p', 'p.id', 'r.player_id')
       .leftJoin('cities as c', 'c.id', 'p.city_id')
       .where('r.kind', '=', q.kind)
-      .where('r.rating', 'is not', null)
+    if (q.calibrating !== 'true') base = base.where('r.rating', 'is not', null)
     if (q.city) base = base.where('c.slug', '=', q.city)
     if (q.gender) base = base.where('p.gender', '=', q.gender)
     if (q.ageMin != null) base = base.where('p.birth_year', '<=', year - q.ageMin)
     if (q.ageMax != null) base = base.where('p.birth_year', '>=', year - q.ageMax)
-    if (q.inactive !== 'true') base = base.where('r.last_rated_at', '>', new Date(Date.now() - INACTIVE_MONTHS * 30 * 86400000))
+    if (q.inactive !== 'true') base = base.where((eb) => eb.or([eb('r.last_rated_at', '>', new Date(Date.now() - INACTIVE_MONTHS * 30 * 86400000)), eb('r.rating', 'is', null)]))
     const ranked = base.select([
       'p.id',
       'p.first_name',
@@ -59,7 +60,7 @@ playersRouter.get(
       'r.matches',
       'r.wins',
       'p.search_name',
-      sql<number>`rank() over (order by r.rating desc)`.as('rank'),
+      sql<number>`rank() over (order by r.rating desc nulls last)`.as('rank'),
       sql<number | null>`(select s.rating_after from rating_snapshots s where s.player_id = p.id and s.kind = r.kind and s.at <= ${monthAgo} order by s.at desc limit 1)`.as(
         'rating_30d_ago',
       ),
@@ -73,7 +74,7 @@ playersRouter.get(
     res.json({
       total: Number(total.n),
       items: rows.map((r) => ({
-        rank: Number(r.rank),
+        rank: r.rating == null ? null : Number(r.rank),
         id: r.id,
         name: playerName(r),
         gender: r.gender,
@@ -81,6 +82,7 @@ playersRouter.get(
         photoUrl: r.photo_url,
         city: r.city,
         rating: r.rating,
+        calibrating: r.rating == null,
         provisional: isProvisional({ ratedMatches: r.rated_matches }),
         change30d: r.rating_30d_ago == null ? null : (r.rating ?? 0) - r.rating_30d_ago,
         matches: r.matches,
@@ -102,7 +104,7 @@ playersRouter.get(
       .select(['p.id', 'p.first_name', 'p.last_name', 'p.birth_year', 'p.photo_url', 'c.name_ru as city', 'r.rating', 'p.start_level'])
     for (const word of searchWords(q)) query = query.where('p.search_name', 'like', `%${word}%`)
     const rows = await query.orderBy('p.last_name').limit(20).execute()
-    res.json(rows.map((r) => ({ id: r.id, name: playerName(r), birthYear: r.birth_year, city: r.city, rating: r.rating, startLevel: r.start_level, photoUrl: r.photo_url })))
+    res.json(rows.map((r) => ({ id: r.id, name: playerName(r), birthYear: r.birth_year, city: r.city, rating: r.rating, calibrating: r.rating == null, startLevel: r.start_level, photoUrl: r.photo_url })))
   }),
 )
 

@@ -1,0 +1,36 @@
+import type { NotifyChannel } from '../db/types.ts'
+
+export const CHANNELS: readonly NotifyChannel[] = ['push', 'telegram', 'email']
+
+/** Event types the user can configure, with their default channels. */
+export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatoryInTournament?: boolean }> = {
+  match_call: { channels: ['push', 'telegram'], mandatoryInTournament: true },
+  waitlist_invited: { channels: ['push', 'telegram', 'email'] },
+  tournament_cancelled: { channels: ['push', 'telegram', 'email'] },
+  tournament_reminder: { channels: ['push', 'telegram'] },
+  tournament_results: { channels: ['push', 'telegram', 'email'] },
+  calibration_done: { channels: ['push', 'telegram', 'email'] },
+  new_tournament: { channels: ['telegram', 'email'] },
+  dispute_update: { channels: ['push', 'email'] },
+}
+
+const FALLBACK: NotifyChannel[] = ['push', 'telegram']
+
+/**
+ * Channels for one notification: defaults of the type, overridden by the user's prefs.
+ * E-mail never carries urgent events; a call cannot be switched off while the user plays a tournament.
+ */
+export function resolveChannels(
+  type: string,
+  prefs: readonly { type: string; channel: NotifyChannel; enabled: boolean }[],
+  ctx: { urgent: boolean; inActiveTournament: boolean },
+): NotifyChannel[] {
+  const def = NOTIFY_TYPES[type]
+  const defaults = def?.channels ?? FALLBACK
+  return CHANNELS.filter((channel) => {
+    if (channel === 'email' && ctx.urgent) return false
+    if (def?.mandatoryInTournament && ctx.inActiveTournament && channel !== 'email') return defaults.includes(channel)
+    const pref = prefs.find((p) => p.type === type && p.channel === channel)
+    return pref ? pref.enabled : defaults.includes(channel)
+  })
+}

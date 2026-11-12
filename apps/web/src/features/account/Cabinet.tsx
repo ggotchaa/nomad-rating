@@ -7,6 +7,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatDate, formatDateTime, formatTenge, formatTime } from '../../i18n/format.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
+import { LiveDeltas } from '../rating/widgets.tsx'
 
 const BOOKING_TONE: Record<string, string> = { confirmed: 'chip--ok', arrived: 'chip--ok', no_show: 'chip--bad', cancelled_by_player: '', cancelled_by_club: 'chip--bad' }
 
@@ -41,8 +42,12 @@ export function Cabinet() {
           <Link className="button button--sm" to={`/players/${me.player.id}`}>
             {t.me.profile}
           </Link>
+          <Link className="button button--sm" to="/notifications">
+            {t.notif.settings}
+          </Link>
         </div>
       </header>
+      <LiveDeltas />
       <div className="grid grid--half">
         <section className="panel">
           <h2>{t.me.entries}</h2>

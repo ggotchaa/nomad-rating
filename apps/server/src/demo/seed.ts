@@ -701,5 +701,6 @@ export async function seedDemo(): Promise<void> {
     }
   }
   log(`bookings: ${bookingsMade} upcoming`)
+  await (await import('./seed-stage3.ts')).seedStage3((s) => log(s))
   log(`done in ${Math.round((Date.now() - started) / 1000)} s`)
 }

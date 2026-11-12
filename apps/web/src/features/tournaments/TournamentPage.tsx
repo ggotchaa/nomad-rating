@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import type { TournamentDetail } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
+import { MyTournamentStrip } from '../rating/widgets.tsx'
 import { useApi, useRoom } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatDateTime, formatDuration, formatTenge, formatTime, restrictionLabel } from '../../i18n/format.ts'
@@ -99,6 +100,7 @@ export function TournamentPage() {
                   <Link to={`/club/${d.club.slug}`}>{d.club.name}</Link> · {d.club.city}
                 </p>
               </header>
+              <MyTournamentStrip tournamentId={d.id} slug={slug!} status={d.status} />
               <div className="grid grid--2">
                 <section className="panel">
                   <div className="facts">

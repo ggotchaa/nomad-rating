@@ -13,6 +13,8 @@ import { clubsRouter, hallsRouter, myRouter } from '../modules/clubs.ts'
 import { clubTournamentsRouter, formatsRouter, tournamentsRouter } from '../modules/tournaments.ts'
 import { bookingsRouter, hallBookingsRouter, myBookingsRouter } from '../modules/bookings.ts'
 import { demoRouter } from '../demo/routes.ts'
+import { ratingRouter } from '../modules/rating.ts'
+import { notificationsRouter } from '../modules/notifications.ts'
 import { errorHandler, notFound } from './errors.ts'
 
 export function createApp() {
@@ -42,6 +44,8 @@ export function createApp() {
   api.use('/bookings', bookingsRouter)
   api.use('/my', myRouter)
   api.use('/my', myBookingsRouter)
+  api.use('/rating', ratingRouter)
+  api.use('/notifications', notificationsRouter)
   if (config.DEMO_MODE) api.use('/demo', demoRouter)
   api.use((_req, _res, next) => next(notFound('route.not_found')))
 
