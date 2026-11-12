@@ -191,6 +191,7 @@ export type TournamentSettings = {
 export type RefundRule = { hoursBefore: number; percent: number }
 
 export interface TournamentsTable {
+  rating_coefficient: Generated<number>
   id: Id
   club_id: number
   hall_id: number
@@ -215,7 +216,6 @@ export interface TournamentsTable {
   refund_rules: JsonDefault<RefundRule[]>
   table_ids: ColumnType<number[], number[] | undefined, number[]>
   is_rated: Generated<boolean>
-  rating_coefficient: Generated<number>
   series_id: number | null
   address_snapshot: Json<Record<string, unknown>> | null
   cancelled_reason: string | null
@@ -332,6 +332,8 @@ export interface RatingEventsTable {
 }
 
 export interface RatingSnapshotsTable {
+  state_before: Json<RatingStateJson | null> | null
+  state_after: Json<RatingStateJson | null> | null
   player_id: number
   kind: 'singles' | 'doubles'
   tournament_id: number
@@ -343,8 +345,6 @@ export interface RatingSnapshotsTable {
   wins: Generated<number>
   calibrated: Generated<boolean>
   at: Timestamp
-  state_before: Json<RatingStateJson | null> | null
-  state_after: Json<RatingStateJson | null> | null
 }
 
 export interface TableBlocksTable {
@@ -402,6 +402,16 @@ export interface PlatformSettingsTable {
 }
 
 export interface Database {
+  disputes: DisputesTable
+  notifications: NotificationsTable
+  notification_prefs: NotificationPrefsTable
+  notification_log: NotificationLogTable
+  push_subscriptions: PushSubscriptionsTable
+  telegram_accounts: TelegramAccountsTable
+  telegram_bind_tokens: TelegramBindTokensTable
+  telegram_messages: TelegramMessagesTable
+  subscriptions: SubscriptionsTable
+  notification_dedupe: NotificationDedupeTable
   cities: CitiesTable
   users: UsersTable
   sessions: SessionsTable
@@ -430,16 +440,6 @@ export interface Database {
   player_merge_requests: PlayerMergeRequestsTable
   rttf_profiles: RttfProfilesTable
   rttf_claims: RttfClaimsTable
-  disputes: DisputesTable
-  notifications: NotificationsTable
-  notification_prefs: NotificationPrefsTable
-  notification_log: NotificationLogTable
-  push_subscriptions: PushSubscriptionsTable
-  telegram_accounts: TelegramAccountsTable
-  telegram_bind_tokens: TelegramBindTokensTable
-  telegram_messages: TelegramMessagesTable
-  subscriptions: SubscriptionsTable
-  notification_dedupe: NotificationDedupeTable
 }
 
 export type Tournament = Selectable<TournamentsTable>
@@ -491,6 +491,36 @@ export interface PlayerMergeRequestsTable {
   reason: Generated<string>
   status: Generated<'open' | 'merged' | 'rejected'>
   requested_by: number | null
+  resolved_by: number | null
+  resolved_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface RttfProfilesTable {
+  id: Id
+  rttf_id: string | null
+  full_name: string
+  search_name: string
+  birth_year: number | null
+  city: Generated<string>
+  rating: number
+  player_id: number | null
+  updated_at: DefaultTimestamp
+}
+
+export interface RttfClaimsTable {
+  id: Id
+  kind: 'claim' | 'add_request'
+  rttf_profile_id: number | null
+  player_id: number
+  status: 'approved' | 'pending' | 'conflict' | 'rejected'
+  reason: Generated<string>
+  payload: JsonDefault<Record<string, unknown>>
+  resolved_by: number | null
+  resolved_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
 // --- Stage 3 ---
 
 /** Full player_ratings row values, stored in snapshots so a replay can restore the state before a tournament. */
@@ -521,28 +551,6 @@ export interface DisputesTable {
   created_at: DefaultTimestamp
 }
 
-export interface RttfProfilesTable {
-  id: Id
-  rttf_id: string | null
-  full_name: string
-  search_name: string
-  birth_year: number | null
-  city: Generated<string>
-  rating: number
-  player_id: number | null
-  updated_at: DefaultTimestamp
-}
-
-export interface RttfClaimsTable {
-  id: Id
-  kind: 'claim' | 'add_request'
-  rttf_profile_id: number | null
-  player_id: number
-  status: 'approved' | 'pending' | 'conflict' | 'rejected'
-  reason: Generated<string>
-  payload: JsonDefault<Record<string, unknown>>
-  resolved_by: number | null
-  resolved_at: Timestamp | null
 export interface NotificationsTable {
   id: Id
   user_id: number
