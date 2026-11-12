@@ -391,6 +391,8 @@ export interface BookingsTable {
   note: Generated<string>
   created_at: DefaultTimestamp
   updated_at: DefaultTimestamp
+  cancel_token: Generated<string>
+  reminded_at: Timestamp | null
 }
 
 export interface AuditLogTable {
@@ -452,6 +454,8 @@ export interface Database {
   rttf_profiles: RttfProfilesTable
   rttf_claims: RttfClaimsTable
   series: SeriesTable
+  recurring_blocks: RecurringBlocksTable
+  rating_adjustments: RatingAdjustmentsTable
 }
 
 export type Tournament = Selectable<TournamentsTable>
@@ -649,5 +653,33 @@ export interface SeriesTable {
   id: Id
   club_id: number
   name: string
+  created_at: DefaultTimestamp
+}
+
+// --- Stage 6 ---
+
+export interface RecurringBlocksTable {
+  id: Id
+  hall_id: number
+  table_ids: ColumnType<number[], number[] | undefined, number[]>
+  weekdays: ColumnType<number[], number[], number[]>
+  start_minutes: number
+  end_minutes: number
+  valid_from: string
+  valid_until: string | null
+  kind: 'training' | 'closed' | 'maintenance'
+  note: Generated<string>
+  created_by: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface RatingAdjustmentsTable {
+  id: Id
+  player_id: number
+  rating_before: number | null
+  rating_after: number
+  from_tournament_id: number | null
+  reason: string
+  created_by: number | null
   created_at: DefaultTimestamp
 }

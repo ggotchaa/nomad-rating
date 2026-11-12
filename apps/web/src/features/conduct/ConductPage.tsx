@@ -9,6 +9,7 @@ import { PlayerSearch } from '../manage/ManageLayout.tsx'
 import { useScoreQueue } from './offline.ts'
 import { ScoreEntry } from './ScoreEntry.tsx'
 import type { ConductEntry, ConductMatch, ConductState } from './types.ts'
+import { TournamentPlan } from '../booking/TournamentPlan.tsx'
 
 const label = (m: ConductMatch) => (m.label?.startsWith('group:') ? `${t.t.group} ${m.label.slice(6)}` : (m.label ?? ''))
 
@@ -217,6 +218,7 @@ export function ConductPage() {
                 )}
                 <section className="panel">
                   <h2>{t.conduct.tables}</h2>
+                  <TournamentPlan tournamentId={Number(id)} tables={d.tables} />
                   <div className="tables-grid">
                     {d.tables.map((x) => (
                       <div key={x.id} className={`tablecard${x.match ? ` tablecard--${x.match.status}` : ''}`}>

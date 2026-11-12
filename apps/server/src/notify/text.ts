@@ -6,7 +6,18 @@ export type Rendered = { title: string; body: string; url: string }
 
 const s = (v: unknown) => (v == null ? '' : String(v))
 
+/** Admin-edited templates (platform setting `notify_templates`): `{field}` is replaced by the event data. */
+let overrides: Record<string, { title?: string; body?: string }> = {}
+export const setTemplateOverrides = (value: typeof overrides) => void (overrides = value ?? {})
+const fill = (tpl: string, data: Record<string, unknown>) => tpl.replace(/\{(\w+)\}/g, (_, k: string) => s(data[k]))
+
 export function render(type: string, data: Record<string, unknown>): Rendered {
+  const base = renderDefault(type, data)
+  const o = overrides[type]
+  return o ? { ...base, title: o.title ? fill(o.title, data) : base.title, body: o.body ? fill(o.body, data) : base.body } : base
+}
+
+function renderDefault(type: string, data: Record<string, unknown>): Rendered {
   const site = config.SITE_URL.replace(/\/$/, '')
   const tUrl = data.slug ? `${site}/t/${s(data.slug)}` : `${site}/me`
   const title = s(data.tournamentTitle || data.title)
@@ -52,6 +63,14 @@ export function render(type: string, data: Record<string, unknown>): Rendered {
       return { title: 'Новый турнир для вас', body: `${title}\n${s(data.club)} · ${s(data.startsAtText)}`, url: tUrl }
     case 'dispute_update':
       return { title: 'Ответ по спорному счёту', body: s(data.resolution) || s(data.status), url: `${site}/me` }
+    case 'booking_confirmed':
+      return { title: `Бронь подтверждена · стол ${s(data.table)}`, body: `${s(data.club)}, ${s(data.startsAtText)}\nОплата в клубе: ${Math.round(Number(data.price ?? 0) / 100)} ₸\nОтменить: ${s(data.cancelUrl)}`, url: s(data.cancelUrl) || `${site}/me` }
+    case 'booking_reminder':
+      return { title: `Через час: стол ${s(data.table)}`, body: `${s(data.club)}, ${s(data.address)}\n${s(data.startsAtText)}`, url: s(data.cancelUrl) || `${site}/me` }
+    case 'booking_moved':
+      return { title: 'Бронь перенесена', body: `${s(data.club)}: стол ${s(data.table)}, ${s(data.startsAtText)}`, url: s(data.cancelUrl) || `${site}/me` }
+    case 'booking_cancelled':
+      return { title: 'Бронь отменена клубом', body: [`${s(data.club)}: стол ${s(data.table)}, ${s(data.startsAtText)}`, s(data.reason)].filter(Boolean).join('\n'), url: `${site}/me` }
     default:
       return { title: 'Nomad', body: s(data.text) || type, url: `${site}/me` }
   }

@@ -1,0 +1,286 @@
+openapi: 3.1.0
+info:
+  title: Nomad Amateur API
+  version: 0.6.0
+  description: |
+    REST API of the Nomad Amateur platform. All paths are under `/api`. Authentication is a cookie session
+    (`nomad_session`) obtained from `POST /auth/login`. Money is in tiyn (1 ₸ = 100 tiyn), times are ISO-8601 UTC
+    and are shown in the hall time zone. Errors: `{ "error": "<stable.code>", "details"?: ... }`; the web app translates codes.
+    Realtime updates go over the WebSocket `/ws` (`{"type":"subscribe","room":"hall:1"}`; rooms `hall:{id}`, `tournament:{id}`, `user:{id}`, `rating`).
+servers:
+  - url: /api
+tags:
+  - { name: ops }
+  - { name: auth }
+  - { name: catalog }
+  - { name: halls }
+  - { name: bookings }
+  - { name: tournaments }
+  - { name: rating }
+  - { name: admin }
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: nomad_session }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties: { error: { type: string, example: booking.slot_taken }, details: {} }
+    Interval:
+      type: object
+      properties: { start: { type: string, format: date-time }, end: { type: string, format: date-time } }
+    HallPlan:
+      type: object
+      properties:
+        width: { type: number, description: metres }
+        length: { type: number }
+        landmarks:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { enum: [entrance, locker, window, zone, other] }
+              label: { type: string }
+              x: { type: number }
+              y: { type: number }
+              w: { type: number }
+              h: { type: number }
+    Table:
+      type: object
+      properties:
+        id: { type: integer }
+        number: { type: integer }
+        label: { type: string, nullable: true }
+        x: { type: number }
+        y: { type: number }
+        rotation: { enum: [0, 90] }
+        bookable: { type: boolean }
+        pricePerHour: { type: integer, nullable: true }
+        status: { enum: [active, broken] }
+    BookingSettings:
+      type: object
+      properties:
+        slotMinutes: { enum: [30, 60] }
+        minMinutes: { type: integer }
+        maxMinutes: { type: integer }
+        horizonDays: { type: integer }
+        holdMinutes: { type: integer }
+        freeCancelHours: { type: integer }
+        defaultPricePerHour: { type: integer }
+        tariffs:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              days: { type: array, items: { type: integer, minimum: 1, maximum: 7 } }
+              from: { type: integer, description: local minutes }
+              to: { type: integer }
+              pricePerHour: { type: integer }
+    RecurringBlock:
+      type: object
+      required: [kind, weekdays, startMinutes, endMinutes, validFrom]
+      properties:
+        kind: { enum: [training, closed, maintenance] }
+        tableIds: { type: array, items: { type: integer }, description: empty = whole hall }
+        weekdays: { type: array, items: { type: integer } }
+        startMinutes: { type: integer }
+        endMinutes: { type: integer, description: less than start = through midnight }
+        validFrom: { type: string, format: date }
+        validUntil: { type: string, format: date, nullable: true }
+        note: { type: string }
+    BookingResult:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { enum: [held, confirmed] }
+        tableId: { type: integer }
+        tableNumber: { type: integer }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        price: { type: integer }
+        paymentMethod: { type: string, example: at_club }
+    MoveOption:
+      type: object
+      properties: { tableId: { type: integer }, tableNumber: { type: integer }, start: { type: string, format: date-time }, end: { type: string, format: date-time } }
+  responses:
+    Error: { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  parameters:
+    hallId: { name: hallId, in: path, required: true, schema: { type: integer } }
+    id: { name: id, in: path, required: true, schema: { type: integer } }
+security:
+  - session: []
+paths:
+  /live:
+    get: { tags: [ops], security: [], summary: Liveness probe, responses: { '200': { description: ok } } }
+  /ready:
+    get: { tags: [ops], security: [], summary: Readiness (database, Redis), responses: { '200': { description: ready }, '503': { description: not ready } } }
+  /health:
+    get: { tags: [ops], security: [], summary: Health with a database query, responses: { '200': { description: ok } } }
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      requestBody: { content: { application/json: { schema: { type: object, properties: { email: { type: string }, password: { type: string } } } } } }
+      responses: { '200': { description: Session cookie set }, '401': { $ref: '#/components/responses/Error' } }
+  /auth/logout:
+    post: { tags: [auth], responses: { '200': { description: ok } } }
+  /auth/me:
+    get: { tags: [auth], summary: Current user, player and clubs, responses: { '200': { description: ok } } }
+  /players:
+    get: { tags: [catalog], security: [], summary: Rating list with filters, responses: { '200': { description: ok } } }
+  /players/{id}:
+    get: { tags: [catalog], security: [], parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: Public profile } } }
+  /clubs:
+    get: { tags: [catalog], security: [], summary: Clubs list, responses: { '200': { description: ok } } }
+  /clubs/{slug}:
+    get: { tags: [catalog], security: [], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Club with halls, tables, plan and booking settings } } }
+  /halls/{id}:
+    get: { tags: [halls], security: [], parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: Hall view } } }
+    patch:
+      tags: [halls]
+      summary: Edit hall (address, opening hours, plan). Right `club`.
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { openingHours: { type: object }, plan: { $ref: '#/components/schemas/HallPlan' } } } } } }
+      responses: { '200': { description: Hall view }, '403': { $ref: '#/components/responses/Error' } }
+  /halls/{id}/tables:
+    put:
+      tags: [halls]
+      summary: Replace tables (positions, rotation, labels, prices). Tables with future bookings cannot be removed.
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { tables: { type: array, items: { $ref: '#/components/schemas/Table' } } } } } } }
+      responses: { '200': { description: Hall view }, '409': { $ref: '#/components/responses/Error' } }
+  /halls/{id}/booking-settings:
+    put:
+      tags: [halls]
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/BookingSettings' } } } }
+      responses: { '200': { description: Saved settings } }
+  /halls/{hallId}/booking-settings:
+    get:
+      tags: [halls]
+      summary: Settings, recurring and upcoming one-off blocks. Right `bookings`.
+      parameters: [{ $ref: '#/components/parameters/hallId' }]
+      responses: { '200': { description: ok } }
+  /halls/{hallId}/recurring-blocks:
+    post:
+      tags: [halls]
+      parameters: [{ $ref: '#/components/parameters/hallId' }]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/RecurringBlock' } } } }
+      responses: { '201': { description: '`{ id, conflicts }` — bookings the block now overlaps' } }
+  /halls/{hallId}/recurring-blocks/{id}:
+    delete: { tags: [halls], parameters: [{ $ref: '#/components/parameters/hallId' }, { $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /halls/{hallId}/blocks:
+    post:
+      tags: [halls]
+      summary: One-off block (training, closed hall, maintenance); returns overlapped bookings to move or cancel.
+      parameters: [{ $ref: '#/components/parameters/hallId' }]
+      requestBody: { content: { application/json: { schema: { allOf: [{ $ref: '#/components/schemas/Interval' }, { type: object, properties: { kind: { enum: [training, closed, maintenance] }, tableIds: { type: array, items: { type: integer } }, note: { type: string } } }] } } } }
+      responses: { '201': { description: '`{ id, conflicts }`' } }
+  /halls/{hallId}/blocks/{id}:
+    delete: { tags: [halls], summary: Remove a one-off block (tournament blocks are managed by the tournament), parameters: [{ $ref: '#/components/parameters/hallId' }, { $ref: '#/components/parameters/id' }], responses: { '200': { description: ok }, '409': { $ref: '#/components/responses/Error' } } }
+  /halls/{hallId}/conflicts:
+    get: { tags: [halls], summary: Active bookings overlapped by a tournament or a block, parameters: [{ $ref: '#/components/parameters/hallId' }], responses: { '200': { description: ok } } }
+  /halls/{hallId}/availability:
+    get:
+      tags: [bookings]
+      security: []
+      summary: Slots of every table for a local date, with price and reason (booked / blocked / past)
+      parameters: [{ $ref: '#/components/parameters/hallId' }, { name: date, in: query, required: true, schema: { type: string, format: date } }]
+      responses: { '200': { description: ok } }
+  /halls/{hallId}/bookings:
+    get:
+      tags: [bookings]
+      summary: Club desk grid for 1–7 days. Right `bookings`.
+      parameters: [{ $ref: '#/components/parameters/hallId' }, { name: date, in: query, required: true, schema: { type: string, format: date } }, { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 7 } }]
+      responses: { '200': { description: ok } }
+    post:
+      tags: [bookings]
+      summary: Phone booking (player or guest without an account)
+      parameters: [{ $ref: '#/components/parameters/hallId' }]
+      requestBody: { content: { application/json: { schema: { type: object, required: [tableId, start, minutes], properties: { tableId: { type: integer }, start: { type: string, format: date-time }, minutes: { type: integer }, playerId: { type: integer }, guestName: { type: string }, guestContact: { type: string }, note: { type: string } } } } } }
+      responses: { '201': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/BookingResult' } } } }, '409': { $ref: '#/components/responses/Error' } }
+  /bookings:
+    post:
+      tags: [bookings]
+      summary: Player books a table; payment at the club. Rate limited (10/min per user). Two parallel requests for one slot → one 201, one 409 `booking.slot_taken`.
+      requestBody: { content: { application/json: { schema: { type: object, required: [hallId, start, minutes], properties: { hallId: { type: integer }, tableId: { type: integer, nullable: true, description: null = any free table }, start: { type: string, format: date-time }, minutes: { type: integer } } } } } }
+      responses: { '201': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/BookingResult' } } } }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' }, '429': { $ref: '#/components/responses/Error' } }
+  /bookings/{id}:
+    delete: { tags: [bookings], summary: Player cancels own booking, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: '`{ freeCancellation }`' } } }
+  /bookings/{id}/status:
+    post:
+      tags: [bookings]
+      summary: Desk marks arrived / no_show or cancels (player notified)
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { status: { enum: [arrived, no_show, cancelled_by_club] }, reason: { type: string } } } } } }
+      responses: { '200': { description: ok } }
+  /bookings/{id}/options:
+    get: { tags: [bookings], summary: Where the booking can be moved, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/MoveOption' } } } } } } }
+  /bookings/{id}/move:
+    post:
+      tags: [bookings]
+      summary: Move to another table / time (drag on the desk, conflict resolution). Player notified.
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { tableId: { type: integer }, start: { type: string, format: date-time } } } } } }
+      responses: { '200': { description: ok }, '409': { $ref: '#/components/responses/Error' } }
+  /bookings/token/{token}:
+    get: { tags: [bookings], security: [], summary: Booking by the cancel-link token, parameters: [{ name: token, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /bookings/token/{token}/cancel:
+    post: { tags: [bookings], security: [], parameters: [{ name: token, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /my/bookings:
+    get: { tags: [bookings], responses: { '200': { description: Player's bookings } } }
+  /tournaments:
+    get: { tags: [tournaments], security: [], summary: Calendar with filters, responses: { '200': { description: ok } } }
+  /tournaments/{slug}:
+    get: { tags: [tournaments], security: [], parameters: [{ name: slug, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Tournament page } } }
+  /tournaments/{id}/publish:
+    post: { tags: [tournaments], summary: Publish; blocks the tables and returns overlapped bookings (`conflicts`), parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: '`{ conflicts }`' } } }
+  /tournaments/{id}/plan:
+    get: { tags: [tournaments], security: [], summary: Hall plan with the tournament tables, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /tournaments/{id}/conduct:
+    get: { tags: [tournaments], summary: Tables screen state. Right `conduct`., parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /rating/status:
+    get: { tags: [rating], security: [], summary: Replay status («рейтинг обновляется»), responses: { '200': { description: ok } } }
+  /rating/matches/{id}/correct:
+    post: { tags: [rating], summary: Correct a finished match (club 72 h, later admin) and replay ratings, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /rating/disputes:
+    get: { tags: [rating], summary: Disputes (admin), parameters: [{ name: status, in: query, schema: { enum: [open, resolved, rejected] } }], responses: { '200': { description: ok } } }
+  /rating/disputes/{id}:
+    patch: { tags: [rating], summary: Resolve / reject a dispute (player notified), parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /admin/players:
+    get: { tags: [admin], summary: Search by name, e-mail or id, parameters: [{ name: q, in: query, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /admin/players/{id}:
+    get: { tags: [admin], parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: Rating, history, corrections } } }
+  /admin/players/{id}/rating:
+    post:
+      tags: [admin]
+      summary: Manual rating correction; with `fromTournamentId` every later tournament is replayed
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody: { content: { application/json: { schema: { type: object, required: [rating, reason], properties: { rating: { type: integer }, fromTournamentId: { type: integer, nullable: true }, reason: { type: string } } } } } }
+      responses: { '200': { description: '`{ rating, replay: { tournaments, players, ms } | null }`' } }
+  /admin/players/merge:
+    post: { tags: [admin], requestBody: { content: { application/json: { schema: { type: object, properties: { sourceId: { type: integer }, targetId: { type: integer }, reason: { type: string } } } } } }, responses: { '200': { description: ok } } }
+  /admin/users/{id}/block:
+    post: { tags: [admin], summary: Block (ends all sessions) or unblock, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /admin/settings:
+    get: { tags: [admin], summary: 'Platform settings: elo, levels, commission, holds, notify_templates, texts', responses: { '200': { description: ok } } }
+  /admin/settings/{key}:
+    put: { tags: [admin], parameters: [{ name: key, in: path, required: true, schema: { enum: [elo, levels, commission, holds, notify_templates, texts] } }], responses: { '200': { description: ok } } }
+  /admin/audit:
+    get:
+      tags: [admin]
+      summary: Audit log, newest first; page with `before` = last id
+      parameters:
+        - { name: entity, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: clubId, in: query, schema: { type: integer } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: before, in: query, schema: { type: integer } }
+      responses: { '200': { description: ok } }
+  /admin/clubs/{id}/view:
+    get: { tags: [admin], summary: '«View as club»: club cabinet in read-only mode (GET routes of the club are allowed to the admin, writes are not)', parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: ok } } }
+  /settings/texts:
+    get: { tags: [catalog], security: [], summary: Admin text overrides (ru / kk / en), responses: { '200': { description: ok } } }

@@ -1292,3 +1292,112 @@
   font-size: 18px;
 }
 
+
+/* --- Stage 6: plan editor, zoom, timeline, desk week, admin --- */
+.planwrap {
+  position: relative;
+}
+.planzoom {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+}
+.plan .plan__grid {
+  stroke: rgba(94, 242, 255, 0.08);
+  stroke-width: 0.02;
+}
+.planwrap--editor .plan {
+  user-select: none;
+}
+.plan .lm-zone .lm {
+  fill: rgba(138, 125, 255, 0.06);
+  stroke-dasharray: 0.2 0.15;
+}
+.plan .lm--sel .lm {
+  stroke: #fff;
+  stroke-width: 0.08;
+}
+.plan .tbl--playing rect {
+  fill: rgba(61, 255, 168, 0.28);
+  stroke: var(--ok);
+}
+.plan .tbl--called rect {
+  fill: rgba(255, 138, 61, 0.22);
+  stroke: var(--ball);
+}
+.plan .tbl__cap {
+  fill: var(--text-1, #fff);
+}
+.timeline {
+  overflow-x: auto;
+  display: grid;
+  gap: 0.25rem;
+}
+.timeline__row {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  align-items: center;
+  gap: 0.25rem;
+}
+.timeline__cells {
+  display: grid;
+  gap: 2px;
+}
+.timeline__head span {
+  font-size: 0.7rem;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.timeline__cell {
+  height: 2rem;
+  border-radius: 4px;
+  border: 1px solid var(--ok);
+  background: rgba(61, 255, 168, 0.18);
+  cursor: pointer;
+}
+.timeline__cell:disabled {
+  cursor: default;
+  border-color: var(--rubber);
+  background: rgba(255, 61, 98, 0.14);
+}
+.timeline__cell.is-blocked {
+  border-color: var(--holo-2);
+  border-style: dashed;
+  background: transparent;
+}
+.timeline__cell.is-past {
+  border-color: var(--line);
+  background: transparent;
+}
+.timeline__cell.is-sel {
+  background: var(--holo);
+  border-color: #fff;
+}
+.panel--warn {
+  border-color: rgba(255, 138, 61, 0.45);
+}
+.desk-week td {
+  text-align: center;
+  font-size: 0.85rem;
+}
+.desk-week td.is-blocked {
+  background: rgba(138, 125, 255, 0.08);
+}
+.bk[draggable='true'] {
+  cursor: grab;
+}
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--holo);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.audit-diff {
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+}

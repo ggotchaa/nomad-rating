@@ -54,6 +54,8 @@ export async function requireClubRight(
     .where('club_id', '=', clubId)
     .where('user_id', '=', user.id)
     .executeTakeFirst()
+  // «View as club» (4.8): a platform admin reads any club's cabinet but cannot change it.
+  if (!member && user.platformRole === 'admin' && (req.method === 'GET' || req.method === 'HEAD')) return requirePlatformAdmin(req)
   if (!member) throw forbidden('club.not_member')
   if (member.role === 'organizer') return user
   if (right === 'organizer_only' || !member.rights.includes(right)) throw forbidden('club.right_missing')

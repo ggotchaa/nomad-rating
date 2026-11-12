@@ -6,10 +6,12 @@ import { createApp } from './http/app.ts'
 import { logger } from './logger.ts'
 import { bus } from './realtime/bus.ts'
 import { attachGateway } from './realtime/gateway.ts'
+import { loadTemplateOverrides } from './modules/admin-system.ts'
 
 await migrateToLatest()
 
 const server = createServer(createApp())
+void loadTemplateOverrides().catch(() => {})
 const wss = attachGateway(server)
 
 server.listen(config.PORT, config.HOST, () => {

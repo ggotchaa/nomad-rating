@@ -18,6 +18,9 @@ import { intParam, isoDate, parseBody, parseQuery } from '../http/validate.ts'
 import { startPayment } from '../payments/service.ts'
 import { bus } from '../realtime/bus.ts'
 import { playerName } from './players.ts'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { coversTable, hallBlocks, lockHall } from '../booking/blocks.ts'
+import { cancelByClub, moveBooking, moveOptions, notifyBooking } from '../booking/resolve.ts'
 
 type Trx = Transaction<Database> | typeof db
 
@@ -30,19 +33,6 @@ async function loadHall(executor: Trx, hallId: number) {
   const settings = await executor.selectFrom('booking_settings').select('settings').where('hall_id', '=', hallId).executeTakeFirst()
   return { hall, settings: (settings?.settings as BookingSettings | undefined) ?? DEFAULT_BOOKING_SETTINGS, hours: hall.opening_hours as OpeningHours }
 }
-
-/** Blocks (tournaments, trainings, closed days) of a hall that touch [from, to). */
-async function blocksBetween(executor: Trx, hallId: number, from: Date, to: Date) {
-  return executor
-    .selectFrom('table_blocks')
-    .selectAll()
-    .where('hall_id', '=', hallId)
-    .where('starts_at', '<', to)
-    .where('ends_at', '>', from)
-    .execute()
-}
-
-const blockCovers = (block: { table_ids: number[] }, tableId: number) => block.table_ids.length === 0 || block.table_ids.includes(tableId)
 
 /** Availability of every table for one local date (B-5, B-7, B-13). */
 hallBookingsRouter.get(
@@ -63,7 +53,7 @@ hallBookingsRouter.get(
         .where('starts_at', '<', to)
         .where('ends_at', '>', from)
         .execute(),
-      blocksBetween(db, hallId, from, to),
+      hallBlocks(db, hallId, from, to, hall.timezone),
     ])
     const now = new Date()
     res.json({
@@ -75,7 +65,7 @@ hallBookingsRouter.get(
       open: hours[isoWeekday(date) as 1] ?? null,
       tables: tables.map((t) => {
         const busy: Interval[] = bookings.filter((b) => b.table_id === t.id).map((b) => ({ start: b.starts_at, end: b.ends_at }))
-        const blocked: Interval[] = blocks.filter((b) => blockCovers(b, t.id)).map((b) => ({ start: b.starts_at, end: b.ends_at }))
+        const blocked: Interval[] = blocks.filter((b) => coversTable(b, t.id))
         const available = t.bookable && t.status === 'active'
         const slots = available ? tableSlots({ date, timeZone: hall.timezone, hours, slotMinutes: settings.slotMinutes, busy, blocked, now }) : []
         return {
@@ -97,7 +87,7 @@ hallBookingsRouter.get(
               price: bookingPrice({ date, startMinutes: local.minutes, endMinutes: local.minutes + settings.slotMinutes, slotMinutes: settings.slotMinutes, tariffs: settings.tariffs, tablePricePerHour: t.price_per_hour, defaultPricePerHour: settings.defaultPricePerHour }),
             }
           }),
-          blocks: blocks.filter((b) => blockCovers(b, t.id)).map((b) => ({ kind: b.kind, start: b.starts_at, end: b.ends_at, note: b.note, tournamentId: b.tournament_id })),
+          blocks: blocks.filter((b) => coversTable(b, t.id)).map((b) => ({ kind: b.kind, start: b.start, end: b.end, note: b.note, tournamentId: b.tournamentId })),
         }
       }),
     })
@@ -119,6 +109,7 @@ export type CreateBookingInput = {
 
 /** Creates a booking: rules check, hold, payment; the DB EXCLUDE constraint rejects double booking (B-10). */
 export async function createBooking(trx: Transaction<Database>, input: CreateBookingInput) {
+  await lockHall(trx, input.hallId)
   const { hall, settings, hours } = await loadHall(trx, input.hallId)
   const club = await trx.selectFrom('clubs').select(['id', 'status', 'hall_payment_enabled']).where('id', '=', hall.club_id).executeTakeFirstOrThrow()
   if (club.status !== 'active') throw forbidden('club.not_active')
@@ -139,7 +130,7 @@ export async function createBooking(trx: Transaction<Database>, input: CreateBoo
     .orderBy('number')
     .execute()
   if (!tables.length) throw unprocessable('booking.table_not_bookable')
-  const blocks = await blocksBetween(trx, hall.id, input.start, end)
+  const blocks = await hallBlocks(trx, hall.id, input.start, end, hall.timezone)
   const busy = await trx
     .selectFrom('bookings')
     .select('table_id')
@@ -149,7 +140,7 @@ export async function createBooking(trx: Transaction<Database>, input: CreateBoo
     .where('ends_at', '>', input.start)
     .execute()
   // «Любой свободный»: the first table without a block or booking in the interval.
-  const table = tables.find((t) => !blocks.some((b) => blockCovers(b, t.id) && overlaps({ start: b.starts_at, end: b.ends_at }, { start: input.start, end })) && !busy.some((b) => b.table_id === t.id))
+  const table = tables.find((t) => !blocks.some((b) => coversTable(b, t.id) && overlaps(b, { start: input.start, end })) && !busy.some((b) => b.table_id === t.id))
   if (!table) throw conflict(input.tableId ? 'booking.slot_taken' : 'booking.no_free_table')
   const price = bookingPrice({ date: local.date, startMinutes: local.minutes, endMinutes: local.minutes + input.minutes, slotMinutes: settings.slotMinutes, tariffs: settings.tariffs, tablePricePerHour: table.price_per_hour, defaultPricePerHour: settings.defaultPricePerHour })
   const booking = await trx
@@ -198,8 +189,12 @@ const bookingRequest = z.object({
   minutes: z.number().int().min(30).max(720),
 })
 
+// One user cannot hammer the booking endpoint.
+const bookingLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, keyGenerator: (req) => (req.user ? `u${req.user.id}` : ipKeyGenerator(req.ip ?? '')), message: { error: 'rate.limited' } })
+
 bookingsRouter.post(
   '/',
+  bookingLimiter,
   handler(async (req, res) => {
     const user = requireUser(req)
     if (!user.playerId) throw forbidden('player.profile_required')
@@ -208,6 +203,7 @@ bookingsRouter.post(
       createBooking(trx, { hallId: body.hallId, tableId: body.tableId, start: new Date(body.start), minutes: body.minutes, playerId: user.playerId, source: 'online', actorUserId: user.id }),
     )
     bus.publish(`hall:${booking.hallId}`, 'booking.changed', { tableId: booking.tableId, start: booking.start, end: booking.end })
+    if (booking.status === 'confirmed') await notifyBooking(db, booking.id, 'booking_confirmed')
     res.status(201).json(booking)
   }),
 )
@@ -270,7 +266,7 @@ hallBookingsRouter.get(
         .where('b.ends_at', '>', from)
         .orderBy('b.starts_at')
         .execute(),
-      blocksBetween(db, hallId, from, to),
+      hallBlocks(db, hallId, from, to, hall.timezone),
     ])
     res.json({
       hallId,
@@ -291,7 +287,7 @@ hallBookingsRouter.get(
         note: b.note,
         payment: { method: b.payment_method, status: b.payment_status },
       })),
-      blocks: blocks.map((b) => ({ id: b.id, kind: b.kind, tableIds: b.table_ids, start: b.starts_at, end: b.ends_at, note: b.note, tournamentId: b.tournament_id })),
+      blocks: blocks.map((b) => ({ id: b.id, kind: b.kind, tableIds: b.tableIds, start: b.start, end: b.end, note: b.note, tournamentId: b.tournamentId, recurringId: b.recurringId })),
     })
   }),
 )
@@ -329,6 +325,7 @@ hallBookingsRouter.post(
       }),
     )
     bus.publish(`hall:${hallId}`, 'booking.changed', { tableId: booking.tableId })
+    if (booking.status === 'confirmed' && body.playerId) await notifyBooking(db, booking.id, 'booking_confirmed')
     res.status(201).json(booking)
   }),
 )
@@ -343,6 +340,7 @@ bookingsRouter.post(
     const user = await requireClubRight(req, b.club_id, 'bookings', { hallId: b.hall_id, tableId: b.table_id })
     assertTransition('booking', bookingStatus, b.status, status)
     await db.transaction().execute(async (trx) => {
+      if (status === 'cancelled_by_club') return void (await cancelByClub(trx, id, reason ?? '', user.id))
       await trx.updateTable('bookings').set({ status, updated_at: new Date() }).where('id', '=', id).execute()
       await audit({ actorUserId: user.id, clubId: b.club_id, entity: 'booking', entityId: id, action: 'status', before: { status: b.status }, after: { status }, reason: reason ?? null }, trx)
     })
@@ -381,7 +379,7 @@ hallBookingsRouter.post(
         .selectFrom('bookings')
         .select(['id', 'table_id', 'starts_at', 'ends_at', 'player_id', 'guest_name'])
         .where('hall_id', '=', hallId)
-        .where('status', '=', 'confirmed')
+        .where('status', 'in', ['held', 'confirmed'])
         .where('starts_at', '<', end)
         .where('ends_at', '>', start)
         .$if(body.tableIds.length > 0, (q) => q.where('table_id', 'in', body.tableIds))
@@ -391,6 +389,75 @@ hallBookingsRouter.post(
     })
     bus.publish(`hall:${hallId}`, 'hall.availability_changed', { hallId })
     res.status(201).json(result)
+  }),
+)
+
+/** Free places to move a booking to (desk drag, tournament or closed hall over a booking). */
+bookingsRouter.get(
+  '/:id/options',
+  handler(async (req, res) => {
+    const id = intParam(req, 'id')
+    const b = await db.selectFrom('bookings').select(['club_id', 'hall_id', 'table_id']).where('id', '=', id).executeTakeFirst()
+    if (!b) throw notFound('booking.not_found')
+    await requireClubRight(req, b.club_id, 'bookings', { hallId: b.hall_id, tableId: b.table_id })
+    res.json(await moveOptions(db, id))
+  }),
+)
+
+bookingsRouter.post(
+  '/:id/move',
+  handler(async (req, res) => {
+    const id = intParam(req, 'id')
+    const body = parseBody(z.object({ tableId: z.number().int().positive(), start: z.iso.datetime({ offset: true }) }), req)
+    const b = await db.selectFrom('bookings').select(['club_id', 'hall_id', 'table_id']).where('id', '=', id).executeTakeFirst()
+    if (!b) throw notFound('booking.not_found')
+    await requireClubRight(req, b.club_id, 'bookings', { hallId: b.hall_id, tableId: b.table_id })
+    const user = await requireClubRight(req, b.club_id, 'bookings', { hallId: b.hall_id, tableId: body.tableId })
+    const moved = await db.transaction().execute((trx) => moveBooking(trx, id, { tableId: body.tableId, start: new Date(body.start) }, user.id))
+    bus.publish(`hall:${moved.hallId}`, 'booking.changed', { tableId: moved.tableId })
+    res.json(moved)
+  }),
+)
+
+// Cancel link from the confirmation message: works without signing in, the token is the secret.
+const byToken = (token: string) =>
+  db
+    .selectFrom('bookings as b')
+    .innerJoin('hall_tables as t', 't.id', 'b.table_id')
+    .innerJoin('halls as h', 'h.id', 'b.hall_id')
+    .innerJoin('clubs as c', 'c.id', 'b.club_id')
+    .select(['b.id', 'b.status', 'b.starts_at', 'b.ends_at', 'b.price', 'b.hall_id', 'b.table_id', 'b.club_id', 'b.payment_id', 't.number as table_number', 'h.timezone', 'h.address', 'c.name as club', 'c.slug as club_slug'])
+    .where('b.cancel_token', '=', token)
+    .executeTakeFirst()
+
+const tokenParam = (req: { params: Record<string, string | string[] | undefined> }) => z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.token)
+
+bookingsRouter.get(
+  '/token/:token',
+  handler(async (req, res) => {
+    const b = await byToken(tokenParam(req))
+    if (!b) throw notFound('booking.not_found')
+    const { settings } = await loadHall(db, b.hall_id)
+    res.json({ id: b.id, status: b.status, start: b.starts_at, end: b.ends_at, price: b.price, tableNumber: b.table_number, timezone: b.timezone, address: b.address, club: b.club, clubSlug: b.club_slug, freeCancellation: canCancelFree(b.starts_at, new Date(), settings.freeCancelHours) })
+  }),
+)
+
+bookingsRouter.post(
+  '/token/:token/cancel',
+  handler(async (req, res) => {
+    const token = tokenParam(req)
+    const result = await db.transaction().execute(async (trx) => {
+      const b = await byToken(token)
+      if (!b) throw notFound('booking.not_found')
+      if (b.starts_at <= new Date()) throw conflict('booking.already_started')
+      assertTransition('booking', bookingStatus, b.status, 'cancelled_by_player')
+      await trx.updateTable('bookings').set({ status: 'cancelled_by_player', updated_at: new Date() }).where('id', '=', b.id).execute()
+      if (b.payment_id) await trx.updateTable('payments').set({ status: 'expired', updated_at: new Date() }).where('id', '=', b.payment_id).where('method', '=', 'at_club').where('status', '=', 'created').execute()
+      await audit({ actorUserId: req.user?.id ?? null, clubId: b.club_id, entity: 'booking', entityId: b.id, action: 'cancel', before: { status: b.status }, after: { status: 'cancelled_by_player', via: 'link' } }, trx)
+      return b
+    })
+    bus.publish(`hall:${result.hall_id}`, 'booking.changed', { tableId: result.table_id })
+    res.json({ ok: true })
   }),
 )
 

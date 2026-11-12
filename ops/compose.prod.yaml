@@ -1,0 +1,94 @@
+name: nomad-prod
+
+# Production stack. Secrets come from ops/.env.prod (not committed); certificates from ops/certs.
+#   docker compose -f ops/compose.prod.yaml --env-file ops/.env.prod up -d --build
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://nomad:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/nomad
+  REDIS_URL: redis://redis:6379
+  SITE_URL: ${SITE_URL:-https://nomad.example.kz}
+  DEMO_MODE: "false"
+  ADMIN_2FA_REQUIRED: "true"
+  SMTP_URL: ${SMTP_URL:-}
+  MAIL_FROM: ${MAIL_FROM:-Nomad <no-reply@nomad.kz>}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@nomad.kz}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+
+services:
+  app:
+    build: { context: .., dockerfile: ops/Dockerfile.app }
+    image: nomad-app
+    environment: *app-env
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3010/api/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    image: nomad-app
+    command: ["npm", "run", "start", "-w", "@nomad/worker"]
+    environment: *app-env
+    depends_on:
+      app: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    build: { context: .., dockerfile: ops/Dockerfile.web }
+    image: nomad-web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+      - certbot:/var/www/certbot
+      - nginx-cache:/var/cache/nginx
+    depends_on:
+      app: { condition: service_healthy }
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: nomad
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: nomad
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nomad -d nomad"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  certbot:
+  nginx-cache:

@@ -6,7 +6,7 @@ import { useSession } from '../../app/auth.tsx'
 import { useApi, useRoom } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatDate, formatTenge, formatTime, localDate } from '../../i18n/format.ts'
-import { Async } from '../../ui/kit.tsx'
+import { Async, Seg } from '../../ui/kit.tsx'
 import { HallPlan } from './HallPlan.tsx'
 import type { TableState } from './HallPlan.tsx'
 
@@ -22,6 +22,34 @@ const tableState = (tb: AvailabilityTable): TableState => {
   return free === 0 ? 'busy' : free === tb.slots.length ? 'free' : 'partly'
 }
 
+/** All tables × slots of the day in one strip per table; a free cell picks the table and the start. */
+function Timeline({ tables, selected, start, onPick }: { tables: AvailabilityTable[]; selected: number | null; start: string | null; onPick: (tableId: number, start: string) => void }) {
+  const bookable = tables.filter((x) => tableState(x) !== 'off')
+  const first = bookable.find((x) => x.slots.length)?.slots ?? []
+  return (
+    <div className="timeline" aria-label={t.bk2.timeline}>
+      <div className="timeline__row timeline__head">
+        <span />
+        <div className="timeline__cells" style={{ gridTemplateColumns: `repeat(${first.length}, minmax(2.2rem, 1fr))` }}>
+          {first.map((s) => (
+            <span key={s.start}>{formatTime(s.start)}</span>
+          ))}
+        </div>
+      </div>
+      {bookable.map((tb) => (
+        <div key={tb.id} className="timeline__row">
+          <b className="mono">{tb.number}</b>
+          <div className="timeline__cells" style={{ gridTemplateColumns: `repeat(${tb.slots.length}, minmax(2.2rem, 1fr))` }}>
+            {tb.slots.map((s) => (
+              <button key={s.start} type="button" disabled={!s.free} className={`timeline__cell${selected === tb.id && start === s.start ? ' is-sel' : ''}${s.free ? '' : ` is-${s.reason ?? 'booked'}`}`} title={`${formatTime(s.start)} · ${s.free ? formatTenge(s.price) : t.b.reason[s.reason ?? 'booked']}`} aria-label={`${t.me.table} ${tb.number}, ${formatTime(s.start)}`} onClick={() => onPick(tb.id, s.start)} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Picker({ hallId }: { hallId: number }) {
   const { me } = useSession()
   const location = useLocation()
@@ -32,6 +60,8 @@ function Picker({ hallId }: { hallId: number }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<BookingResult | null>(null)
+  // B-13: phones start with the list (timeline), the plan stays one tap away and supports pinch-zoom.
+  const [view, setView] = useState<'plan' | 'list'>(() => (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 640px)').matches ? 'list' : 'plan'))
   const state = useApi<Availability>(`/halls/${hallId}/availability?date=${date}`)
   useRoom(`hall:${hallId}`, state.reload)
   const a = state.data
@@ -121,7 +151,15 @@ function Picker({ hallId }: { hallId: number }) {
             <div className="grid grid--2">
               <section className="panel">
                 <div className="panel__head">
-                  <h2>{t.c.hallPlan}</h2>
+                  <Seg
+                    label={t.c.hallPlan}
+                    value={view}
+                    options={[
+                      ['plan', t.bk2.planMode],
+                      ['list', t.bk2.listMode],
+                    ]}
+                    onChange={setView}
+                  />
                   <div className="legend">
                     <span>
                       <i style={{ borderColor: 'var(--ok)', background: 'rgba(61,255,168,.2)' }} />
@@ -141,7 +179,19 @@ function Picker({ hallId }: { hallId: number }) {
                     </span>
                   </div>
                 </div>
-                <HallPlan plan={av.plan} tables={av.tables} mode="booking" state={(id) => tableState(av.tables.find((x) => x.id === id)!)} selected={tableId} onSelect={pick} />
+                {view === 'plan' ? (
+                  <HallPlan plan={av.plan} tables={av.tables} mode="booking" state={(id) => tableState(av.tables.find((x) => x.id === id)!)} selected={tableId} onSelect={pick} />
+                ) : (
+                  <Timeline
+                    tables={av.tables}
+                    selected={tableId}
+                    start={start}
+                    onPick={(id, s) => {
+                      pick(id)
+                      setStart(s)
+                    }}
+                  />
+                )}
                 <div className="row">
                   {av.tables
                     .filter((x) => tableState(x) !== 'off')

@@ -26,6 +26,12 @@ import { conductRouter, myCallsRouter } from '../modules/conduct.ts'
 import { checkinRouter } from '../modules/checkin.ts'
 import { liveRouter, ogRouter } from '../modules/live.ts'
 import { seriesRouter, tournamentAdminRouter } from '../modules/tournament-admin.ts'
+// --- Stage 6 ---
+import { hallSettingsRouter } from '../modules/booking-settings.ts'
+import { adminPlayersRouter } from '../modules/admin-players.ts'
+import { adminSystemRouter, publicSettingsRouter } from '../modules/admin-system.ts'
+import { tournamentPlanRouter } from '../modules/plan.ts'
+import { opsRouter } from './ops.ts'
 import { errorHandler, notFound } from './errors.ts'
 
 export function createApp() {
@@ -55,12 +61,17 @@ export function createApp() {
   api.use('/rttf', rttfRouter)
   api.use('/admin/rttf', adminRttfRouter)
   api.use('/admin', adminRouter)
+  api.use('/admin', adminPlayersRouter)
+  api.use('/admin', adminSystemRouter)
+  api.use('/settings', publicSettingsRouter)
+  api.use('/', opsRouter)
   api.use('/', catalogRouter)
   api.use('/players', playersRouter)
   api.use('/clubs/:clubId/tournaments', clubTournamentsRouter)
   api.use('/clubs/:clubId/series', seriesRouter)
   api.use('/clubs', clubsRouter)
   api.use('/halls/:hallId', hallBookingsRouter)
+  api.use('/halls/:hallId', hallSettingsRouter)
   api.use('/halls', hallsRouter)
   api.use('/formats', formatsRouter)
   api.use('/tournaments', tournamentsRouter)
@@ -68,6 +79,7 @@ export function createApp() {
   api.use('/tournaments', conductRouter)
   api.use('/tournaments', checkinRouter)
   api.use('/tournaments', liveRouter)
+  api.use('/tournaments', tournamentPlanRouter)
   api.use('/og', ogRouter)
   api.use('/bookings', bookingsRouter)
   api.use('/my/calls', myCallsRouter)

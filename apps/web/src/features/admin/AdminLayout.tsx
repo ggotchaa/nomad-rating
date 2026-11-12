@@ -10,6 +10,11 @@ export const ADMIN_SECTIONS: { to: string; label: string; badge?: keyof Overview
   { to: 'clubs', label: t.admin.clubs, badge: 'clubs' },
   { to: 'merges', label: t.admin.merges, badge: 'merges' },
   { to: 'rttf', label: t.admin.rttf, badge: 'rttf' },
+  { to: 'players', label: t.admin2.players },
+  { to: 'disputes', label: t.admin2.disputes },
+  { to: 'audit', label: t.admin2.audit },
+  { to: 'settings', label: t.admin2.settings },
+  { to: 'view-as', label: t.admin2.viewAs },
 ]
 
 export function AdminLayout() {

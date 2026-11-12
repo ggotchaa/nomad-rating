@@ -40,6 +40,8 @@ import { Helpers, ManageAudit } from './features/manage/Helpers.tsx'
 import { ImportPlayers } from './features/manage/ImportPlayers.tsx'
 import { AdminIndex, AdminLayout } from './features/admin/AdminLayout.tsx'
 import { AdminClubs, AdminMerges, AdminRttf } from './features/admin/AdminQueues.tsx'
+import { AdminAudit, AdminDisputes, AdminPlayers, AdminSettings, AdminViewAs } from './features/admin/AdminTools.tsx'
+import { CancelBooking } from './features/booking/CancelBooking.tsx'
 
 const Landing = lazy(() => import('./features/landing/Landing.tsx').then((m) => ({ default: m.Landing })))
 
@@ -66,6 +68,7 @@ const router = createBrowserRouter([
       { path: 'clubs/new', element: <RegisterClub /> },
       { path: 'club/:slug', element: <ClubPage /> },
       { path: 'club/:slug/booking', element: <Booking /> },
+      { path: 'booking/:token', element: <CancelBooking /> },
       { path: 'bookings/:id', element: <Navigate to="/me" replace /> },
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
@@ -89,6 +92,11 @@ const router = createBrowserRouter([
           { path: 'clubs', element: <AdminClubs /> },
           { path: 'merges', element: <AdminMerges /> },
           { path: 'rttf', element: <AdminRttf /> },
+          { path: 'players', element: <AdminPlayers /> },
+          { path: 'disputes', element: <AdminDisputes /> },
+          { path: 'audit', element: <AdminAudit /> },
+          { path: 'settings', element: <AdminSettings /> },
+          { path: 'view-as', element: <AdminViewAs /> },
         ],
       },
       {

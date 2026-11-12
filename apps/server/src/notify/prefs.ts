@@ -12,6 +12,10 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   calibration_done: { channels: ['push', 'telegram', 'email'] },
   new_tournament: { channels: ['telegram', 'email'] },
   dispute_update: { channels: ['push', 'email'] },
+  booking_confirmed: { channels: ['push', 'telegram'] },
+  booking_reminder: { channels: ['push', 'telegram'] },
+  booking_moved: { channels: ['push', 'telegram', 'email'] },
+  booking_cancelled: { channels: ['push', 'telegram', 'email'] },
 }
 
 const FALLBACK: NotifyChannel[] = ['push', 'telegram']

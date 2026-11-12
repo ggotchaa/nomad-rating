@@ -5,6 +5,7 @@ import { useApi, useRoom } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
 import { Structure } from '../tournaments/Structure.tsx'
+import { TournamentPlan } from '../booking/TournamentPlan.tsx'
 
 type LiveSide = { name: string; rating: number | null } | null
 type LiveMatch = { id: number; number: number; label: string | null; status: string; table: number | null; home: LiveSide; away: LiveSide; setsHome: number | null; setsAway: number | null; waitReason?: string | null }
@@ -55,6 +56,7 @@ export function LivePage() {
             </header>
             <section className="panel">
               <h2>{t.live.tables}</h2>
+              <TournamentPlan tournamentId={d.id} tables={d.tables} />
               <div className="tables-grid">
                 {d.tables.map((x) => (
                   <div key={x.id} className={`tablecard${x.match ? ` tablecard--${x.match.status}` : ''}`}>

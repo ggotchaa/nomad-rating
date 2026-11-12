@@ -14,6 +14,8 @@ import { runScheduledNotifications } from '@nomad/server/src/jobs/notifications.
 import { deliver } from '@nomad/server/src/notify/index.ts'
 import type { DeliveryJob } from '@nomad/server/src/notify/index.ts'
 import { runRecalc } from '@nomad/server/src/rating/recalc.ts'
+import { remindBookings } from '@nomad/server/src/jobs/booking-reminders.ts'
+import { loadTemplateOverrides } from '@nomad/server/src/modules/admin-system.ts'
 import { createBot } from '@nomad/server/src/telegram/bot.ts'
 
 if (!config.REDIS_URL) {
@@ -28,6 +30,7 @@ const queue = new Queue(QUEUE, { connection })
 await queue.upsertJobScheduler('expire-holds', { every: 60_000 }, { name: 'expire-holds' })
 await queue.upsertJobScheduler('scheduled-notifications', { every: 5 * 60_000 }, { name: 'scheduled-notifications' })
 await queue.upsertJobScheduler('conduct-tick', { every: 30_000 }, { name: 'conduct-tick' })
+await queue.upsertJobScheduler('booking-reminders', { every: 5 * 60_000 }, { name: 'booking-reminders' })
 
 const worker = new Worker(
   QUEUE,
@@ -38,6 +41,7 @@ const worker = new Worker(
       return result
     }
     if (job.name === 'scheduled-notifications') return runScheduledNotifications()
+    if (job.name === 'booking-reminders') return remindBookings()
     if (job.name === 'conduct-tick') return { recalled: await recallUnanswered(), cancelled: await autoCancelUnderfilled() }
     throw new Error(`unknown job ${job.name}`)
   },
@@ -52,9 +56,13 @@ for (const w of [notifyWorker, ratingWorker]) w.on('failed', (job, err) => logge
 const bot = createBot()
 if (bot) void bot.start({ onStart: (me) => logger.info({ bot: me.username }, 'telegram bot started') })
 // --- end Stage 3 ---
+// Admin-edited notification templates are re-read every minute.
+await loadTemplateOverrides()
+const templatesTimer = setInterval(() => void loadTemplateOverrides().catch(() => {}), 60_000)
 logger.info('worker started')
 
 async function shutdown() {
+  clearInterval(templatesTimer)
   await worker.close()
   await Promise.allSettled([notifyWorker.close(), ratingWorker.close(), bot?.stop(), closeQueues()])
   await queue.close()

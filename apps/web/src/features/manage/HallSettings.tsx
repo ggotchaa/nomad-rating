@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { api } from '../../api/client.ts'
-import type { BookingSettings, ClubDetail, Hall, HallTable, OpeningHours } from '../../api/types.ts'
+import type { BookingSettings, ClubDetail, Hall, HallPlanData, HallTable, OpeningHours } from '../../api/types.ts'
 import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { hhmm, parseHhmm } from '../../i18n/format.ts'
 import { Async, Field } from '../../ui/kit.tsx'
-import { HallPlan } from '../booking/HallPlan.tsx'
+import { PlanEditor } from '../booking/PlanEditor.tsx'
+import { BlocksSection, TariffsEditor } from './BookingRules.tsx'
 import { useClub } from './ManageLayout.tsx'
 
 function Section({ title, save, children }: { title: string; save: () => Promise<unknown>; children: ReactNode }) {
@@ -46,6 +47,7 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
   const [hours, setHours] = useState<OpeningHours>(initial.openingHours)
   const [tables, setTables] = useState<HallTable[]>(initial.tables)
   const [booking, setBooking] = useState<BookingSettings>(initial.booking)
+  const [plan, setPlan] = useState<HallPlanData>(initial.plan)
   const setTable = (id: number, patch: Partial<HallTable>) => setTables((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)))
   const num = (key: keyof BookingSettings, scale = 1) => ({
     type: 'number' as const,
@@ -100,14 +102,23 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
       <div className="stack">
         <Section
           title={t.m.tablesTitle}
-          save={() =>
-            api(`/halls/${initial.id}/tables`, {
+          save={async () => {
+            await api(`/halls/${initial.id}`, { method: 'PATCH', json: { plan } })
+            const saved = await api<Hall>(`/halls/${initial.id}/tables`, {
               method: 'PUT',
-              json: { tables: tables.map((x) => ({ id: x.id, number: x.number, label: x.label === `Стол ${x.number}` ? null : x.label, x: x.x, y: x.y, rotation: x.rotation, bookable: x.bookable, pricePerHour: x.pricePerHour, model: x.model, status: x.status })) },
+              json: { tables: tables.map((x) => ({ id: x.id > 0 ? x.id : undefined, number: x.number, label: x.label === `Стол ${x.number}` ? null : x.label, x: x.x, y: x.y, rotation: x.rotation, bookable: x.bookable, pricePerHour: x.pricePerHour, model: x.model, status: x.status })) },
             })
-          }
+            setTables(saved.tables)
+          }}
         >
-          <HallPlan plan={initial.plan} tables={tables} />
+          <PlanEditor
+            plan={plan}
+            tables={tables}
+            onChange={(nextTables, nextPlan) => {
+              setTables(nextTables)
+              setPlan(nextPlan)
+            }}
+          />
           <div className="tablewrap">
             <table className="table">
               <thead>
@@ -161,7 +172,9 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
               <input {...num('freeCancelHours')} />
             </Field>
           </div>
+          <TariffsEditor tariffs={booking.tariffs} onChange={(tariffs) => setBooking({ ...booking, tariffs })} />
         </Section>
+        <BlocksSection hallId={initial.id} tables={tables} />
       </div>
     </div>
   )
