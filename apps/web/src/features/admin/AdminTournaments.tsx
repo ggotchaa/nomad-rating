@@ -453,7 +453,7 @@ function Participants({ d, reload }: { d: Card; reload: () => void }) {
                       {e.seed ? ` · ${T().seed} ${e.seed}` : ''}
                       {e.final_place ? ` · ${t.t.place} ${e.final_place}` : ''}
                     </td>
-                    <td className="small">{e.payment_status ? `${e.payment_method} · ${e.payment_status}` : '—'}</td>
+                    <td className="small">{e.payment_status ? `${t.finance.methods[e.payment_method as keyof typeof t.finance.methods] ?? e.payment_method} · ${t.finance.statuses[e.payment_status as keyof typeof t.finance.statuses] ?? e.payment_status}` : '—'}</td>
                     <td className="row">
                       {(e.status === 'waitlist' || e.status === 'invited') && (
                         <button className="button button--sm" onClick={() => void bulk([e.id], 'paid')}>
