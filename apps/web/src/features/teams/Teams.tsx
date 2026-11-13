@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { intlTag } from '../../i18n/locale.ts'
 import { Link, useParams } from 'react-router'
 import { api } from '../../api/client.ts'
@@ -19,6 +20,7 @@ export type Team = {
   isCaptain: boolean
   joinUrl?: string
   complete: boolean
+  belowMinimum?: boolean
   members: Member[]
   invitations: { id: number; playerId: number; name: string; direction: string; status: string; expiresAt: string }[]
   entries: { id: number; status: string; slug: string; title: string; startsAt: string }[]
@@ -70,6 +72,43 @@ function InviteSearch({ team, onDone }: { team: Team; onDone: () => void }) {
   )
 }
 
+function ShareLink({ team, reload }: { team: Team; reload: () => void }) {
+  const url = team.joinUrl!
+  const [qr, setQr] = useState('')
+  const { error, run } = useAction(reload)
+  useEffect(() => {
+    let alive = true
+    void QRCode.toDataURL(url, { width: 160, margin: 1 }).then((src) => alive && setQr(src))
+    return () => {
+      alive = false
+    }
+  }, [url])
+  const text = t.teams.joinText(team.name)
+  return (
+    <div className="stack">
+      <Field label={t.teams.link}>
+        <input readOnly value={url} onFocus={(e) => e.target.select()} />
+      </Field>
+      <div className="row">
+        <button className="button button--sm" onClick={() => void navigator.clipboard?.writeText(url)}>
+          {t.teams.copy}
+        </button>
+        <a className="button button--sm" target="_blank" rel="noreferrer" href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`}>
+          Telegram
+        </a>
+        <a className="button button--sm" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`}>
+          WhatsApp
+        </a>
+        <button className="button button--sm" onClick={() => confirm(t.teams.newLinkConfirm) && void run(() => post(`/teams/${team.id}/join-link`))}>
+          {t.teams.newLink}
+        </button>
+      </div>
+      {qr && <img src={qr} width={160} height={160} alt="QR" />}
+      {error && <p className="note note--error">{error}</p>}
+    </div>
+  )
+}
+
 function TeamCard({ team, reload }: { team: Team; reload: () => void }) {
   const { error, run } = useAction(reload)
   const { me } = useSession()
@@ -81,6 +120,7 @@ function TeamCard({ team, reload }: { team: Team; reload: () => void }) {
         </h2>
         <span className={`chip${team.complete ? ' chip--ok' : ' chip--warn'}`}>{team.complete ? t.teams.complete : t.teams.incomplete(team.members.length, team.minSize)}</span>
       </div>
+      {team.belowMinimum && <p className="note note--error">{t.teams.belowMinimum(team.members.length, team.minSize)}</p>}
       <ul className="stack">
         {team.members.map((m) => (
           <li key={m.id} className="row row--between">
@@ -91,6 +131,11 @@ function TeamCard({ team, reload }: { team: Team; reload: () => void }) {
               <span className="muted small">
                 {m.singles ?? '—'} / {m.doubles ?? '—'}
               </span>
+              {m.role !== 'captain' && team.isCaptain && (
+                <button className="button button--sm" onClick={() => void run(() => post(`/teams/${team.id}/captain`, { playerId: m.id }))}>
+                  {t.teams.makeCaptain}
+                </button>
+              )}
               {m.role !== 'captain' && (team.isCaptain || m.id === me.player?.id) && (
                 <button className="button button--sm" onClick={() => void run(() => api(`/teams/${team.id}/members/${m.id}`, { method: 'DELETE' }))}>
                   {t.teams.remove}
@@ -130,11 +175,8 @@ function TeamCard({ team, reload }: { team: Team; reload: () => void }) {
             </ul>
           )}
           {team.members.length < team.maxSize && <InviteSearch team={team} onDone={reload} />}
-          {team.joinUrl && (
-            <Field label={t.teams.link}>
-              <input readOnly value={team.joinUrl} onFocus={(e) => e.target.select()} />
-            </Field>
-          )}
+          {team.joinUrl && <ShareLink team={team} reload={reload} />}
+          {team.members.length > 1 && <p className="muted small">{t.teams.captainLeave}</p>}
           <button className="button button--sm" onClick={() => void run(() => post(`/teams/${team.id}/repeat`))}>
             {t.teams.repeat}
           </button>

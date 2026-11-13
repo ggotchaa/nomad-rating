@@ -13,7 +13,7 @@ import { forbidden, handler, notFound } from '../http/errors.ts'
 import { intParam, parseBody, parseQuery } from '../http/validate.ts'
 import { bus } from '../realtime/bus.ts'
 import { config } from '../config.ts'
-import { answerInvitation, createTeam, invite, joinByLink, registerTeam, removeMember, repeatTeam } from '../teams/service.ts'
+import { answerInvitation, createTeam, invite, joinByLink, registerTeam, reissueJoinLink, removeMember, repeatTeam, transferCaptain } from '../teams/service.ts'
 import { callGame, captainSide, loadMeeting, meetingView, recordGame, submitLineup } from '../teams/meeting.ts'
 import { playerName } from './players.ts'
 
@@ -68,6 +68,7 @@ async function teamView(teamId: number, viewerPlayerId: number | null) {
     joinUrl: captain ? `${config.SITE_URL}/teams/join/${team.join_token}` : undefined,
     joinToken: captain ? team.join_token : undefined,
     complete: members.length >= team.min_size,
+    belowMinimum: members.length < team.min_size && entries.some((e) => ['awaiting_payment', 'paid', 'waitlist', 'invited'].includes(e.status)),
     members: members.map((m) => ({ id: m.id, name: playerName(m), birthYear: m.birth_year, region: m.region, role: m.role, singles: m.singles, doubles: m.doubles })),
     invitations: invitations.map((i) => ({ id: i.id, playerId: i.player_id, name: playerName(i), direction: i.direction, status: i.status, expiresAt: i.expires_at })),
     entries: entries.map((e) => ({ id: e.id, status: e.status, tournamentId: e.tournament_id, slug: e.slug, title: e.title, startsAt: e.starts_at })),
@@ -182,6 +183,25 @@ teamsRouter.delete(
     const actor = me(req)
     await db.transaction().execute((trx) => removeMember(trx, intParam(req, 'id'), intParam(req, 'playerId'), actor))
     res.json({ ok: true })
+  }),
+)
+
+teamsRouter.post(
+  '/:id/captain',
+  handler(async (req, res) => {
+    const actor = me(req)
+    const { playerId } = parseBody(z.object({ playerId: z.number().int().positive() }), req)
+    await db.transaction().execute((trx) => transferCaptain(trx, intParam(req, 'id'), playerId, actor))
+    res.json(await teamView(intParam(req, 'id'), actor.playerId))
+  }),
+)
+
+teamsRouter.post(
+  '/:id/join-link',
+  handler(async (req, res) => {
+    const actor = me(req)
+    await db.transaction().execute((trx) => reissueJoinLink(trx, intParam(req, 'id'), actor))
+    res.json(await teamView(intParam(req, 'id'), actor.playerId))
   }),
 )
 

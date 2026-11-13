@@ -38,6 +38,8 @@ type Phrases = {
   teamInvitation: (d: D) => Msg
   teamRequest: (d: D) => Msg
   teamAnswer: (d: D) => Msg
+  teamCaptain: (d: D) => Msg
+  teamShort: (d: D) => Msg
   leagueMove: string
   leagueMoveBody: (d: D) => string
   leagueConfirm: (d: D) => Msg
@@ -101,6 +103,8 @@ const P: Record<Lang, Phrases> = {
       title: 'Ответ на приглашение',
       body: `«${s(d.title)}»: ${d.status === 'accepted' ? 'принято' : d.status === 'declined' ? 'отклонено' : 'истекло'}`,
     }),
+    teamCaptain: (d) => ({ title: 'Вы капитан', body: `Вам передано капитанство в «${s(d.title)}»` }),
+    teamShort: (d) => ({ title: 'Состав меньше минимума', body: `В «${s(d.title)}» осталось ${s(d.count)} из ${s(d.min)} игроков — пригласите замену` }),
     leagueMove: 'Переход в другой дивизион',
     leagueMoveBody: (d) => `${s(d.title)}: ${d.reason === 'promotion' ? 'повышение' : 'понижение'} — ${s(d.division)}`,
     leagueConfirm: (d) => ({ title: 'Подтвердите участие в лиге', body: `${s(d.title)}: подтвердите участие в новом сезоне` }),
@@ -146,6 +150,8 @@ const P: Record<Lang, Phrases> = {
       title: 'Шақыруға жауап',
       body: `«${s(d.title)}»: ${d.status === 'accepted' ? 'қабылданды' : d.status === 'declined' ? 'қабылданбады' : 'мерзімі өтті'}`,
     }),
+    teamCaptain: (d) => ({ title: 'Сіз капитансыз', body: `«${s(d.title)}» капитандығы сізге берілді` }),
+    teamShort: (d) => ({ title: 'Құрам минимумнан аз', body: `«${s(d.title)}» құрамында ${s(d.count)}/${s(d.min)} ойыншы қалды — ауыстырушы шақырыңыз` }),
     leagueMove: 'Басқа дивизионға ауысу',
     leagueMoveBody: (d) => `${s(d.title)}: ${d.reason === 'promotion' ? 'жоғарылау' : 'төмендеу'} — ${s(d.division)}`,
     leagueConfirm: (d) => ({ title: 'Лигаға қатысуды растаңыз', body: `${s(d.title)}: жаңа маусымға қатысуыңызды растаңыз` }),
@@ -191,6 +197,8 @@ const P: Record<Lang, Phrases> = {
       title: 'Invitation answer',
       body: `“${s(d.title)}”: ${d.status === 'accepted' ? 'accepted' : d.status === 'declined' ? 'declined' : 'expired'}`,
     }),
+    teamCaptain: (d) => ({ title: 'You are the captain', body: `You are now the captain of “${s(d.title)}”` }),
+    teamShort: (d) => ({ title: 'Roster below minimum', body: `“${s(d.title)}” has ${s(d.count)} of ${s(d.min)} players — invite a replacement` }),
     leagueMove: 'Division change',
     leagueMoveBody: (d) => `${s(d.title)}: ${d.reason === 'promotion' ? 'promoted' : 'relegated'} to ${s(d.division)}`,
     leagueConfirm: (d) => ({ title: 'Confirm your league entry', body: `${s(d.title)}: confirm your entry for the new season` }),
@@ -293,6 +301,10 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
       return out(p.teamRequest(d), me)
     case 'team_invitation_answer':
       return out(p.teamAnswer(d), me)
+    case 'team_captain':
+      return out(p.teamCaptain(d), me)
+    case 'team_roster_short':
+      return out(p.teamShort(d), me)
     case 'league_move':
       return out({ title: p.leagueMove, body: d.reason ? p.leagueMoveBody(d) : ruText || title }, lUrl)
     case 'league_confirm':

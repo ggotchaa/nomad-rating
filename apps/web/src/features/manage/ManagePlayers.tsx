@@ -107,6 +107,40 @@ function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (co
   )
 }
 
+function LevelCell({ p, onDone }: { p: ClubPlayer; onDone: () => void }) {
+  const { club } = useClub()
+  const [error, setError] = useState('')
+  const send = (json: object) =>
+    void api(`/clubs/${club.id}/players/${p.id}/start-level`, { method: 'POST', json })
+      .then(onDone)
+      .catch((e: unknown) => setError(errorText(e)))
+  if (p.rating != null) return <>{p.rating}</>
+  return (
+    <span className="stack">
+      <select aria-label={t.m.changeLevel} value={Object.keys(t.a.levels).find((k) => t.a.levels[k]?.includes(`(${p.startLevel})`)) ?? ''} onChange={(e) => send({ startLevel: e.target.value })}>
+        {!Object.values(t.a.levels).some((v) => v.includes(`(${p.startLevel})`)) && <option value="">{p.startLevel}</option>}
+        {Object.entries(t.a.levels).map(([k, v]) => (
+          <option key={k} value={k}>
+            {v}
+          </option>
+        ))}
+      </select>
+      {p.levelStatus === 'pending' && (
+        <span className="row small">
+          <span className="chip chip--warn">{t.m.levelPending(p.requestedLevel ?? 1600)}</span>
+          <button className="button button--sm button--primary" onClick={() => send({ decision: 'confirm' })}>
+            {t.m.confirmLevel}
+          </button>
+          <button className="button button--sm" onClick={() => send({ decision: 'reject' })}>
+            {t.m.rejectLevel}
+          </button>
+        </span>
+      )}
+      {error && <span className="note note--error">{error}</span>}
+    </span>
+  )
+}
+
 export function ManagePlayers() {
   const { club } = useClub()
   const list = useApi<ClubPlayer[]>(`/clubs/${club.id}/players`)
@@ -148,7 +182,9 @@ export function ManagePlayers() {
                         <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
                       </td>
                       <td className="muted">{p.city}</td>
-                      <td className="num">{p.rating ?? `${p.startLevel} ${t.t.calibrating}`}</td>
+                      <td className="num">
+                        <LevelCell p={p} onDone={list.reload} />
+                      </td>
                       <td className="num">{p.tournaments}</td>
                       <td className="num">{p.bookingNoShows || '—'}</td>
                       <td>

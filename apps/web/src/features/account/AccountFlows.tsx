@@ -500,7 +500,7 @@ export function ProfileEdit() {
         </Field>
         {p.rating == null && (
           <Field label={t.a.startLevel}>
-            <select name="startLevel" defaultValue={Object.keys(t.a.levels).find((k) => t.a.levels[k]?.includes(`(${p.start_level})`)) ?? 'amateur'}>
+            <select name="startLevel" defaultValue={p.level_status === 'pending' ? 'ranked' : (Object.keys(t.a.levels).find((k) => t.a.levels[k]?.includes(`(${p.start_level})`)) ?? 'amateur')}>
               {Object.entries(t.a.levels).map(([k, v]) => (
                 <option key={k} value={k}>
                   {v}
@@ -509,6 +509,7 @@ export function ProfileEdit() {
             </select>
           </Field>
         )}
+        {(p.level_status === 'pending' || p.level_status === 'rejected') && <p className={`note field--wide${p.level_status === 'rejected' ? ' note--error' : ''}`}>{p.level_status === 'pending' ? t.a.levelPending : t.a.levelRejected}</p>}
         <div className="field--wide">{save.notes}</div>
         <button className="button button--primary field--wide" disabled={save.busy}>
           {t.common.save}

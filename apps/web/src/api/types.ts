@@ -62,7 +62,7 @@ export type Me = {
     mfaRequired?: boolean
     needsWelcome?: boolean
   } | null
-  player: { id: number; first_name: string; last_name: string; gender: 'm' | 'f'; birth_year: number; photo_url: string | null; start_level: number; city: string | null; rating: number | null } | null
+  player: { id: number; first_name: string; last_name: string; gender: 'm' | 'f'; birth_year: number; photo_url: string | null; start_level: number; level_status: 'pending' | 'confirmed' | 'rejected' | null; city: string | null; rating: number | null } | null
   clubs: { id: number; slug: string; name: string; role: 'organizer' | 'helper'; rights: ClubRight[] }[]
   activeClubId?: number | null
 }
@@ -307,7 +307,7 @@ export type MyClub = { id: number; slug: string; name: string; role: 'organizer'
 
 export type ManageTournament = { id: number; slug: string; title: string; status: string; starts_at: string; fee: number; max_participants: number; taken: number }
 
-export type ClubPlayer = { id: number; name: string; birthYear: number; gender: 'm' | 'f'; city: string | null; rating: number | null; startLevel: number; hasAccount: boolean; addedByClub: boolean; tournaments: number; bookingNoShows: number }
+export type ClubPlayer = { id: number; name: string; birthYear: number; gender: 'm' | 'f'; city: string | null; rating: number | null; startLevel: number; requestedLevel: number | null; levelStatus: 'pending' | 'confirmed' | 'rejected' | null; hasAccount: boolean; addedByClub: boolean; tournaments: number; bookingNoShows: number }
 
 export type DeskBooking = {
   id: number

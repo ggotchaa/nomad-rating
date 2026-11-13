@@ -398,6 +398,8 @@ clubsRouter.get(
         'p.user_id',
         'p.added_by_club_id',
         'p.start_level',
+        'p.requested_level',
+        'p.level_status',
         'c.name_ru as city',
         'r.rating',
         (eb) =>
@@ -420,6 +422,7 @@ clubsRouter.get(
       .where((eb) =>
         eb.or([
           eb('p.added_by_club_id', '=', clubId),
+          eb.and([eb('p.level_status', '=', 'pending'), eb('p.city_id', '=', eb.selectFrom('clubs').select('city_id').where('id', '=', clubId))]),
           eb.exists(eb.selectFrom('entries as e').innerJoin('tournaments as t', 't.id', 'e.tournament_id').whereRef('e.player_id', '=', 'p.id').where('t.club_id', '=', clubId).select('e.id')),
           eb.exists(eb.selectFrom('bookings as b').whereRef('b.player_id', '=', 'p.id').where('b.club_id', '=', clubId).select('b.id')),
         ]),
@@ -435,6 +438,8 @@ clubsRouter.get(
         city: r.city,
         rating: r.rating,
         startLevel: r.start_level,
+        requestedLevel: r.requested_level,
+        levelStatus: r.level_status,
         hasAccount: r.user_id != null,
         addedByClub: r.added_by_club_id === clubId,
         tournaments: Number(r.tournaments ?? 0),

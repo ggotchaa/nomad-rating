@@ -69,6 +69,8 @@ export interface PlayersTable {
   start_level: Generated<number>
   added_by_club_id: number | null
   claim_code: string | null
+  requested_level: number | null
+  level_status: 'pending' | 'confirmed' | 'rejected' | null
   contact_email: string | null
   search_name: string
   created_at: DefaultTimestamp

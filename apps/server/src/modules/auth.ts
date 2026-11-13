@@ -13,6 +13,7 @@ import { parseBody } from '../http/validate.ts'
 import { audit } from '../audit.ts'
 import { issueToken } from '../auth/tokens.ts'
 import { mails, sendMail } from '../mail/index.ts'
+import { selfLevel } from './club-players.ts'
 
 const registerSchema = z.object({
   email: z.email().max(200),
@@ -43,7 +44,7 @@ export async function currentUserView(userId: number, session?: { activeClubId: 
     .selectFrom('players as p')
     .leftJoin('cities as c', 'c.id', 'p.city_id')
     .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-    .select(['p.id', 'p.first_name', 'p.last_name', 'p.gender', 'p.birth_year', 'p.photo_url', 'p.start_level', 'c.name_ru as city', 'r.rating'])
+    .select(['p.id', 'p.first_name', 'p.last_name', 'p.gender', 'p.birth_year', 'p.photo_url', 'p.start_level', 'p.level_status', 'c.name_ru as city', 'r.rating'])
     .where('p.user_id', '=', userId)
     .executeTakeFirst()
   const clubs = await db
@@ -106,7 +107,7 @@ authRouter.post(
             birth_year: body.birthYear,
             city_id: body.cityId,
             hand: body.hand ?? null,
-            start_level: START_LEVELS[body.startLevel],
+            ...selfLevel(body.startLevel),
             search_name: searchName(body),
           })
           .returning('id')

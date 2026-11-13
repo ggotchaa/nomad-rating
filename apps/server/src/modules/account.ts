@@ -21,6 +21,7 @@ import { parseBody } from '../http/validate.ts'
 import { mails, sendMail, siteLink } from '../mail/index.ts'
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, removeFile, saveFile } from '../storage/index.ts'
 import { currentUserView, limiter } from './auth.ts'
+import { selfLevel } from './club-players.ts'
 
 export const accountRouter = Router()
 export const myAccountRouter = Router()
@@ -276,7 +277,7 @@ accountRouter.post(
           birth_year: p.birthYear,
           city_id: p.cityId,
           hand: p.hand ?? null,
-          start_level: START_LEVELS[p.startLevel],
+          ...selfLevel(p.startLevel),
           search_name: searchName(p),
         })
         .returning('id')
@@ -397,7 +398,7 @@ myAccountRouter.patch(
         ...(body.birthYear && { birth_year: body.birthYear }),
         ...(body.cityId && { city_id: body.cityId }),
         ...(body.hand !== undefined && { hand: body.hand }),
-        ...(body.startLevel && { start_level: START_LEVELS[body.startLevel] }),
+        ...(body.startLevel && selfLevel(body.startLevel)),
         updated_at: new Date(),
       })
       .where('id', '=', before.id)
