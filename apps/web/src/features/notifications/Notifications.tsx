@@ -6,6 +6,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatDateTime } from '../../i18n/format.ts'
 import { Async } from '../../ui/kit.tsx'
+import { QrImage } from '../conduct/Checkin.tsx'
 import { describe } from './model.ts'
 import type { NotificationItem, NotifySettings } from './model.ts'
 import { currentSubscription, disablePush, enablePush, isIos, isStandalone, pushSupported } from './push.ts'
@@ -198,11 +199,14 @@ function PushPanel({ s, run }: { s: NotifySettings; run: Run }) {
 
 function TelegramPanel({ s, run }: { s: NotifySettings; run: Run }) {
   const { me } = useSession()
+  const [link, setLink] = useState<string | null>(null)
   const connect = () =>
     run(async () => {
       const { url } = await api<{ url: string }>('/notifications/telegram/link', { method: 'POST', json: {} })
+      setLink(url)
       window.open(url, '_blank', 'noopener')
     })
+  const qr = link ?? (s.telegram.bot ? `https://t.me/${s.telegram.bot}` : null)
   return (
     <section className="panel">
       <h2>{t.tg.title}</h2>
@@ -228,6 +232,12 @@ function TelegramPanel({ s, run }: { s: NotifySettings; run: Run }) {
               </button>
               <p className="small muted">{t.tg.hint}</p>
             </>
+          )}
+          {qr && (
+            <div className="stack">
+              <QrImage text={qr} size={160} />
+              <p className="small muted">{link ? t.tg.qrLink : t.tg.qrBot}</p>
+            </div>
           )}
         </>
       )}

@@ -17,7 +17,7 @@ const s = (v: unknown) => (v == null ? '' : String(v))
 export function describe(n: NotificationItem): { title: string; text: string; link: string | null } {
   const d = n.data
   const title = s(d.tournamentTitle || d.title)
-  const link = d.slug ? (n.type === 'match_call' ? `/me/t/${s(d.slug)}` : `/t/${s(d.slug)}`) : null
+  const link = d.slug ? (n.type.startsWith('match_') ? `/me/t/${s(d.slug)}` : `/t/${s(d.slug)}`) : null
   switch (n.type) {
     case 'match_call':
       return { title: `${t.notif.types.match_call}${d.table ? ` · ${t.rating2.table.toLowerCase()} ${s(d.table)}` : ''}`, text: [title, d.opponent && `${t.rating2.opponent}: ${s(d.opponent)}`].filter(Boolean).join(' · '), link }
@@ -36,6 +36,13 @@ export function describe(n: NotificationItem): { title: string; text: string; li
       return { title: `${t.notif.types.tournament_results}: ${title}`, text: `${t.t.place}: ${s(d.place) || '—'}${d.delta != null ? ` · ${Number(d.delta) > 0 ? '+' : ''}${s(d.delta)}` : ''}`, link }
     case 'tournament_reminder':
       return { title: `${title}`, text: `${s(d.hours)} ${t.common.hoursShort} · ${s(d.startsAtText)}`, link }
+    case 'match_table_changed':
+      return { title: `${t.notif.types.match_table_changed}: ${t.rating2.table.toLowerCase()} ${s(d.table)}`, text: title, link }
+    case 'registration_confirmed':
+      return { title: `${t.notif.types.registration_confirmed}: ${title}`, text: s(d.address), link }
+    case 'telegram_linked':
+    case 'telegram_moved':
+      return { title: t.notif.types[n.type] ?? n.type, text: [d.username && `@${s(d.username)}`, s(d.to)].filter(Boolean).join(' → '), link: '/notifications' }
     case 'dispute_update':
       return { title: t.notif.types.dispute_update ?? '', text: s(d.resolution) || s(d.status), link: null }
     default:

@@ -14,7 +14,7 @@ import { ask as dialog } from '../../ui/dialogs.tsx'
 
 const label = (m: ConductMatch) => (m.label?.startsWith('group:') ? `${t.t.group} ${m.label.slice(6)}` : (m.label ?? ''))
 
-function CallState({ m }: { m: ConductMatch }) {
+function CallState({ m, telegram }: { m: ConductMatch; telegram?: ConductState['telegram'] }) {
   if (m.status !== 'called') return null
   return (
     <span className="small">
@@ -25,6 +25,7 @@ function CallState({ m }: { m: ConductMatch }) {
           <span key={s} className={`chip ${cls}`} title={r?.reason}>
             {m[s]?.name.split(' ')[0]}: {r ? t.conduct.call_answer[r.answer] : t.conduct.noAnswer}
             {r?.reason ? ` · ${r.reason}` : ''}
+            {m[s] && telegram && telegram[m[s]!.playerId] !== 'sent' && <span title={t.conduct.tgNotDeliveredHint}> · {t.conduct.tgNotDelivered}</span>}
           </span>
         )
       })}
@@ -260,7 +261,7 @@ export function ConductPage() {
                               <br />
                               {x.match.away?.name}
                             </p>
-                            <CallState m={x.match} />
+                            <CallState m={x.match} telegram={d.telegram} />
                             {actions(x.match)}
                           </>
                         )}

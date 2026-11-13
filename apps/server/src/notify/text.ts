@@ -7,7 +7,7 @@ export const LANGS: readonly Lang[] = ['ru', 'kk', 'en']
 export const DEFAULT_LANG: Lang = 'kk'
 export const toLang = (v: unknown, fallback: Lang = DEFAULT_LANG): Lang => (LANGS.includes(v as Lang) ? (v as Lang) : fallback)
 
-export type Rendered = { title: string; body: string; url: string; open: string }
+export type Rendered = { title: string; body: string; url: string; open: string; bodyHtml?: string }
 
 const s = (v: unknown) => (v == null ? '' : String(v))
 const lines = (...xs: unknown[]) => xs.map(s).filter(Boolean).join('\n')
@@ -46,6 +46,16 @@ type Phrases = {
   leagueReminder: (d: D) => Msg
   lineupOverdue: (d: D) => Msg
   scoreConfirm: (d: D) => Msg
+  round: (r: string) => string
+  group: (code: unknown, tour: unknown) => string
+  stage: string
+  answer: (a: unknown) => string
+  next: Msg
+  tableChanged: (d: D) => string
+  callCancelled: Msg
+  registered: (d: D) => Msg
+  tgLinked: (d: D) => Msg
+  tgMoved: (d: D) => Msg
 }
 
 const time = (v: unknown) => new Date(s(v)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' })
@@ -60,13 +70,17 @@ const formula = (d: D, best: string, worst: string) =>
       : `${worst} ${s(d.worstLoss)} − 100 = ${s(d.rating)}`
 const when = (v: unknown) => new Date(s(v)).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' })
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1)
+const rated = (d: D, word: string) => (d.opponentRating != null ? ` (${word} ${s(d.opponentRating)})` : '')
+const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const ordinal = (r: string, final: string, third: string, places: string, part: (n: string) => string) =>
+  r === 'final' ? final : r === 'third_place' ? third : r === 'places' ? places : r.startsWith('1/') ? part(r) : r
 
 const P: Record<Lang, Phrases> = {
   ru: {
     open: 'Открыть на сайте',
     call: (d) => ({
       title: `Вызов на матч${d.table ? ` · стол ${s(d.table)}` : ''}`,
-      body: lines(d.opponent && `Соперник: ${s(d.opponent)}`, d.table && `Стол: ${s(d.table)}`, d.respondBy && `Подойдите до ${time(d.respondBy)}`),
+      body: lines(d.table && `Стол: ${s(d.table)}`, d.opponent && `Соперник: ${s(d.opponent)}${rated(d, 'рейтинг')}`, d.respondBy ? `Подойдите до ${time(d.respondBy)}` : d.minutes && `Подойдите к столу в течение ${s(d.minutes)} мин.`),
     }),
     matchNo: (n) => `Матч №${s(n)}`,
     waitlist: (d) => ({ title: 'Освободилось место', body: `Подтвердите участие в течение ${s(d.minutes || 30)} мин.` }),
@@ -95,13 +109,23 @@ const P: Record<Lang, Phrases> = {
       d.event === 'proposed' ? `Соперник предлагает время матча: ${when(d.startsAt)}` : d.event === 'confirmed' ? `Матч подтверждён, стол ${s(d.table)} забронирован` : 'Соперник внёс счёт матча — подтвердите',
     leagueReminder: (d) => ({ title: 'Напоминание лиги', body: d.fixtureId ? 'Завтра дедлайн матча лиги — договоритесь о времени' : `${s(d.title)}: скоро тур` }),
     lineupOverdue: (d) => ({ title: 'Расстановка не подана', body: `${s(d.title)}: расстановка не подана вовремя, решает организатор` }),
+    round: (r) => ordinal(r, 'финал', 'матч за 3-е место', 'матч за места', (x) => `${x} финала`),
+    group: (c, tour) => `группа ${s(c)}${tour ? `, ${s(tour)}-й тур` : ''}`,
+    stage: 'Этап',
+    answer: (a) => `Ваш ответ: ${a === 'going' ? 'Иду' : a === 'cannot' ? 'Не могу' : 'доставлено'}`,
+    next: { title: 'Вы следующий', body: 'Ваш матч следующий в очереди, разомнитесь.' },
+    tableChanged: (d) => `Стол изменён: теперь ${s(d.table)}`,
+    callCancelled: { title: 'Вызов отменён', body: 'Организатор отменил вызов. Ждите нового вызова.' },
+    registered: (d) => ({ title: 'Вы записаны на турнир', body: lines(d.startsAt && `Начало: ${when(d.startsAt)}`, d.address && `Адрес: ${s(d.address)}`) }),
+    tgLinked: (d) => ({ title: 'Подключён новый Telegram', body: `К вашему профилю привязан аккаунт${d.username ? ` @${s(d.username)}` : ''}. Если это не вы — отключите его в настройках уведомлений.` }),
+    tgMoved: (d) => ({ title: 'Telegram отвязан от профиля', body: `Аккаунт${d.username ? ` @${s(d.username)}` : ''} теперь привязан к профилю ${s(d.to)}.` }),
     scoreConfirm: (d) => ({ title: 'Подтвердите счёт', body: `Соперник внёс счёт матча${sets(d) ? ` ${sets(d)}` : ''} — подтвердите или оспорьте` }),
   },
   kk: {
     open: 'Сайтта ашу',
     call: (d) => ({
       title: `Матчқа шақыру${d.table ? ` · ${s(d.table)}-үстел` : ''}`,
-      body: lines(d.opponent && `Қарсылас: ${s(d.opponent)}`, d.table && `Үстел: ${s(d.table)}`, d.respondBy && `${time(d.respondBy)} дейін келіңіз`),
+      body: lines(d.table && `Үстел: ${s(d.table)}`, d.opponent && `Қарсылас: ${s(d.opponent)}${rated(d, 'рейтинг')}`, d.respondBy ? `${time(d.respondBy)} дейін келіңіз` : d.minutes && `Үстелге ${s(d.minutes)} мин ішінде келіңіз.`),
     }),
     matchNo: (n) => `№${s(n)} матч`,
     waitlist: (d) => ({ title: 'Орын босады', body: `Қатысуыңызды ${s(d.minutes || 30)} мин ішінде растаңыз.` }),
@@ -130,13 +154,23 @@ const P: Record<Lang, Phrases> = {
       d.event === 'proposed' ? `Қарсылас матч уақытын ұсынады: ${when(d.startsAt)}` : d.event === 'confirmed' ? `Матч расталды, ${s(d.table)}-үстел брондалды` : 'Қарсылас матч есебін енгізді — растаңыз',
     leagueReminder: (d) => ({ title: 'Лига туралы еске салу', body: d.fixtureId ? 'Ертең лига матчының соңғы мерзімі — уақытты келісіңіз' : `${s(d.title)}: тур жақында` }),
     lineupOverdue: (d) => ({ title: 'Құрам берілмеді', body: `${s(d.title)}: құрам уақытында берілмеді, шешімді ұйымдастырушы қабылдайды` }),
+    round: (r) => ordinal(r, 'финал', '3-орын үшін матч', 'орындар үшін матч', (x) => `${x} финал`),
+    group: (c, tour) => `${s(c)} тобы${tour ? `, ${s(tour)}-тур` : ''}`,
+    stage: 'Кезең',
+    answer: (a) => `Сіздің жауабыңыз: ${a === 'going' ? 'Барамын' : a === 'cannot' ? 'Бара алмаймын' : 'жеткізілді'}`,
+    next: { title: 'Келесі сіз', body: 'Сіздің матчыңыз кезекте келесі, дайындалыңыз.' },
+    tableChanged: (d) => `Үстел өзгерді: енді ${s(d.table)}`,
+    callCancelled: { title: 'Шақыру тоқтатылды', body: 'Ұйымдастырушы шақыруды тоқтатты. Жаңа шақыруды күтіңіз.' },
+    registered: (d) => ({ title: 'Сіз турнирге жазылдыңыз', body: lines(d.startsAt && `Басталуы: ${when(d.startsAt)}`, d.address && `Мекенжай: ${s(d.address)}`) }),
+    tgLinked: (d) => ({ title: 'Жаңа Telegram қосылды', body: `Профиліңізге${d.username ? ` @${s(d.username)}` : ''} аккаунты байланды. Бұл сіз болмасаңыз — хабарлама баптауларында өшіріңіз.` }),
+    tgMoved: (d) => ({ title: 'Telegram профильден ажыратылды', body: `${d.username ? `@${s(d.username)} ` : ''}аккаунты енді ${s(d.to)} профиліне байланған.` }),
     scoreConfirm: (d) => ({ title: 'Есепті растаңыз', body: `Қарсылас матч есебін енгізді${sets(d) ? ` ${sets(d)}` : ''} — растаңыз немесе дауласыңыз` }),
   },
   en: {
     open: 'Open on the site',
     call: (d) => ({
       title: `Match call${d.table ? ` · table ${s(d.table)}` : ''}`,
-      body: lines(d.opponent && `Opponent: ${s(d.opponent)}`, d.table && `Table: ${s(d.table)}`, d.respondBy && `Please come by ${time(d.respondBy)}`),
+      body: lines(d.table && `Table: ${s(d.table)}`, d.opponent && `Opponent: ${s(d.opponent)}${rated(d, 'rating')}`, d.respondBy ? `Please come by ${time(d.respondBy)}` : d.minutes && `Please come to the table within ${s(d.minutes)} min.`),
     }),
     matchNo: (n) => `Match #${s(n)}`,
     waitlist: (d) => ({ title: 'A spot opened up', body: `Confirm your entry within ${s(d.minutes || 30)} min.` }),
@@ -165,6 +199,16 @@ const P: Record<Lang, Phrases> = {
       d.event === 'proposed' ? `Your opponent proposes a match time: ${when(d.startsAt)}` : d.event === 'confirmed' ? `Match confirmed, table ${s(d.table)} is booked` : 'Your opponent entered the match score — please confirm',
     leagueReminder: (d) => ({ title: 'League reminder', body: d.fixtureId ? 'The league match deadline is tomorrow — agree on a time' : `${s(d.title)}: a round is coming up` }),
     lineupOverdue: (d) => ({ title: 'Lineup not submitted', body: `${s(d.title)}: the lineup was not submitted in time, the organizer decides` }),
+    round: (r) => ordinal(r, 'final', 'third-place match', 'placement match', (x) => `${x} final`),
+    group: (c, tour) => `group ${s(c)}${tour ? `, round ${s(tour)}` : ''}`,
+    stage: 'Stage',
+    answer: (a) => `Your answer: ${a === 'going' ? 'Coming' : a === 'cannot' ? 'Cannot come' : 'delivered'}`,
+    next: { title: 'You are next', body: 'Your match is next in the queue, warm up.' },
+    tableChanged: (d) => `Table changed: now ${s(d.table)}`,
+    callCancelled: { title: 'Call cancelled', body: 'The organizer cancelled the call. Wait for a new call.' },
+    registered: (d) => ({ title: 'You are registered', body: lines(d.startsAt && `Starts: ${when(d.startsAt)}`, d.address && `Address: ${s(d.address)}`) }),
+    tgLinked: (d) => ({ title: 'New Telegram linked', body: `The account${d.username ? ` @${s(d.username)}` : ''} was linked to your profile. If it was not you, remove it in notification settings.` }),
+    tgMoved: (d) => ({ title: 'Telegram unlinked from your profile', body: `The account${d.username ? ` @${s(d.username)}` : ''} is now linked to the profile ${s(d.to)}.` }),
     scoreConfirm: (d) => ({ title: 'Confirm the score', body: `Your opponent entered the match score${sets(d)? ` ${sets(d)}` : ''} — confirm or dispute it` }),
   },
 }
@@ -185,14 +229,34 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
   const lUrl = d.leagueSlug ? `${site}/leagues/${s(d.leagueSlug)}` : me
   const title = s(d.tournamentTitle || d.title)
   const bUrl = s(d.cancelUrl) || me
+  const myT = d.slug ? `${site}/me/t/${s(d.slug)}` : tUrl
   const out = (m: Msg, url: string): Rendered => ({ ...m, url, open: p.open })
   // Server-composed `text` is Russian: shown as extra detail in ru only.
   const ruText = lang === 'ru' ? s(d.text) : ''
   switch (type) {
     case 'match_call': {
       const m = p.call(d)
-      return out({ title: m.title, body: lines(title, d.matchNumber && p.matchNo(d.matchNumber), m.body) }, d.slug ? `${site}/me/t/${s(d.slug)}` : tUrl)
+      const part = d.group ? p.group(d.group, d.tour) : d.round ? p.round(s(d.round)) : ''
+      const stage = cap([s(d.stage), part].filter(Boolean).join(', '))
+      const body = lines(m.body, stage && `${p.stage}: ${stage}`, title, d.matchNumber && p.matchNo(d.matchNumber), d.answer && p.answer(d.answer))
+      const opp = s(d.opponent)
+      const bodyHtml = d.opponentId && opp ? esc(body).replace(esc(opp), `<a href="${site}/players/${s(d.opponentId)}">${esc(opp)}</a>`) : undefined
+      return { ...out({ title: m.title, body }, myT), bodyHtml }
     }
+    case 'match_next':
+      return out({ title: p.next.title, body: lines(p.next.body, title, d.matchNumber && p.matchNo(d.matchNumber)) }, myT)
+    case 'match_table_changed':
+      return out({ title: p.tableChanged(d), body: lines(title, d.matchNumber && p.matchNo(d.matchNumber)) }, myT)
+    case 'match_call_cancelled':
+      return out({ title: p.callCancelled.title, body: lines(p.callCancelled.body, title, d.matchNumber && p.matchNo(d.matchNumber)) }, myT)
+    case 'registration_confirmed': {
+      const m = p.registered(d)
+      return out({ title: m.title, body: lines(title, m.body) }, tUrl)
+    }
+    case 'telegram_linked':
+      return out(p.tgLinked(d), `${site}/notifications`)
+    case 'telegram_moved':
+      return out(p.tgMoved(d), `${site}/notifications`)
     case 'waitlist_invited': {
       const m = p.waitlist(d)
       return out({ title: m.title, body: lines(title, m.body) }, tUrl)

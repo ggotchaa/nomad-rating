@@ -778,10 +778,25 @@ tournamentsRouter.post(
     if (!user.playerId) throw forbidden('player.profile_required')
     const id = intParam(req, 'id')
     const result = await db.transaction().execute((trx) => registerPlayer(trx, id, user.playerId!, user.id))
+    void notifyRegistered(result).catch(() => {})
     bus.publish(`tournament:${id}`, 'tournament.entries_changed', { tournamentId: id })
     res.status(201).json(result)
   }),
 )
+
+/** Registration confirmation with the date and the hall address (no receipt: payment is at the club). */
+async function notifyRegistered(r: RegisterResult) {
+  if (r.status !== 'paid' && r.status !== 'checked_in') return
+  const row = await db
+    .selectFrom('entries as e')
+    .innerJoin('players as p', 'p.id', 'e.player_id')
+    .innerJoin('tournaments as t', 't.id', 'e.tournament_id')
+    .leftJoin('halls as h', 'h.id', 't.hall_id')
+    .select(['p.user_id', 't.id', 't.slug', 't.title', 't.starts_at', 'h.address'])
+    .where('e.id', '=', r.entryId)
+    .executeTakeFirst()
+  if (row?.user_id) await notify({ userId: row.user_id, type: 'registration_confirmed', data: { tournamentId: row.id, slug: row.slug, title: row.title, startsAt: row.starts_at.toISOString(), address: row.address } })
+}
 
 /** Club adds a player manually (R-6); commission still accrues. */
 tournamentsRouter.post(
@@ -800,6 +815,7 @@ tournamentsRouter.post(
       }
       return r
     })
+    void notifyRegistered(result).catch(() => {})
     bus.publish(`tournament:${id}`, 'tournament.entries_changed', { tournamentId: id })
     res.status(201).json(result)
   }),

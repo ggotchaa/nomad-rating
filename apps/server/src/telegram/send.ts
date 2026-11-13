@@ -25,7 +25,7 @@ export async function chatsOfUser(userId: number) {
 const isBlocked = (err: unknown) => err instanceof GrammyError && (err.error_code === 403 || /chat not found/i.test(err.description))
 
 /** `ref` groups messages that are edited instead of re-sent (e.g. `match:42`). Returns how many chats got it. */
-export async function sendTelegram(userId: number, renderFor: (lang: string | null) => Rendered, ref?: string): Promise<number> {
+export async function sendTelegram(userId: number, renderFor: (lang: string | null) => Rendered, ref?: string, opts: { editOnly?: boolean; close?: boolean } = {}): Promise<number> {
   const chats = await chatsOfUser(userId)
   let sent = 0
   let lastError: unknown = null
@@ -37,6 +37,7 @@ export async function sendTelegram(userId: number, renderFor: (lang: string | nu
       const previous = ref
         ? await db.selectFrom('telegram_messages').select('message_id').where('ref', '=', ref).where('chat_id', '=', c.chat_id).executeTakeFirst()
         : undefined
+      if (!previous && opts.editOnly) continue
       if (previous) {
         await telegramApi()
           .editMessageText(c.chat_id, previous.message_id, text, { parse_mode: 'HTML', reply_markup: keyboard })
@@ -56,5 +57,8 @@ export async function sendTelegram(userId: number, renderFor: (lang: string | nu
   if (!sent && lastError) throw lastError
   return sent
 }
+
+/** Edits existing messages of `ref` only (e.g. the call message after an answer on the site). */
+export const editTelegram = (userId: number, renderFor: (lang: string | null) => Rendered, ref: string) => sendTelegram(userId, renderFor, ref, { editOnly: true })
 
 export const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
