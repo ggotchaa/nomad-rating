@@ -12,6 +12,8 @@ import { badRequest, conflict, handler, notFound } from '../http/errors.ts'
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, saveFile } from '../storage/index.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { playerName } from './players.ts'
+import { notify } from '../notify/index.ts'
+import { moveBooking, moveOptions } from '../booking/resolve.ts'
 import { createClubPlayer, findDuplicates } from './club-players.ts'
 
 export const clubsRouter = Router()
@@ -147,6 +149,7 @@ clubsRouter.get(
       halls: await Promise.all(halls.map((h) => hallView(h.id))),
       upcomingTournaments: tournaments.filter((t) => t.starts_at >= now && t.status !== 'cancelled').reverse(),
       pastTournaments: tournaments.filter((t) => t.starts_at < now).slice(0, 10),
+      leagues: await db.selectFrom('leagues').select(['id', 'slug', 'name', 'format']).where('club_id', '=', club.id).orderBy('name').execute(),
     })
   }),
 )
@@ -271,9 +274,27 @@ hallsRouter.patch(
       .where('id', '=', hallId)
       .execute()
     await audit({ actorUserId: user.id, clubId, entity: 'hall', entityId: hallId, action: 'update', before: { address: before.address, openingHours: before.openingHours }, after: body })
+    if ((body.address !== undefined && body.address !== before.address) || (body.name !== undefined && body.name !== before.name)) await notifyVenueChange(hallId)
     res.json(await hallView(hallId))
   }),
 )
+
+/** Registered players of the hall's upcoming tournaments learn about the new address / hall name. */
+async function notifyVenueChange(hallId: number) {
+  const rows = await db
+    .selectFrom('entries as e')
+    .innerJoin('tournaments as t', 't.id', 'e.tournament_id')
+    .innerJoin('players as p', 'p.id', 'e.player_id')
+    .innerJoin('halls as h', 'h.id', 't.hall_id')
+    .select(['p.user_id', 't.id', 't.title', 't.slug', 'h.name', 'h.address'])
+    .where('t.hall_id', '=', hallId)
+    .where('t.status', 'in', ['published', 'registration_closed'])
+    .where('t.starts_at', '>', new Date())
+    .where('e.status', 'in', ['awaiting_payment', 'paid', 'checked_in'])
+    .where('p.user_id', 'is not', null)
+    .execute()
+  for (const r of rows) await notify({ userId: r.user_id!, type: 'tournament_venue_changed', data: { tournamentId: r.id, title: r.title, slug: r.slug, hall: r.name, address: r.address } })
+}
 
 const tablesSchema = z.object({
   tables: z
@@ -294,26 +315,31 @@ const tablesSchema = z.object({
     .max(200),
 })
 
-/** Replaces the table list of a hall. A table with future bookings or tournaments cannot be removed (C-6). */
+/**
+ * Replaces the table list of a hall. Removing a table or marking it broken while future bookings or tournaments
+ * use it is refused (C-6) unless `relocate` is set: bookings then move to a free table, tournaments get a spare one.
+ */
 hallsRouter.put(
   '/:id/tables',
   handler(async (req, res) => {
     const hallId = intParam(req, 'id')
     const clubId = await hallClub(hallId)
     const user = await requireClubRight(req, clubId, 'club', { hallId })
-    const { tables } = parseBody(tablesSchema, req)
+    const { tables, relocate } = parseBody(tablesSchema.extend({ relocate: z.boolean().default(false) }), req)
     await db.transaction().execute(async (trx) => {
-      const existing = await trx.selectFrom('hall_tables').select(['id', 'number']).where('hall_id', '=', hallId).execute()
+      const existing = await trx.selectFrom('hall_tables').select(['id', 'number', 'status']).where('hall_id', '=', hallId).execute()
       const keep = new Set(tables.filter((t) => t.id).map((t) => t.id))
       const removed = existing.filter((t) => !keep.has(t.id))
-      if (removed.length) {
-        const ids = removed.map((t) => t.id)
+      const broken = existing.filter((e) => e.status !== 'broken' && tables.some((t) => t.id === e.id && t.status === 'broken'))
+      const ids = [...removed, ...broken].map((t) => t.id)
+      if (ids.length) {
         const busy = await trx
           .selectFrom('bookings')
-          .select(['table_id', 'starts_at'])
+          .select(['id', 'table_id', 'starts_at'])
           .where('table_id', 'in', ids)
           .where('status', 'in', ['held', 'confirmed'])
           .where('ends_at', '>', new Date())
+          .orderBy('starts_at')
           .execute()
         const inTournaments = await trx
           .selectFrom('tournaments')
@@ -322,9 +348,27 @@ hallsRouter.put(
           .where('status', 'in', ['draft', ...ACTIVE_TOURNAMENT])
           .execute()
         const tournamentConflicts = inTournaments.filter((t) => t.table_ids.some((id) => ids.includes(id)))
-        if (busy.length || tournamentConflicts.length)
+        if ((busy.length || tournamentConflicts.length) && !relocate)
           throw conflict('hall.table_in_use', { bookings: busy, tournaments: tournamentConflicts.map((t) => ({ id: t.id, title: t.title })) })
-        await trx.deleteFrom('hall_tables').where('id', 'in', ids).execute()
+        for (const b of busy) {
+          const options = (await moveOptions(trx, b.id)).filter((o) => !ids.includes(o.tableId))
+          const pick = options.find((o) => new Date(o.start).getTime() === b.starts_at.getTime()) ?? options[0]
+          if (!pick) throw conflict('hall.no_free_table', { bookingId: b.id })
+          await moveBooking(trx, b.id, { tableId: pick.tableId, start: new Date(pick.start) }, user.id)
+        }
+        const spare = existing.filter((e) => e.status === 'active' && !ids.includes(e.id)).sort((x, y) => x.number - y.number)
+        for (const t of tournamentConflicts) {
+          const free = spare.filter((e) => !t.table_ids.includes(e.id))
+          const swap = new Map(t.table_ids.filter((id) => ids.includes(id)).map((id) => [id, free.shift()?.id ?? null]))
+          const next = t.table_ids.map((id) => (swap.has(id) ? swap.get(id) : id)).filter((id): id is number => id != null)
+          if (!next.length) throw conflict('hall.no_free_table', { tournamentId: t.id })
+          await trx.updateTable('tournaments').set({ table_ids: next }).where('id', '=', t.id).execute()
+          await trx.updateTable('table_blocks').set({ table_ids: next }).where('tournament_id', '=', t.id).execute()
+          for (const [from, to] of swap)
+            await trx.updateTable('matches').set({ table_id: to }).where('tournament_id', '=', t.id).where('table_id', '=', from).where('status', 'in', ['waiting', 'scheduled', 'called']).execute()
+          await audit({ actorUserId: user.id, clubId, entity: 'tournament', entityId: t.id, action: 'tables_moved', before: t.table_ids, after: next }, trx)
+        }
+        if (removed.length) await trx.deleteFrom('hall_tables').where('id', 'in', removed.map((t) => t.id)).execute()
       }
       for (const t of tables) {
         const values = {

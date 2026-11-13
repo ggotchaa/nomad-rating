@@ -16,11 +16,12 @@ const viewAsId = () => {
   }
 }
 
-type Need = ClubRight | 'organizer'
+type Need = ClubRight | 'organizer' | 'any'
 export type ClubCtx = { club: MyClub; can: (right: Need) => boolean }
 export const useClub = () => useOutletContext<ClubCtx>()
 
 const SECTIONS: { to: string; right: Need; label: string }[] = [
+  { to: 'today', right: 'any', label: t.m.today },
   { to: 'club', right: 'organizer', label: t.clubreg.clubSection },
   { to: 'tournaments', right: 'tournaments', label: t.m.tournaments },
   { to: 'leagues', right: 'tournaments', label: t.leagues.title },
@@ -49,7 +50,7 @@ export function ManageLayout() {
         {(list) => {
           const club = list.find((c) => c.id === clubId) ?? list[0]
           if (!club) return <p className="note">{t.m.noClub}</p>
-          const can = (right: Need) => club.role === 'organizer' || (right !== 'organizer' && club.rights.includes(right))
+          const can = (right: Need) => right === 'any' || club.role === 'organizer' || (right !== 'organizer' && club.rights.includes(right))
           return (
             <>
               <header className="pagehead">

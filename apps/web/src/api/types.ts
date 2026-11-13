@@ -281,6 +281,7 @@ export type ClubDetail = {
   halls: Hall[]
   upcomingTournaments: ClubTournamentBrief[]
   pastTournaments: ClubTournamentBrief[]
+  leagues: { id: number; slug: string; name: string }[]
 }
 
 export type Slot = { start: string; end: string; free: boolean; reason: 'booked' | 'blocked' | 'past' | null; price: number }

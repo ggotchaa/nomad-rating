@@ -14,9 +14,12 @@ export function activeProvider(): PaymentProvider {
   return providers.get('at_club') as PaymentProvider
 }
 
-export async function commissionRate(trx: Transaction<Database>, clubId: number): Promise<CommissionRate> {
+export async function commissionRate(trx: Transaction<Database>, clubId: number, purpose: 'tournament_entry' | 'booking' = 'tournament_entry'): Promise<CommissionRate> {
   const club = await trx.selectFrom('clubs').select('commission').where('id', '=', clubId).executeTakeFirstOrThrow()
-  if (club.commission) return club.commission
+  const c = club.commission
+  if (c && 'percent' in c) return c
+  const own = c?.[purpose === 'booking' ? 'booking' : 'tournament']
+  if (own) return own
   const setting = await trx.selectFrom('platform_settings').select('value').where('key', '=', 'commission').executeTakeFirst()
   return (setting?.value as CommissionRate | undefined) ?? DEFAULT_COMMISSION
 }
@@ -39,7 +42,7 @@ export type StartedPayment = { paymentId: number; confirmed: boolean; redirectUr
  */
 export async function startPayment(trx: Transaction<Database>, input: StartPaymentInput): Promise<StartedPayment> {
   const provider = activeProvider()
-  const rate = await commissionRate(trx, input.clubId)
+  const rate = await commissionRate(trx, input.clubId, input.purpose)
   const row = await trx
     .insertInto('payments')
     .values({

@@ -98,6 +98,10 @@ export interface PlayerRatingsTable {
   updated_at: DefaultTimestamp
 }
 
+type Rate = { percent: number; minimum: number | null }
+/** Per-club override; legacy rows hold a single rate for both. */
+export type ClubCommission = Rate | { tournament?: Rate | null; booking?: Rate | null }
+
 export interface ClubsTable {
   id: Id
   slug: string
@@ -113,7 +117,7 @@ export interface ClubsTable {
   contact_email: string | null
   contact_telegram: string | null
   requisites: JsonDefault<Record<string, string>>
-  commission: Json<{ percent: number; minimum: number | null } | null> | null
+  commission: Json<ClubCommission | null> | null
   hall_payment_enabled: Generated<boolean>
   tournament_defaults: JsonDefault<Record<string, unknown>>
   verified_at: Timestamp | null
@@ -461,6 +465,7 @@ export interface Database {
   platform_settings: PlatformSettingsTable
   auth_tokens: AuthTokensTable
   club_invitations: ClubInvitationsTable
+  club_documents: ClubDocumentsTable
   player_merge_requests: PlayerMergeRequestsTable
   rttf_profiles: RttfProfilesTable
   rttf_claims: RttfClaimsTable
@@ -505,6 +510,17 @@ export interface AuthTokensTable {
   token_hash: string
   expires_at: Timestamp
   used_at: Timestamp | null
+  created_at: DefaultTimestamp
+}
+
+export interface ClubDocumentsTable {
+  id: Id
+  club_id: number
+  name: string
+  url: string
+  mime: string
+  size: number
+  uploaded_by: number | null
   created_at: DefaultTimestamp
 }
 

@@ -29,6 +29,9 @@ export function AdminLayout() {
       <header className="pagehead">
         <span className="kicker">{t.admin.title}</span>
         <nav className="subnav">
+          <NavLink to="/admin" end>
+            {t.admin.dashboard}
+          </NavLink>
           {ADMIN_SECTIONS.map((s) => (
             <NavLink key={s.to} to={s.to}>
               {s.label}

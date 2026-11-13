@@ -192,7 +192,7 @@ ratingRouter.patch(
     const body = parseBody(z.object({ status: z.enum(['resolved', 'rejected']), resolution: z.string().trim().max(1000).default('') }), req)
     const d = await db.selectFrom('disputes').selectAll().where('id', '=', id).executeTakeFirst()
     if (!d) throw notFound('dispute.not_found')
-    if (user.platformRole !== 'admin' && !(d.club_id && (await canFixClub(user.id, d.club_id)))) throw forbidden('club.right_missing')
+    if (user.platformRole !== 'admin' && (d.entity.startsWith('club_') || !(d.club_id && (await canFixClub(user.id, d.club_id))))) throw forbidden('club.right_missing')
     if (d.status !== 'open') throw conflict('dispute.closed')
     await db.updateTable('disputes').set({ status: body.status, resolution: body.resolution, resolved_by: user.id, resolved_at: new Date() }).where('id', '=', id).execute()
     await audit({ actorUserId: user.id, clubId: d.club_id, entity: 'dispute', entityId: id, action: body.status, before: { status: d.status }, after: body })

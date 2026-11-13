@@ -40,7 +40,9 @@ import { ClubSettings } from './features/manage/ClubSettings.tsx'
 import { Helpers, ManageAudit } from './features/manage/Helpers.tsx'
 import { ImportPlayers } from './features/manage/ImportPlayers.tsx'
 import { Finance } from './features/manage/Finance.tsx'
-import { AdminIndex, AdminLayout } from './features/admin/AdminLayout.tsx'
+import { ClubToday } from './features/manage/ClubDesk.tsx'
+import { AdminLayout } from './features/admin/AdminLayout.tsx'
+import { AdminDashboard } from './features/admin/AdminDashboard.tsx'
 import { AdminClubs, AdminMerges, AdminRttf } from './features/admin/AdminQueues.tsx'
 import { AdminAudit, AdminDisputes, AdminPlayers, AdminSettings, AdminViewAs } from './features/admin/AdminTools.tsx'
 import { CancelBooking } from './features/booking/CancelBooking.tsx'
@@ -100,7 +102,7 @@ const router = createBrowserRouter([
         path: 'admin',
         element: <AdminLayout />,
         children: [
-          { index: true, element: <AdminIndex /> },
+          { index: true, element: <AdminDashboard /> },
           { path: 'clubs', element: <AdminClubs /> },
           { path: 'merges', element: <AdminMerges /> },
           { path: 'rttf', element: <AdminRttf /> },
@@ -116,6 +118,7 @@ const router = createBrowserRouter([
         element: <ManageLayout />,
         children: [
           { index: true, element: <ManageIndex /> },
+          { path: 'today', element: <ClubToday /> },
           { path: 'tournaments', element: <Guard right="tournaments"><ManageTournaments /></Guard> },
           { path: 'tournaments/new', element: <Guard right="tournaments"><NewTournament /></Guard> },
           { path: 'tournaments/:id', element: <Guard right="tournaments"><ManageTournamentPage /></Guard> },

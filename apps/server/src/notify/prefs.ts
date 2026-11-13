@@ -25,6 +25,7 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   league_reminder: { channels: ['push', 'telegram'] },
   lineup_overdue: { channels: ['push', 'telegram'] },
   score_confirm: { channels: ['push', 'telegram'] },
+  tournament_venue_changed: { channels: ['push', 'telegram', 'email'] },
 }
 
 const FALLBACK: NotifyChannel[] = ['push', 'telegram']
