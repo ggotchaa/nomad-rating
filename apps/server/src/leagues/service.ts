@@ -290,13 +290,14 @@ export async function applyTour(trx: Trx, tourId: number, userId: number | null)
   const divisions = await divisionsOf(trx, season.id)
   const placeOf = new Map(places.map((p) => [p.player_id, p.final_place!]))
   const missed = new Set<string>()
+  const playedCount = participants.filter((p) => placeOf.has(p.player_id)).length
   for (const p of participants) {
     const place = placeOf.get(p.player_id) ?? null
     const isMissed = place == null && p.status === 'active'
     if (isMissed) missed.add(String(p.id))
     await trx
       .insertInto('league_results')
-      .values({ tour_id: tourId, participant_id: p.id, division_id: p.division_id, place, points: place == null ? 0 : rules.pointsTable.length ? tourPoints(place, rules.pointsTable, rules.participationPoints) : Math.max(participants.length - place + 1, rules.participationPoints), missed: isMissed })
+      .values({ tour_id: tourId, participant_id: p.id, division_id: p.division_id, place, points: place == null ? 0 : rules.pointsTable.length ? tourPoints(place, rules.pointsTable, rules.participationPoints) : Math.max(playedCount - place + 1, rules.participationPoints), missed: isMissed })
       .execute()
     if (isMissed) await trx.updateTable('league_participants').set({ missed_tours: p.missed_tours + 1 }).where('id', '=', p.id).execute()
   }
