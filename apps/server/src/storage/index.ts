@@ -1,7 +1,7 @@
 // File storage behind one function so S3 can replace the local disk later.
 
 import { randomBytes } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { config } from '../config.ts'
 
@@ -17,4 +17,11 @@ export async function saveFile(folder: string, data: Buffer, ext: string): Promi
   await mkdir(path.join(UPLOADS_ROOT, folder), { recursive: true })
   await writeFile(path.join(UPLOADS_ROOT, folder, name), data)
   return `${UPLOADS_URL}/${folder}/${name}`
+}
+
+/** Deletes a file stored by saveFile; other URLs are ignored. */
+export async function removeFile(url: string): Promise<void> {
+  if (!url.startsWith(`${UPLOADS_URL}/`)) return
+  const file = path.resolve(UPLOADS_ROOT, url.slice(UPLOADS_URL.length + 1))
+  if (file.startsWith(UPLOADS_ROOT + path.sep)) await rm(file, { force: true })
 }
