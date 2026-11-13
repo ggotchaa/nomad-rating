@@ -4,10 +4,11 @@ import { Router } from 'express'
 import ExcelJS from 'exceljs'
 import { sql } from 'kysely'
 import { z } from 'zod'
-import { toTenge } from '@nomad/shared'
+import { assertTransition, paymentStatus, toTenge } from '@nomad/shared'
+import { audit } from '../audit.ts'
 import { requireClubRight } from '../auth/access.ts'
 import { db } from '../db/index.ts'
-import { handler, unprocessable } from '../http/errors.ts'
+import { conflict, handler, notFound, unprocessable } from '../http/errors.ts'
 import { intParam, isoDate, pageQuery, parseQuery } from '../http/validate.ts'
 
 export const financeRouter = Router()
@@ -101,7 +102,7 @@ financeRouter.get(
       base(clubId, p.start, p.end)
         // At-club payments stay «created» until collected; only cancelled / failed ones are left out.
         .where('pay.status', 'not in', ['declined', 'expired', 'refunded_full'])
-        .select(['pay.purpose', sql<string>`sum(pay.amount)`.as('gross'), sql<string>`sum(pay.commission)`.as('commission'), sql<string>`count(*)`.as('count')])
+        .select(['pay.purpose', sql<string>`sum(pay.amount)`.as('gross'), sql<string>`sum(pay.commission)`.as('commission'), sql<string>`count(*)`.as('count'), sql<string>`coalesce(sum(pay.amount) filter (where pay.status = 'succeeded'), 0)`.as('collected')])
         .groupBy('pay.purpose')
         .execute(),
       rows(clubId, p.start, p.end, q.source).limit(q.limit).offset(q.offset).execute(),
@@ -111,17 +112,36 @@ financeRouter.get(
       const g = groups.find((x) => x.purpose === source)
       const gross = Number(g?.gross ?? 0)
       const commission = Number(g?.commission ?? 0)
-      return { source, gross, commission, net: gross - commission, count: Number(g?.count ?? 0) }
+      return { source, gross, commission, net: gross - commission, count: Number(g?.count ?? 0), collected: Number(g?.collected ?? 0) }
     })
-    const sum = (k: 'gross' | 'commission' | 'net' | 'count') => bySource.reduce((s, x) => s + x[k], 0)
+    const sum = (k: 'gross' | 'commission' | 'net' | 'count' | 'collected') => bySource.reduce((s, x) => s + x[k], 0)
     res.json({
       from: p.from,
       to: p.to,
       bySource,
-      totals: { gross: sum('gross'), commission: sum('commission'), net: sum('net'), count: sum('count') },
+      totals: { gross: sum('gross'), commission: sum('commission'), net: sum('net'), count: sum('count'), collected: sum('collected') },
       rows: list.map(mapRow),
       total: Number(total.n),
     })
+  }),
+)
+
+/** Marks an at-club payment as collected; booking money needs the «Брони» right, entries and seasons «Турниры». */
+financeRouter.post(
+  '/:id/finance/payments/:paymentId/collect',
+  handler(async (req, res) => {
+    const clubId = intParam(req, 'id')
+    const paymentId = intParam(req, 'paymentId')
+    const pay = await db.selectFrom('payments').select(['id', 'purpose', 'status', 'method', 'amount']).where('id', '=', paymentId).where('club_id', '=', clubId).executeTakeFirst()
+    if (!pay) throw notFound('payment.not_found')
+    const user = await requireClubRight(req, clubId, pay.purpose === 'booking' ? 'bookings' : 'tournaments')
+    if (pay.method !== 'at_club') throw conflict('payment.not_at_club')
+    assertTransition('payment', paymentStatus, pay.status, 'succeeded')
+    await db.transaction().execute(async (trx) => {
+      await trx.updateTable('payments').set({ status: 'succeeded', updated_at: new Date() }).where('id', '=', pay.id).where('status', '=', pay.status).execute()
+      await audit({ actorUserId: user.id, clubId, entity: 'payment', entityId: pay.id, action: 'collected', before: { status: pay.status }, after: { status: 'succeeded', amount: pay.amount } }, trx)
+    })
+    res.json({ id: pay.id, status: 'succeeded' })
   }),
 )
 

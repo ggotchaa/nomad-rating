@@ -1,24 +1,37 @@
 import { useState } from 'react'
+import { api } from '../../api/client.ts'
 import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { formatDateTime, formatTenge, localDate } from '../../i18n/format.ts'
 
+import { ask } from '../../ui/dialogs.tsx'
 import { Async, Field } from '../../ui/kit.tsx'
 import { useClub } from './ManageLayout.tsx'
 
 type Source = 'tournament_entry' | 'booking' | 'season'
-type Sum = { gross: number; commission: number; net: number; count: number }
+type Sum = { gross: number; commission: number; net: number; count: number; collected: number }
 type FinanceRow = Sum & { id: number; date: string; source: Source; title: string | null; payer: string | null; amount: number; status: keyof typeof t.finance.statuses; method: keyof typeof t.finance.methods }
 type FinanceData = { from: string; to: string; bySource: (Sum & { source: Source })[]; totals: Sum; rows: FinanceRow[]; total: number }
 
 const monthStart = () => `${localDate().slice(0, 8)}01`
 
 export function Finance() {
-  const { club } = useClub()
+  const { club, can } = useClub()
+  const [error, setError] = useState('')
   const [filters, setFilters] = useState({ from: monthStart(), to: localDate(), source: '' })
   const [offset, setOffset] = useState(0)
   const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString()
   const state = useApi<FinanceData>(`/clubs/${club.id}/finance?limit=50&offset=${offset}&${qs}`)
+  const collect = async (r: FinanceRow) => {
+    if (!(await ask.confirm(`${t.finance.collectConfirm} ${formatTenge(r.amount)}`))) return
+    setError('')
+    try {
+      await api(`/clubs/${club.id}/finance/payments/${r.id}/collect`, { method: 'POST', json: {} })
+      state.reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
   const set = (patch: Partial<typeof filters>) => {
     setFilters({ ...filters, ...patch })
     setOffset(0)
@@ -27,6 +40,7 @@ export function Finance() {
     <section className="panel stack">
       <h2>{t.finance.title}</h2>
       <p className="note">{t.finance.atClub}</p>
+      {error && <p className="note note--error">{error}</p>}
       <div className="row">
         <Field label={t.finance.from}>
           <input type="date" value={filters.from} onChange={(e) => set({ from: e.target.value })} />
@@ -58,6 +72,7 @@ export function Finance() {
                     <th>{t.finance.source}</th>
                     <th>{t.finance.count}</th>
                     <th>{t.finance.gross}</th>
+                    <th>{t.finance.collected}</th>
                     <th>{t.finance.commission}</th>
                     <th>{t.finance.net}</th>
                   </tr>
@@ -68,6 +83,7 @@ export function Finance() {
                       <td>{label === t.finance.total ? <b>{label}</b> : label}</td>
                       <td className="mono">{s.count}</td>
                       <td className="mono">{formatTenge(s.gross)}</td>
+                      <td className="mono">{formatTenge(s.collected)}</td>
                       <td className="mono">{formatTenge(s.commission)}</td>
                       <td className="mono">{formatTenge(s.net)}</td>
                     </tr>
@@ -103,7 +119,16 @@ export function Finance() {
                         <td>{r.payer ?? '—'}</td>
                         <td className="mono">{formatTenge(r.amount)}</td>
                         <td className="mono">{formatTenge(r.commission)}</td>
-                        <td>{t.finance.statuses[r.status]}</td>
+                        <td>
+                          {t.finance.statuses[r.status]}
+                          {r.status === 'created' && r.method === 'at_club' && can(r.source === 'booking' ? 'bookings' : 'tournaments') && (
+                            <div>
+                              <button className="button button--sm" onClick={() => void collect(r)}>
+                                {t.finance.collect}
+                              </button>
+                            </div>
+                          )}
+                        </td>
                         <td>{t.finance.methods[r.method]}</td>
                       </tr>
                     ))}
