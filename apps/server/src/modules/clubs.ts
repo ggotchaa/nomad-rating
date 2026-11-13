@@ -1,6 +1,6 @@
 // Clubs, halls and tables (spec 4.13, C-1…C-10) and club-added players (R-8, R-9).
 
-import { Router } from 'express'
+import express, { Router } from 'express'
 import { z } from 'zod'
 import { DEFAULT_BOOKING_SETTINGS } from '@nomad/engine'
 import type { BookingSettings } from '@nomad/engine'
@@ -8,7 +8,8 @@ import { START_LEVELS } from '@nomad/shared'
 import { db, json } from '../db/index.ts'
 import { audit } from '../audit.ts'
 import { requireClubRight, requireUser } from '../auth/access.ts'
-import { conflict, handler, notFound } from '../http/errors.ts'
+import { badRequest, conflict, handler, notFound } from '../http/errors.ts'
+import { IMAGE_MAX_BYTES, IMAGE_TYPES, saveFile } from '../storage/index.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { playerName } from './players.ts'
 import { createClubPlayer, findDuplicates } from './club-players.ts'
@@ -156,8 +157,9 @@ clubsRouter.get(
 const clubUpdate = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   description: z.string().max(5000).optional(),
-  logoUrl: z.string().url().nullable().optional(),
-  coverUrl: z.string().url().nullable().optional(),
+  cityId: z.number().int().positive().optional(),
+  logoUrl: z.string().max(500).nullable().optional(),
+  coverUrl: z.string().max(500).nullable().optional(),
   telegramUrl: z.string().max(200).nullable().optional(),
   instagramUrl: z.string().max(200).nullable().optional(),
   contactEmail: z.email().nullable().optional(),
@@ -176,6 +178,7 @@ clubsRouter.patch(
     const values = {
       ...(body.name !== undefined && { name: body.name }),
       ...(body.description !== undefined && { description: body.description }),
+      ...(body.cityId !== undefined && { city_id: body.cityId }),
       ...(body.logoUrl !== undefined && { logo_url: body.logoUrl }),
       ...(body.coverUrl !== undefined && { cover_url: body.coverUrl }),
       ...(body.telegramUrl !== undefined && { telegram_url: body.telegramUrl }),
@@ -188,6 +191,22 @@ clubsRouter.patch(
     if (Object.keys(values).length) await db.updateTable('clubs').set(values).where('id', '=', clubId).execute()
     await audit({ actorUserId: user.id, clubId, entity: 'club', entityId: clubId, action: 'update', before: pick(before, Object.keys(body)), after: body })
     res.json({ ok: true })
+  }),
+)
+
+clubsRouter.post(
+  '/:id/media/:kind',
+  express.raw({ type: Object.keys(IMAGE_TYPES), limit: IMAGE_MAX_BYTES }),
+  handler(async (req, res) => {
+    const clubId = intParam(req, 'id')
+    const kind = z.enum(['logo', 'cover']).parse(req.params.kind)
+    const user = await requireClubRight(req, clubId, 'club')
+    const ext = IMAGE_TYPES[req.get('content-type')?.split(';')[0]?.trim() ?? '']
+    if (!ext || !Buffer.isBuffer(req.body) || req.body.length === 0) throw badRequest('upload.invalid_type')
+    const url = await saveFile('clubs', req.body, ext)
+    await db.updateTable('clubs').set(kind === 'logo' ? { logo_url: url } : { cover_url: url }).where('id', '=', clubId).execute()
+    await audit({ actorUserId: user.id, clubId, entity: 'club', entityId: clubId, action: kind, after: { url } })
+    res.json({ url })
   }),
 )
 
@@ -204,6 +223,7 @@ const hallUpdate = z.object({
   timezone: z.string().max(60).optional(),
   openingHours: hoursSchema.optional(),
   commentForPlayers: z.string().max(5000).optional(),
+  equipment: z.object({ tables: z.string().max(100), balls: z.string().max(100), floor: z.string().max(100) }).partial().optional(),
   plan: z
     .object({
       width: z.number().positive().max(200),
@@ -245,6 +265,7 @@ hallsRouter.patch(
         ...(body.timezone !== undefined && { timezone: body.timezone }),
         ...(body.openingHours !== undefined && { opening_hours: json(body.openingHours) }),
         ...(body.commentForPlayers !== undefined && { comment_for_players: body.commentForPlayers }),
+        ...(body.equipment !== undefined && { equipment: json(Object.fromEntries(Object.entries(body.equipment).filter(([, v]) => v?.trim()))) }),
         ...(body.plan !== undefined && { plan: json(body.plan) }),
       })
       .where('id', '=', hallId)

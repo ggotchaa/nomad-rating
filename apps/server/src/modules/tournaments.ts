@@ -473,7 +473,7 @@ export const createSchema = z.object({
   title: z.string().trim().min(3).max(150),
   startsAt: z.iso.datetime({ offset: true }),
   registrationClosesAt: z.iso.datetime({ offset: true }).optional(),
-  template: z.enum(FORMAT_TEMPLATES).default('gs1'),
+  template: z.enum(FORMAT_TEMPLATES).optional(),
   templateParams,
   format: formatSchema.optional(),
   seriesId: z.number().int().positive().nullable().optional(),
@@ -536,7 +536,7 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
   const tables = await trx.selectFrom('hall_tables').select('id').where('hall_id', '=', hall.id).where('status', '=', 'active').orderBy('number').execute()
   const tableIds = input.tableIds?.length ? input.tableIds.filter((id) => tables.some((t) => t.id === id)) : tables.map((t) => t.id)
   if (!tableIds.length) throw unprocessable('tournament.no_tables')
-  const format = input.format ? (input.format as TournamentFormat) : formatTemplate(input.template, input.maxParticipants, input.templateParams as TemplateParams)
+  const format = input.format ? (input.format as TournamentFormat) : formatTemplate(input.template ?? defaults.template ?? 'gs1', input.maxParticipants, input.templateParams as TemplateParams)
   if (input.settings.restMinutes != null) format.restMinutes = input.settings.restMinutes
   const errors = validateFormat(format)
   if (errors.length) throw unprocessable('format.invalid', errors)

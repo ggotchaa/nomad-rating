@@ -33,6 +33,7 @@ type Settings = { scoreEntry?: 'staff' | 'players'; checkinWindowMinutes?: numbe
 export type TournamentInput = {
   id?: number
   status?: string
+  template?: string
   title?: string
   startsAt?: string
   maxParticipants?: number
@@ -201,7 +202,7 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
   const formats = useApi<FormatOption[]>('/formats')
   const hall = useApi<Hall>(`/halls/${hallId}`)
   const series = useApi<{ id: number; name: string }[]>(`/clubs/${clubId}/series`)
-  const [template, setTemplate] = useState(editing ? 'custom' : 'gs1')
+  const [template, setTemplate] = useState(editing ? 'custom' : (initial?.template ?? 'gs1'))
   const [format, setFormat] = useState<Format | null>(initial?.format ?? null)
   const [max, setMax] = useState(initial?.maxParticipants ?? 16)
   const [tableIds, setTableIds] = useState<number[] | null>(initial?.tableIds ?? null)

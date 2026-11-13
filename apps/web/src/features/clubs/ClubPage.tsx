@@ -1,4 +1,7 @@
-import { Link, useParams } from 'react-router'
+import { useState } from 'react'
+import { Link, useLocation, useParams } from 'react-router'
+import { api } from '../../api/client.ts'
+import { useSession } from '../../app/auth.tsx'
 import { intlTag } from '../../i18n/locale.ts'
 import type { ClubDetail, OpeningHours } from '../../api/types.ts'
 import { useApi } from '../../app/hooks.ts'
@@ -21,6 +24,35 @@ export const HoursList = ({ hours }: { hours: OpeningHours }) => (
   </div>
 )
 
+function SubscribeButton({ clubId }: { clubId: number }) {
+  const { me } = useSession()
+  const location = useLocation()
+  const subs = useApi<{ subscriptions: { id: number; kind: string; clubId: number | null }[] }>(me.user ? '/notifications/settings' : null)
+  const [busy, setBusy] = useState(false)
+  if (!me.user)
+    return (
+      <Link className="button" to="/login" state={{ from: location.pathname }}>
+        {t.c.loginToSubscribe}
+      </Link>
+    )
+  if (!subs.data) return null
+  const sub = subs.data.subscriptions.find((x) => x.kind === 'club' && x.clubId === clubId)
+  const toggle = async () => {
+    setBusy(true)
+    try {
+      await (sub ? api(`/notifications/subscriptions/${sub.id}`, { method: 'DELETE' }) : api('/notifications/subscriptions', { method: 'POST', json: { kind: 'club', clubId } }))
+      subs.reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button className={`button${sub ? '' : ' button--primary'}`} disabled={busy} onClick={() => void toggle()} title={t.c.subscribeHint}>
+      {sub ? t.notif.unsubscribe : t.notif.subscribe}
+    </button>
+  )
+}
+
 export function ClubPage() {
   const { slug } = useParams()
   const state = useApi<ClubDetail>(`/clubs/${slug}`)
@@ -42,13 +74,14 @@ export function ClubPage() {
                   {c.city}
                   {hall ? ` · ${hall.address}` : ''}
                 </p>
-                {bookable && (
-                  <div className="row">
+                <div className="row">
+                  {bookable && (
                     <Link className="button button--primary" to={`/club/${c.slug}/booking`}>
                       {t.c.book}
                     </Link>
-                  </div>
-                )}
+                  )}
+                  <SubscribeButton clubId={c.id} />
+                </div>
               </header>
               <div className="grid grid--2">
                 <section className="panel">

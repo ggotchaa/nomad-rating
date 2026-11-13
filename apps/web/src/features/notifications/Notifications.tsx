@@ -133,7 +133,7 @@ export function Notifications() {
                 {s.subscriptions
                   .filter((x) => x.kind === 'club')
                   .map((x) => (
-                    <SubRow key={x.id} label={t.notif.subClub(x.club ?? '')} sub={x} onAdd={async () => undefined} onRemove={(id) => run(() => api(`/notifications/subscriptions/${id}`, { method: 'DELETE' }))} />
+                    <SubRow key={x.id} label={t.notif.subClub(x.club ?? '')} sub={x} onRemove={(id) => run(() => api(`/notifications/subscriptions/${id}`, { method: 'DELETE' }))} />
                   ))}
               </section>
             </div>
@@ -144,7 +144,7 @@ export function Notifications() {
   )
 }
 
-function SubRow({ label, sub, onAdd, onRemove }: { label: string; sub?: { id: number }; onAdd: () => Promise<unknown>; onRemove: (id: number) => Promise<unknown> }) {
+function SubRow({ label, sub, onAdd, onRemove }: { label: string; sub?: { id: number }; onAdd?: () => Promise<unknown>; onRemove: (id: number) => Promise<unknown> }) {
   return (
     <div className="row row--between">
       <span>{label}</span>
@@ -153,7 +153,7 @@ function SubRow({ label, sub, onAdd, onRemove }: { label: string; sub?: { id: nu
           {t.notif.unsubscribe}
         </button>
       ) : (
-        <button className="button button--sm button--primary" onClick={() => void onAdd()}>
+        onAdd && <button className="button button--sm button--primary" onClick={() => void onAdd()}>
           {t.notif.subscribe}
         </button>
       )}
