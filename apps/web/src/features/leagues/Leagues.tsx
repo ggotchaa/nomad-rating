@@ -18,7 +18,7 @@ export type SeasonView = {
   startsOn: string
   endsOn: string
   format: string
-  rules: { bestTours: number | null; boundaries: { promote: number; relegate: number }[] }
+  rules: { bestTours: number | null; boundaries: { promote: number; relegate: number }[]; pointsTable?: number[]; participationPoints?: number; toursPlanned?: number; missedRule?: 'relegate' | 'last' | 'stay'; minDivisionSize?: number; transferWindow?: { from: string; to: string } | null; confirmBy?: string | null }
   payment: { mode?: string; seasonPrice?: number; tourPrice?: number; topUp?: number }
   divisions: { id: number; name: string; level: number; rows: TableRow[] }[]
   table: TableRow[]

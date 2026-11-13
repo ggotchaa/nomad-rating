@@ -18,6 +18,7 @@ import {
   confirmParticipation,
   createLeague,
   createSeason,
+  updateSeason,
   createTour,
   distribute,
   generateFixtures,
@@ -55,6 +56,28 @@ const rulesSchema = z
 const paymentSchema = z
   .object({ mode: z.enum(['season', 'per_tour', 'combined']), seasonPrice: z.number().int().min(0).optional(), tourPrice: z.number().int().min(0).optional(), topUp: z.number().int().min(0).optional() })
   .default({ mode: 'season' })
+
+const seasonBase = z.object({
+  name: z.string().trim().min(2).max(100),
+  startsOn: isoDate,
+  endsOn: isoDate,
+  divisions: z.array(z.string().trim().min(1).max(60)).min(1).max(12),
+  rules: rulesSchema,
+  payment: paymentSchema,
+})
+
+type SeasonBody = { startsOn?: string; endsOn?: string; divisions?: string[]; rules?: { boundaries?: unknown[]; transferWindow?: { from: string; to: string } | null } }
+const seasonChecks = (s: SeasonBody, ctx: z.RefinementCtx) => {
+  if (s.startsOn && s.endsOn && s.endsOn < s.startsOn) ctx.addIssue({ code: 'custom', path: ['endsOn'], message: 'league.dates_invalid' })
+  if (s.divisions && s.rules?.boundaries && s.rules.boundaries.length !== s.divisions.length - 1) ctx.addIssue({ code: 'custom', path: ['rules', 'boundaries'], message: 'league.boundaries_mismatch' })
+  const w = s.rules?.transferWindow
+  if (w && w.to < w.from) ctx.addIssue({ code: 'custom', path: ['rules', 'transferWindow'], message: 'league.window_invalid' })
+}
+const seasonSchema = seasonBase.superRefine(seasonChecks)
+const seasonEditSchema = seasonBase
+  .extend({ rules: rulesSchema.unwrap().optional(), payment: paymentSchema.unwrap().partial().optional() })
+  .partial()
+  .superRefine(seasonChecks)
 
 const tx = <T>(fn: (trx: Transaction<Database>) => Promise<T>) => db.transaction().execute(fn)
 
@@ -135,9 +158,19 @@ leaguesRouter.post(
   handler(async (req, res) => {
     const id = intParam(req, 'id')
     const user = await staffOfLeague(req, id)
-    const body = parseBody(z.object({ name: z.string().trim().min(2).max(100), startsOn: isoDate, endsOn: isoDate, divisions: z.array(z.string().trim().min(1).max(60)).min(1).max(12), rules: rulesSchema, payment: paymentSchema }), req)
+    const body = parseBody(seasonSchema, req)
     const season = await tx((trx) => createSeason(trx, id, user.id, body))
     res.status(201).json(season)
+  }),
+)
+
+leaguesRouter.patch(
+  '/seasons/:seasonId',
+  handler(async (req, res) => {
+    const seasonId = intParam(req, 'seasonId')
+    const user = await staffOfSeason(req, seasonId)
+    const body = parseBody(seasonEditSchema, req)
+    res.json(await tx((trx) => updateSeason(trx, seasonId, user.id, body)))
   }),
 )
 
