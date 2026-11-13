@@ -19,6 +19,8 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   team_invitation: { channels: ['push', 'telegram', 'email'] },
   team_request: { channels: ['push', 'telegram'] },
   team_invitation_answer: { channels: ['push', 'telegram'] },
+  team_captain: { channels: ['push', 'telegram'] },
+  team_roster_short: { channels: ['push', 'telegram', 'email'] },
   league_move: { channels: ['push', 'telegram', 'email'] },
   league_confirm: { channels: ['push', 'telegram', 'email'] },
   league_fixture: { channels: ['push', 'telegram'] },

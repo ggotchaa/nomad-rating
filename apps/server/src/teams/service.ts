@@ -65,6 +65,8 @@ export async function invite(trx: Trx, teamId: number, playerId: number, actor: 
   const members = await activeMembers(trx, teamId)
   if (members.includes(playerId)) throw conflict('team.already_member')
   if (members.length >= team.max_size) throw conflict('team.full')
+  if (direction === 'invite') await assertRosterChangeAllowed(trx, teamId)
+  await assertFreeForTeam(trx, teamId, playerId)
   const open = await trx.selectFrom('team_invitations').select('id').where('team_id', '=', teamId).where('player_id', '=', playerId).where('status', '=', 'sent').executeTakeFirst()
   if (open) throw conflict('team.invitation_exists')
   const inv = await trx
@@ -108,6 +110,7 @@ export async function addMember(trx: Trx, teamId: number, playerId: number, acto
   const members = await activeMembers(trx, teamId)
   if (members.length >= team.max_size) throw conflict('team.full')
   await assertRosterChangeAllowed(trx, teamId)
+  await assertFreeForTeam(trx, teamId, playerId)
   await trx
     .insertInto('team_members')
     .values({ team_id: teamId, player_id: playerId })
@@ -154,6 +157,59 @@ export async function removeMember(trx: Trx, teamId: number, playerId: number, a
   await trx.updateTable('team_members').set({ status: 'left' }).where('team_id', '=', teamId).where('player_id', '=', playerId).execute()
   await syncTeamEntries(trx, teamId, actor.userId)
   await audit({ actorUserId: actor.userId, entity: 'team', entityId: teamId, action: 'member_removed', after: { playerId } }, trx)
+  const left = (await activeMembers(trx, teamId)).length
+  const to = left < team.min_size && (await openEntries(trx, teamId)).some((e) => e.t_status === 'published') ? await userOfPlayer(trx, team.captain_player_id) : null
+  if (to) await notify({ userId: to, type: 'team_roster_short', data: { teamId, title: team.name, count: left, min: team.min_size } }, trx)
+}
+
+/** Before registration closes the captain hands the role to another active member (the club may at any time). */
+export async function transferCaptain(trx: Trx, teamId: number, toPlayerId: number, actor: { userId: number; playerId: number | null }, byClub = false) {
+  const team = await loadTeam(trx, teamId)
+  if (!byClub && team.captain_player_id !== actor.playerId) throw forbidden('team.captain_only')
+  if (toPlayerId === team.captain_player_id) throw badRequest('team.already_captain')
+  if (!(await activeMembers(trx, teamId)).includes(toPlayerId)) throw notFound('team.member_not_found')
+  await assertRosterChangeAllowed(trx, teamId, byClub)
+  await trx.updateTable('teams').set({ captain_player_id: toPlayerId }).where('id', '=', teamId).execute()
+  await trx.updateTable('team_members').set({ role: 'member' }).where('team_id', '=', teamId).where('player_id', '=', team.captain_player_id).execute()
+  await trx.updateTable('team_members').set({ role: 'captain' }).where('team_id', '=', teamId).where('player_id', '=', toPlayerId).execute()
+  const ids = (await openEntries(trx, teamId)).map((e) => e.id)
+  if (ids.length) await trx.updateTable('entries').set({ player_id: toPlayerId, updated_at: new Date() }).where('id', 'in', ids).execute()
+  const to = await userOfPlayer(trx, toPlayerId)
+  if (to) await notify({ userId: to, type: 'team_captain', data: { teamId, title: team.name } }, trx)
+  await audit({ actorUserId: actor.userId, entity: 'team', entityId: teamId, action: 'captain_transferred', before: { captain: team.captain_player_id }, after: { captain: toPlayerId } }, trx)
+}
+
+/** D-8: the captain revokes the share link; a new token replaces it. */
+export async function reissueJoinLink(trx: Trx, teamId: number, actor: { userId: number; playerId: number | null }) {
+  const team = await loadTeam(trx, teamId)
+  if (team.captain_player_id !== actor.playerId) throw forbidden('team.captain_only')
+  const token = randomBytes(12).toString('base64url')
+  await trx.updateTable('teams').set({ join_token: token }).where('id', '=', teamId).execute()
+  await audit({ actorUserId: actor.userId, entity: 'team', entityId: teamId, action: 'link_reissued' }, trx)
+  return token
+}
+
+/** Other pairs/teams of the tournament that already hold one of these players. */
+async function otherTeamClash(trx: Trx, tournamentId: number, players: number[], teamId: number) {
+  const rows = await trx
+    .selectFrom('entries')
+    .select(['id', 'player_id', 'roster'])
+    .where('tournament_id', '=', tournamentId)
+    .where('status', 'in', [...ENTRY_ACTIVE])
+    .where('team_id', 'is not', null)
+    .where('team_id', '<>', teamId)
+    .execute()
+  return rows.filter((r) => (r.roster ?? [r.player_id]).some((p) => players.includes(p)))
+}
+
+/** A newcomer of a registered team: not in another team of its tournaments and no overlapping tournament (R-28). */
+async function assertFreeForTeam(trx: Trx, teamId: number, playerId: number) {
+  for (const e of await openEntries(trx, teamId)) {
+    if ((await otherTeamClash(trx, e.tournament_id, [playerId], teamId)).length) throw conflict('team.in_other_team')
+    const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', e.tournament_id).executeTakeFirstOrThrow()
+    const clash = await overlappingMembers(trx, t, [playerId], teamId)
+    if (clash.length) throw conflict('entry.overlapping_tournament', clash)
+  }
 }
 
 /** «Повторить состав»: a new team with the same captain; former members get fresh invitations. */
@@ -214,6 +270,7 @@ export async function registerTeam(trx: Trx, tournamentId: number, teamId: numbe
   const existing = await trx.selectFrom('entries').select('id').where('tournament_id', '=', t.id).where('team_id', '=', teamId).where('status', 'in', [...ENTRY_ACTIVE]).executeTakeFirst()
   if (existing) throw conflict('entry.already_registered')
   const roster = await activeMembers(trx, teamId)
+  if ((await otherTeamClash(trx, t.id, roster, teamId)).length) throw conflict('team.in_other_team')
   const row = await trx
     .insertInto('entries')
     .values({ tournament_id: t.id, player_id: team.captain_player_id, team_id: teamId, roster, status: 'assembling', registered_by: actor.userId })
@@ -237,6 +294,7 @@ export async function confirmTeamEntry(trx: Trx, entryId: number, actorUserId: n
   if (errors.length) throw unprocessable('entry.not_eligible', errors)
   const clash = await overlappingMembers(trx, t, roster, team.id)
   if (clash.length) throw conflict('entry.overlapping_tournament', clash)
+  if ((await otherTeamClash(trx, t.id, roster, team.id)).length) throw conflict('team.in_other_team')
   const taken = await trx.selectFrom('entries').select((eb) => eb.fn.countAll<number>().as('n')).where('tournament_id', '=', t.id).where('status', 'in', [...ENTRY_OCCUPYING]).executeTakeFirstOrThrow()
   if (Number(taken.n) >= t.max_participants) {
     const last = await trx.selectFrom('entries').select((eb) => eb.fn.max<number>('waitlist_position').as('p')).where('tournament_id', '=', t.id).executeTakeFirst()

@@ -5,6 +5,7 @@ import { Router } from 'express'
 import { sql } from 'kysely'
 import { z } from 'zod'
 import { START_LEVELS, normalizeText, searchName } from '@nomad/shared'
+import type { StartLevel } from '@nomad/shared'
 import { db, json } from '../db/index.ts'
 import type { Db, Transaction } from '../db/index.ts'
 import type { Database } from '../db/types.ts'
@@ -20,6 +21,12 @@ export const clubPlayersRouter = Router()
 export const claimRouter = Router()
 
 type Exec = Db | Transaction<Database>
+
+/** A self-chosen level; «разрядник» stays at the default level until an organiser confirms it. */
+export const selfLevel = (level: StartLevel) =>
+  level === 'ranked'
+    ? { start_level: START_LEVELS.amateur, requested_level: START_LEVELS.ranked, level_status: 'pending' as const }
+    : { start_level: START_LEVELS[level], requested_level: null, level_status: null }
 
 export const newClaimCode = () => String(randomInt(100000, 999999)) + String(randomInt(0, 1000)).padStart(3, '0')
 
@@ -108,6 +115,33 @@ clubPlayersRouter.post(
       return out
     })
     res.status(201).json({ created })
+  }),
+)
+
+/** R-12: the club corrects the start level while the player has no rating yet; also confirms or rejects «разрядник». */
+clubPlayersRouter.post(
+  '/:id/players/:playerId/start-level',
+  handler(async (req, res) => {
+    const clubId = intParam(req, 'id')
+    const user = await requireClubRight(req, clubId, 'players')
+    const body = parseBody(z.union([z.object({ startLevel: z.enum(Object.keys(START_LEVELS) as [StartLevel]) }), z.object({ decision: z.enum(['confirm', 'reject']) })]), req)
+    const playerId = intParam(req, 'playerId')
+    const result = await db.transaction().execute(async (trx) => {
+      const p = await trx.selectFrom('players').select(['id', 'start_level', 'requested_level', 'level_status']).where('id', '=', playerId).forUpdate().executeTakeFirst()
+      if (!p) throw notFound('player.not_found')
+      const rating = await trx.selectFrom('player_ratings').select('rating').where('player_id', '=', playerId).where('kind', '=', 'singles').executeTakeFirst()
+      if (rating?.rating != null) throw conflict('player.start_level_locked')
+      let set: { start_level: number; requested_level: null; level_status: 'confirmed' | 'rejected' | null }
+      if ('decision' in body) {
+        if (p.level_status !== 'pending' || p.requested_level == null) throw conflict('player.level_not_pending')
+        set = { start_level: body.decision === 'confirm' ? p.requested_level : p.start_level, requested_level: null, level_status: body.decision === 'confirm' ? 'confirmed' : 'rejected' }
+      } else set = { start_level: START_LEVELS[body.startLevel], requested_level: null, level_status: body.startLevel === 'ranked' ? 'confirmed' : null }
+      await trx.updateTable('players').set({ ...set, updated_at: new Date() }).where('id', '=', playerId).execute()
+      const action = 'decision' in body ? `level_${body.decision}` : 'start_level_corrected'
+      await audit({ actorUserId: user.id, clubId, entity: 'player', entityId: playerId, action, before: { startLevel: p.start_level, levelStatus: p.level_status }, after: set }, trx)
+      return { startLevel: set.start_level, levelStatus: set.level_status }
+    })
+    res.json(result)
   }),
 )
 
