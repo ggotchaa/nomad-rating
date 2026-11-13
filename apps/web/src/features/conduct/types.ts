@@ -32,6 +32,7 @@ export type QueueMatch = ConductMatch & { suggestedTableId: number | null; sugge
 export type ConductEntry = { entryId: number; playerId: number; name: string; status: string; seed: number | null; checkedInAt: string | null; members: { playerId: number; name: string; present: boolean }[] | null; rating: number; calibrating: boolean }
 
 export type ConductState = {
+  telegram?: Record<number, 'sent' | 'failed' | 'none'>
   tournament: {
     id: number
     slug: string

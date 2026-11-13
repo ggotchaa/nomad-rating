@@ -12,12 +12,16 @@ import { Structure } from './Structure.tsx'
 import { ShareBox } from './ShareBox.tsx'
 import { TeamTournamentBlock } from '../teams/Teams.tsx'
 import { ask } from '../../ui/dialogs.tsx'
+import type { NotifySettings } from '../notifications/model.ts'
 
 function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const { me } = useSession()
   const location = useLocation()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const notif = useApi<NotifySettings>(d.myEntry && me.player ? '/notifications/settings' : null)
+  const tg = notif.data?.telegram
+  const noBot = tg?.enabled && !tg.accounts.some((a) => !a.stopped && !a.blocked)
   const act = async (method: 'POST' | 'DELETE') => {
     if (method === 'DELETE' && !(await ask.confirm(t.t.cancelConfirm))) return
     setBusy(true)
@@ -45,6 +49,11 @@ function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
       {d.myEntry ? (
         <>
           <p className="note note--ok">{d.myEntry.status === 'waitlist' ? t.t.youWait(d.myEntry.waitlistPosition) : `${t.t.youIn} · ${t.t.payAtClub.toLowerCase()}`}</p>
+          {noBot && (
+            <p className="note small">
+              {t.tg.reminder} <Link to="/notifications">{t.tg.connect}</Link>
+            </p>
+          )}
           {(open || d.status === 'registration_closed') && (
             <button className="button button--danger button--block" disabled={busy} onClick={() => void act('DELETE')}>
               {t.t.cancelEntry}

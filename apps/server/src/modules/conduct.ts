@@ -12,6 +12,7 @@ import { requireClubRight, requireUser } from '../auth/access.ts'
 import { badRequest, conflict, forbidden, handler, notFound, unprocessable } from '../http/errors.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { notify } from '../notify/index.ts'
+import { notifyNext, refreshCallAnswer, sendCall, sendCallCancelled, sendTableChanged, telegramDelivery } from '../notify/match.ts'
 import { bus } from '../realtime/bus.ts'
 import { conductState } from '../tournaments/queue.ts'
 import { correctResult, finishTournament, recordResult, withdrawEntry } from '../tournaments/structure.ts'
@@ -51,6 +52,7 @@ conductRouter.get(
     res.json({
       tournament: { id: t.id, slug: t.slug, title: t.title, status: t.status, startsAt: t.starts_at, settings: t.settings, match: t.format.match, restMinutes: t.settings.restMinutes ?? t.format.restMinutes, minParticipants: t.min_participants },
       ...(await conductState(t)),
+      telegram: await telegramDelivery(t.id),
     })
   }),
 )
@@ -66,19 +68,6 @@ async function sides(m: Pick<Match, 'home_entry_id' | 'away_entry_id'>) {
   const home = rows.find((r) => r.id === m.home_entry_id)
   const away = rows.find((r) => r.id === m.away_entry_id)
   return { home, away }
-}
-
-async function sendCall(t: Tournament, m: Match, tableNumber: number, repeat = false) {
-  const { home, away } = await sides(m)
-  for (const [me, opponent, side] of [[home, away, 'home'], [away, home, 'away']] as const) {
-    if (!me?.user_id) continue
-    await notify({
-      userId: me.user_id,
-      type: 'match_call',
-      urgent: true,
-      data: { tournamentId: t.id, slug: t.slug, title: t.title, matchId: m.id, table: tableNumber, opponent: opponent ? playerName(opponent) : null, side, repeat },
-    })
-  }
 }
 
 /** Call to a table (M-3): the table is free, both players are not busy elsewhere. */
@@ -114,6 +103,7 @@ conductRouter.post(
     })
     const number = await db.selectFrom('hall_tables').select('number').where('id', '=', m.table_id!).executeTakeFirstOrThrow()
     await sendCall(t, m, number.number)
+    void notifyNext(t).catch(() => {})
     changed(t.id, m.id)
     res.json({ ok: true, tableId: m.table_id })
   }),
@@ -142,6 +132,28 @@ conductRouter.post(
     if (m.status !== 'called') throw conflict('match.not_called')
     await db.updateTable('matches').set({ status: 'scheduled', table_id: null, called_at: null, call_count: 0, call_responses: json({}), version: m.version + 1 }).where('id', '=', m.id).execute()
     await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'match', entityId: m.id, action: 'uncall' })
+    await sendCallCancelled(t, m)
+    changed(t.id, m.id)
+    res.json({ ok: true })
+  }),
+)
+
+/** Move a called match to another free table: the call message is edited and players get «Стол изменён». */
+conductRouter.post(
+  '/:id/matches/:matchId/table',
+  handler(async (req, res) => {
+    const { t, user } = await staffTournament(req)
+    const { tableId } = parseBody(z.object({ tableId: z.number().int().positive() }), req)
+    const m = await matchOf(t, intParam(req, 'matchId'))
+    if (m.status !== 'called' && m.status !== 'playing') throw conflict('match.not_called')
+    if (m.table_id === tableId) return void res.json({ ok: true })
+    if (!t.table_ids.includes(tableId)) throw badRequest('match.table_not_in_tournament')
+    const busy = await db.selectFrom('matches').select('id').where('tournament_id', '=', t.id).where('table_id', '=', tableId).where('status', 'in', ['called', 'playing']).executeTakeFirst()
+    if (busy) throw conflict('match.table_busy')
+    await db.updateTable('matches').set({ table_id: tableId, version: m.version + 1 }).where('id', '=', m.id).execute()
+    await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'match', entityId: m.id, action: 'move_table', before: { tableId: m.table_id }, after: { tableId } })
+    const table = await db.selectFrom('hall_tables').select('number').where('id', '=', tableId).executeTakeFirstOrThrow()
+    await sendTableChanged(t, m, table.number)
     changed(t.id, m.id)
     res.json({ ok: true })
   }),
@@ -240,6 +252,10 @@ conductRouter.post(
     // «delivered» never overwrites a real answer.
     if (!(answer === 'delivered' && responses[side])) responses[side] = { answer: answer as CallAnswer, reason, at: new Date().toISOString() }
     await db.updateTable('matches').set({ call_responses: json(responses) }).where('id', '=', m.id).execute()
+    if (answer !== 'delivered') {
+      const table = m.table_id ? await db.selectFrom('hall_tables').select('number').where('id', '=', m.table_id).executeTakeFirst() : undefined
+      void refreshCallAnswer(t, m, table?.number ?? null, side, responses).catch(() => {})
+    }
     changed(t.id, m.id)
     res.json({ ok: true })
   }),

@@ -9,7 +9,7 @@ import { logger } from '../logger.ts'
 import { bus } from '../realtime/bus.ts'
 import { sendTelegram, telegramEnabled } from '../telegram/send.ts'
 import { sendEmail } from './email.ts'
-import { resolveChannels } from './prefs.ts'
+import { NOTIFY_TYPES, resolveChannels } from './prefs.ts'
 import { pushEnabled, sendPush } from './push.ts'
 import { render, toLang } from './text.ts'
 
@@ -17,6 +17,8 @@ export type NotifyInput = { userId: number; type: string; data: Record<string, u
 export type DeliveryJob = { notificationId: number; userId: number; type: string; data: Record<string, unknown>; urgent: boolean; createdAt: number; channel: NotifyChannel }
 
 export const ATTEMPTS = 3
+/** Types that edit the Telegram call message in place instead of sending a new one. */
+const CALL_MESSAGE = new Set(['match_call', 'match_call_cancelled'])
 
 export async function notify(input: NotifyInput, executor: Db | Transaction<Database> = defaultDb): Promise<void> {
   const urgent = input.urgent ?? input.type === 'match_call'
@@ -33,7 +35,7 @@ export async function notify(input: NotifyInput, executor: Db | Transaction<Data
 
 async function dispatch(base: Omit<DeliveryJob, 'channel'>): Promise<void> {
   const prefs = await defaultDb.selectFrom('notification_prefs').select(['type', 'channel', 'enabled']).where('user_id', '=', base.userId).execute()
-  const active = base.type === 'match_call' ? await inActiveTournament(base.userId) : false
+  const active = NOTIFY_TYPES[base.type]?.mandatoryInTournament ? await inActiveTournament(base.userId) : false
   const channels = resolveChannels(base.type, prefs, { urgent: base.urgent, inActiveTournament: active })
   const q = queue(QUEUES.notify)
   for (const channel of channels) {
@@ -93,7 +95,8 @@ export async function deliver(job: DeliveryJob, attempt: number): Promise<void> 
       sent = await sendPush(job.userId, { ...message, urgent: job.urgent, tag: job.data.matchId ? `match:${String(job.data.matchId)}` : undefined })
     } else if (job.channel === 'telegram') {
       if (!telegramEnabled) return void (await log('skipped', 'telegram.disabled'))
-      sent = await sendTelegram(job.userId, (chatLang) => render(job.type, job.data, toLang(chatLang, lang)), job.data.matchId ? `match:${String(job.data.matchId)}` : undefined)
+      const ref = job.data.matchId && CALL_MESSAGE.has(job.type) ? `match:${String(job.data.matchId)}` : undefined
+      sent = await sendTelegram(job.userId, (chatLang) => render(job.type, job.data, toLang(chatLang, lang)), ref, { close: job.type === 'match_call_cancelled' })
     } else {
       if (user) sent = (await sendEmail({ to: user.email, subject: message.title, text: `${message.body}\n\n${message.url}` }), 1)
     }

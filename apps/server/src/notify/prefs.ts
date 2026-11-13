@@ -25,6 +25,12 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   league_reminder: { channels: ['push', 'telegram'] },
   lineup_overdue: { channels: ['push', 'telegram'] },
   score_confirm: { channels: ['push', 'telegram'] },
+  match_next: { channels: ['push', 'telegram'] },
+  match_table_changed: { channels: ['push', 'telegram'], mandatoryInTournament: true },
+  match_call_cancelled: { channels: ['push', 'telegram'] },
+  registration_confirmed: { channels: ['push', 'telegram', 'email'] },
+  telegram_linked: { channels: ['push', 'telegram', 'email'] },
+  telegram_moved: { channels: ['push', 'email'] },
 }
 
 const FALLBACK: NotifyChannel[] = ['push', 'telegram']
