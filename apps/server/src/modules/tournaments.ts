@@ -883,6 +883,7 @@ tournamentsRouter.post(
         resultType: z.enum(['normal', 'walkover', 'retired']).default('normal'),
         winner: z.enum(['home', 'away']).optional(),
         version: z.number().int().optional(),
+        note: z.string().trim().max(200).optional(),
       }),
       req,
     )

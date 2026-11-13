@@ -42,7 +42,14 @@ export type ConductState = {
     match: { winsNeeded: number; pointsToWin: number; gamePoints: 'none' | 'optional' | 'required' }
     restMinutes: number
     minParticipants: number
+    tableIds: number[]
+    underfillWarnedAt: string | null
+    underfillAckAt: string | null
   }
+  format: { match: ConductState['tournament']['match'] } & Record<string, unknown>
+  hallTables: { id: number; number: number }[]
+  structure: { players: number; groups: number[] | null; bracket: number | null } | null
+  busyElsewhere: Record<number, string>
   tables: { id: number; number: number; match: ConductMatch | null }[]
   queue: QueueMatch[]
   attention: ConductMatch[]
@@ -50,4 +57,4 @@ export type ConductState = {
   entries: ConductEntry[]
 }
 
-export type ScorePayload = { setsHome: number; setsAway: number; games: Game[]; resultType: 'normal' | 'retired' | 'walkover'; winner?: 'home' | 'away'; version?: number }
+export type ScorePayload = { setsHome: number; setsAway: number; games: Game[]; resultType: 'normal' | 'retired' | 'walkover'; winner?: 'home' | 'away'; version?: number; note?: string }

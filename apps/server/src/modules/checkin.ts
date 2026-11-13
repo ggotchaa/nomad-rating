@@ -10,7 +10,10 @@ import type { Transaction } from '../db/index.ts'
 import type { Database, Tournament } from '../db/types.ts'
 import { audit } from '../audit.ts'
 import { requireClubRight, requireUser } from '../auth/access.ts'
-import { conflict, forbidden, handler, notFound } from '../http/errors.ts'
+import { conflict, forbidden, handler, HttpError, notFound } from '../http/errors.ts'
+import { notify } from '../notify/index.ts'
+import { busyTournament, organiserUserIds } from '../tournaments/busy.ts'
+import { playerName } from './players.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { bus } from '../realtime/bus.ts'
 import { CHECKIN_STEP_MS, checkinToken, verifyCheckinToken } from '../tournaments/checkin-token.ts'
@@ -37,7 +40,11 @@ export type CheckinResult = { status: 'checked_in' | 'partial'; present: number;
  * the minimum roster is present (pair: both, team: teams.min_size). Without `playerId` the whole roster is marked.
  */
 async function checkIn(trx: Transaction<Database>, entryId: number, actorUserId: number, clubId: number, method: 'qr' | 'manual', playerId?: number): Promise<CheckinResult> {
-  const e = await trx.selectFrom('entries').select(['id', 'status', 'team_id', 'roster', 'checked_in_players']).where('id', '=', entryId).forUpdate().executeTakeFirstOrThrow()
+  const e = await trx.selectFrom('entries').select(['id', 'tournament_id', 'player_id', 'status', 'team_id', 'roster', 'checked_in_players']).where('id', '=', entryId).forUpdate().executeTakeFirstOrThrow()
+  if (e.status !== 'checked_in') {
+    const busy = await busyTournament(trx, e.tournament_id, playerId != null ? [playerId] : e.roster?.length ? e.roster : [e.player_id])
+    if (busy) throw conflict('checkin.busy_elsewhere', { tournament: busy.title })
+  }
   let present = 1
   let needed = 1
   if (e.team_id && e.roster?.length) {
@@ -102,13 +109,25 @@ checkinRouter.post(
         return void res.json({ status: 'needs_registration', full: Number(taken.n) >= t.max_participants, fee: t.fee })
       }
     }
-    const result = await db.transaction().execute(async (trx) => {
-      if (entry) return checkIn(trx, entry.id, user.id, t.club_id, 'qr', playerId)
-      const r = await registerPlayer(trx, t.id, playerId, user.id, { sameDay: true })
-      if (r.status === 'waitlist') return { status: 'waitlist' as const }
-      if (r.status !== 'paid') throw conflict('checkin.not_paid')
-      return checkIn(trx, r.entryId, user.id, t.club_id, 'qr')
-    })
+    const result = await db
+      .transaction()
+      .execute(async (trx) => {
+        if (entry) return checkIn(trx, entry.id, user.id, t.club_id, 'qr', playerId)
+        const r = await registerPlayer(trx, t.id, playerId, user.id, { sameDay: true })
+        if (r.status === 'waitlist') return { status: 'waitlist' as const }
+        if (r.status !== 'paid') throw conflict('checkin.not_paid')
+        return checkIn(trx, r.entryId, user.id, t.club_id, 'qr')
+      })
+      .catch(async (err: unknown) => {
+        // R-28: the organiser of this tournament sees that the player is still busy in another one.
+        if (err instanceof HttpError && err.code === 'checkin.busy_elsewhere') {
+          const p = await db.selectFrom('players').select(['first_name', 'last_name']).where('id', '=', playerId).executeTakeFirstOrThrow()
+          for (const userId of await organiserUserIds(t)) {
+            await notify({ userId, type: 'player_busy', data: { tournamentId: t.id, slug: t.slug, title: t.title, player: playerName(p), other: (err.details as { tournament: string }).tournament } })
+          }
+        }
+        throw err
+      })
     bus.publish(`tournament:${t.id}`, 'tournament.entries_changed', { tournamentId: t.id })
     res.json(result)
   }),

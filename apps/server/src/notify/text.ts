@@ -46,6 +46,8 @@ type Phrases = {
   leagueReminder: (d: D) => Msg
   lineupOverdue: (d: D) => Msg
   scoreConfirm: (d: D) => Msg
+  playerBusy: (d: D) => Msg
+  underfilled: (d: D) => Msg
 }
 
 const time = (v: unknown) => new Date(s(v)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' })
@@ -96,6 +98,8 @@ const P: Record<Lang, Phrases> = {
     leagueReminder: (d) => ({ title: 'Напоминание лиги', body: d.fixtureId ? 'Завтра дедлайн матча лиги — договоритесь о времени' : `${s(d.title)}: скоро тур` }),
     lineupOverdue: (d) => ({ title: 'Расстановка не подана', body: `${s(d.title)}: расстановка не подана вовремя, решает организатор` }),
     scoreConfirm: (d) => ({ title: 'Подтвердите счёт', body: `Соперник внёс счёт матча${sets(d) ? ` ${sets(d)}` : ''} — подтвердите или оспорьте` }),
+    playerBusy: (d) => ({ title: 'Игрок ещё в другом турнире', body: `${s(d.player)} не может отметиться: идёт «${s(d.other)}». Подождите или снимите с полным возвратом` }),
+    underfilled: (d) => ({ title: 'Мало участников', body: `Записалось ${s(d.taken)} при минимуме ${s(d.min)}. Подтвердите проведение, иначе за 2 часа до старта турнир отменится` }),
   },
   kk: {
     open: 'Сайтта ашу',
@@ -131,6 +135,8 @@ const P: Record<Lang, Phrases> = {
     leagueReminder: (d) => ({ title: 'Лига туралы еске салу', body: d.fixtureId ? 'Ертең лига матчының соңғы мерзімі — уақытты келісіңіз' : `${s(d.title)}: тур жақында` }),
     lineupOverdue: (d) => ({ title: 'Құрам берілмеді', body: `${s(d.title)}: құрам уақытында берілмеді, шешімді ұйымдастырушы қабылдайды` }),
     scoreConfirm: (d) => ({ title: 'Есепті растаңыз', body: `Қарсылас матч есебін енгізді${sets(d) ? ` ${sets(d)}` : ''} — растаңыз немесе дауласыңыз` }),
+    playerBusy: (d) => ({ title: 'Ойыншы әлі басқа турнирде', body: `${s(d.player)} белгілене алмайды: «${s(d.other)}» жүріп жатыр. Күтіңіз немесе толық қайтарыммен шығарыңыз` }),
+    underfilled: (d) => ({ title: 'Қатысушылар аз', body: `${s(d.taken)} жазылды, ең азы ${s(d.min)}. Өткізуді растаңыз, әйтпесе басталуға 2 сағат қалғанда турнир тоқтатылады` }),
   },
   en: {
     open: 'Open on the site',
@@ -166,6 +172,8 @@ const P: Record<Lang, Phrases> = {
     leagueReminder: (d) => ({ title: 'League reminder', body: d.fixtureId ? 'The league match deadline is tomorrow — agree on a time' : `${s(d.title)}: a round is coming up` }),
     lineupOverdue: (d) => ({ title: 'Lineup not submitted', body: `${s(d.title)}: the lineup was not submitted in time, the organizer decides` }),
     scoreConfirm: (d) => ({ title: 'Confirm the score', body: `Your opponent entered the match score${sets(d)? ` ${sets(d)}` : ''} — confirm or dispute it` }),
+    playerBusy: (d) => ({ title: 'Player still in another tournament', body: `${s(d.player)} cannot check in: «${s(d.other)}» is still running. Wait or remove them with a full refund` }),
+    underfilled: (d) => ({ title: 'Too few participants', body: `${s(d.taken)} registered, minimum ${s(d.min)}. Confirm the tournament, or it is cancelled 2 hours before the start` }),
   },
 }
 
@@ -241,6 +249,11 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
       return out(p.lineupOverdue(d), tUrl)
     case 'score_confirm':
       return out(p.scoreConfirm(d), d.slug ? `${site}/me/t/${s(d.slug)}` : tUrl)
+    case 'player_busy':
+    case 'tournament_underfilled': {
+      const m = type === 'player_busy' ? p.playerBusy(d) : p.underfilled(d)
+      return out({ title: m.title, body: lines(title, m.body) }, `${site}/manage/tournaments/${s(d.tournamentId)}/conduct`)
+    }
     default:
       return out({ title: 'Nomad', body: ruText || title || type }, me)
   }

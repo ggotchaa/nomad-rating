@@ -10,6 +10,7 @@ import * as m0006 from './migrations/0006_booking_admin.ts'
 import * as m0007 from './migrations/0007_cities_locale.ts'
 import * as m0100 from './migrations/0100_conduct_member_checkin.ts'
 import * as m0140 from './migrations/0140_notify_lang.ts'
+import * as m0210 from './migrations/0210_conduct_ops.ts'
 
 // Migrations are listed explicitly (works the same from sources and from a bundle).
 const migrations: Record<string, Migration> = {
@@ -22,6 +23,7 @@ const migrations: Record<string, Migration> = {
   '0007_cities_locale': m0007,
   '0100_conduct_member_checkin': m0100,
   '0140_notify_lang': m0140,
+  '0210_conduct_ops': m0210,
 }
 
 const provider: MigrationProvider = { getMigrations: async () => migrations }
