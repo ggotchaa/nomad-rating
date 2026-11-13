@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { api } from '../../api/client.ts'
+import { api, ApiError } from '../../api/client.ts'
+import { ask } from '../../ui/dialogs.tsx'
 import type { BookingSettings, ClubDetail, Hall, HallPlanData, HallTable, OpeningHours } from '../../api/types.ts'
 import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
@@ -113,10 +114,17 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
           title={t.m.tablesTitle}
           save={async () => {
             await api(`/halls/${initial.id}`, { method: 'PATCH', json: { plan } })
-            const saved = await api<Hall>(`/halls/${initial.id}/tables`, {
+            const put = (relocate: boolean) => api<Hall>(`/halls/${initial.id}/tables`, {
               method: 'PUT',
-              json: { tables: tables.map((x) => ({ id: x.id > 0 ? x.id : undefined, number: x.number, label: x.label === `Стол ${x.number}` ? null : x.label, x: x.x, y: x.y, rotation: x.rotation, bookable: x.bookable, pricePerHour: x.pricePerHour, model: x.model, status: x.status })) },
+              json: { relocate, tables: tables.map((x) => ({ id: x.id > 0 ? x.id : undefined, number: x.number, label: x.label === `Стол ${x.number}` ? null : x.label, x: x.x, y: x.y, rotation: x.rotation, bookable: x.bookable, pricePerHour: x.pricePerHour, model: x.model, status: x.status })) },
             })
+            let saved: Hall
+            try {
+              saved = await put(false)
+            } catch (e) {
+              if (!(e instanceof ApiError && e.code === 'hall.table_in_use' && (await ask.confirm(t.m.relocateAsk)))) throw e
+              saved = await put(true)
+            }
             setTables(saved.tables)
           }}
         >

@@ -149,6 +149,18 @@ export function ClubPage() {
                   </div>
                 </section>
               )}
+              {c.leagues.length > 0 && (
+                <section className="panel">
+                  <h2>{t.c.leagues}</h2>
+                  <div className="linklist">
+                    {c.leagues.map((l) => (
+                      <Link key={l.id} to={`/leagues/${l.slug}`}>
+                        <b>{l.name}</b>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
               {c.pastTournaments.length > 0 && (
                 <section className="panel">
                   <h2>{t.c.past}</h2>

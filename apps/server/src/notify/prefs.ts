@@ -33,6 +33,7 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   registration_confirmed: { channels: ['push', 'telegram', 'email'] },
   telegram_linked: { channels: ['push', 'telegram', 'email'] },
   telegram_moved: { channels: ['push', 'email'] },
+  tournament_venue_changed: { channels: ['push', 'telegram', 'email'] },
 }
 
 const FALLBACK: NotifyChannel[] = ['push', 'telegram']

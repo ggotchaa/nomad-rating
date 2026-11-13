@@ -1,14 +1,16 @@
 // Platform admin (A-1 and stage 1 queues): club verification, player merge requests, overview counters.
 
 import { Router } from 'express'
+import { sql } from 'kysely'
 import { z } from 'zod'
 import { clubStatus } from '@nomad/shared'
 import type { ClubStatus } from '@nomad/shared'
-import { db } from '../db/index.ts'
+import { db, json } from '../db/index.ts'
 import { audit } from '../audit.ts'
 import { requirePlatformAdmin } from '../auth/access.ts'
 import { badRequest, handler, notFound } from '../http/errors.ts'
-import { intParam, parseBody, parseQuery } from '../http/validate.ts'
+import { intParam, isoDate, parseBody, parseQuery } from '../http/validate.ts'
+import { documentsByClub } from './club-desk.ts'
 import { setClubStatus } from './club-manage.ts'
 import { mergePlayers } from './club-players.ts'
 
@@ -39,9 +41,11 @@ adminRouter.get(
       .innerJoin('users as u', 'u.id', 'c.owner_user_id')
       .select(['c.id', 'c.slug', 'c.name', 'c.description', 'c.status', 'c.status_reason', 'c.requisites', 'c.contact_email', 'c.contact_telegram', 'c.created_at', 'ci.name_ru as city', 'u.email as owner'])
       .where('c.status', '=', status)
+      .select('c.commission')
       .orderBy('c.created_at')
       .execute()
-    res.json(rows)
+    const docs = await documentsByClub(rows.map((r) => r.id))
+    res.json(rows.map((r) => ({ ...r, documents: docs.get(r.id) ?? [] })))
   }),
 )
 
@@ -100,5 +104,85 @@ adminRouter.post(
       if (action === 'merge') await mergePlayers(trx, mr.source_player_id, mr.target_player_id)
     })
     res.json({ ok: true })
+  }),
+)
+
+const rate = z.object({ percent: z.number().min(0).max(100), minimum: z.number().int().min(0).nullable() }).nullable()
+
+/** Per-club commission for tournaments and bookings (stored only: online payments are off). null = platform default. */
+adminRouter.put(
+  '/clubs/:id/commission',
+  handler(async (req, res) => {
+    const admin = requirePlatformAdmin(req)
+    const id = intParam(req, 'id')
+    const body = parseBody(z.object({ tournament: rate, booking: rate }), req)
+    const before = await db.selectFrom('clubs').select('commission').where('id', '=', id).executeTakeFirst()
+    if (!before) throw notFound('club.not_found')
+    const value = body.tournament || body.booking ? body : null
+    await db.updateTable('clubs').set({ commission: value ? json(value) : null }).where('id', '=', id).execute()
+    await audit({ actorUserId: admin.id, clubId: id, entity: 'club', entityId: id, action: 'commission', before: before.commission, after: value })
+    res.json({ commission: value })
+  }),
+)
+
+const OFFSET = '+05:00'
+
+/** A-7: platform totals for a period (Almaty dates, default the last 30 days). */
+adminRouter.get(
+  '/dashboard',
+  handler(async (req, res) => {
+    requirePlatformAdmin(req)
+    const q = parseQuery(z.object({ from: isoDate.optional(), to: isoDate.optional() }), req)
+    const today = new Date(Date.now() + 5 * 3600_000).toISOString().slice(0, 10)
+    const to = q.to ?? today
+    const from = q.from ?? new Date(Date.parse(`${to}T00:00:00Z`) - 29 * 86400_000).toISOString().slice(0, 10)
+    if (to < from) throw badRequest('finance.bad_period')
+    const start = new Date(`${from}T00:00:00${OFFSET}`)
+    const end = new Date(new Date(`${to}T00:00:00${OFFSET}`).getTime() + 86400_000)
+    const n = sql<number>`count(*)::int`.as('n')
+    const [tournaments, players, bookings, money, clubs, merges, rttf, disputes] = await Promise.all([
+      db.selectFrom('tournaments').select(['status', n]).where('starts_at', '>=', start).where('starts_at', '<', end).where('status', '<>', 'draft').groupBy('status').execute(),
+      sql<{ n: number }>`
+        SELECT count(DISTINCT player_id)::int AS n FROM (
+          SELECT e.player_id FROM entries e JOIN tournaments t ON t.id = e.tournament_id
+            WHERE t.starts_at >= ${start} AND t.starts_at < ${end} AND e.status IN ('checked_in', 'playing', 'completed', 'withdrew')
+          UNION SELECT b.player_id FROM bookings b
+            WHERE b.player_id IS NOT NULL AND b.starts_at >= ${start} AND b.starts_at < ${end} AND b.status IN ('confirmed', 'arrived')
+        ) x`.execute(db),
+      db.selectFrom('bookings').select(['status', n]).where('starts_at', '>=', start).where('starts_at', '<', end).groupBy('status').execute(),
+      db
+        .selectFrom('payments')
+        .select([
+          'purpose',
+          sql<string>`coalesce(sum(amount), 0)`.as('expected'),
+          sql<string>`coalesce(sum(amount) filter (where status = 'succeeded'), 0)`.as('collected'),
+          sql<string>`coalesce(sum(commission), 0)`.as('commission'),
+        ])
+        .where('created_at', '>=', start)
+        .where('created_at', '<', end)
+        .where('status', 'not in', ['declined', 'expired', 'refunded_full'])
+        .groupBy('purpose')
+        .execute(),
+      db.selectFrom('clubs').select(n).where('status', '=', 'review').executeTakeFirst(),
+      db.selectFrom('player_merge_requests').select(n).where('status', '=', 'open').executeTakeFirst(),
+      db.selectFrom('rttf_claims').select(n).where('status', 'in', ['conflict', 'pending']).executeTakeFirst(),
+      db.selectFrom('disputes').select(n).where('status', '=', 'open').executeTakeFirst(),
+    ])
+    const byStatus = (rows: { status: string; n: number }[]) => Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]))
+    const sum = (k: 'expected' | 'collected' | 'commission') => money.reduce((s, r) => s + Number(r[k]), 0)
+    res.json({
+      from,
+      to,
+      tournaments: byStatus(tournaments),
+      activePlayers: Number(players.rows[0]?.n ?? 0),
+      bookings: byStatus(bookings),
+      money: {
+        expected: sum('expected'),
+        collected: sum('collected'),
+        commission: sum('commission'),
+        bySource: money.map((r) => ({ source: r.purpose, expected: Number(r.expected), collected: Number(r.collected), commission: Number(r.commission) })),
+      },
+      queues: { clubs: Number(clubs?.n ?? 0), merges: Number(merges?.n ?? 0), rttf: Number(rttf?.n ?? 0), disputes: Number(disputes?.n ?? 0) },
+    })
   }),
 )

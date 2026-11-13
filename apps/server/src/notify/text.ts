@@ -58,6 +58,7 @@ type Phrases = {
   registered: (d: D) => Msg
   tgLinked: (d: D) => Msg
   tgMoved: (d: D) => Msg
+  venue: string
 }
 
 const time = (v: unknown) => new Date(s(v)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Almaty' })
@@ -124,6 +125,7 @@ const P: Record<Lang, Phrases> = {
     tgLinked: (d) => ({ title: 'Подключён новый Telegram', body: `К вашему профилю привязан аккаунт${d.username ? ` @${s(d.username)}` : ''}. Если это не вы — отключите его в настройках уведомлений.` }),
     tgMoved: (d) => ({ title: 'Telegram отвязан от профиля', body: `Аккаунт${d.username ? ` @${s(d.username)}` : ''} теперь привязан к профилю ${s(d.to)}.` }),
     scoreConfirm: (d) => ({ title: 'Подтвердите счёт', body: `Соперник внёс счёт матча${sets(d) ? ` ${sets(d)}` : ''} — подтвердите или оспорьте` }),
+    venue: 'Изменилось место турнира',
   },
   kk: {
     open: 'Сайтта ашу',
@@ -171,6 +173,7 @@ const P: Record<Lang, Phrases> = {
     tgLinked: (d) => ({ title: 'Жаңа Telegram қосылды', body: `Профиліңізге${d.username ? ` @${s(d.username)}` : ''} аккаунты байланды. Бұл сіз болмасаңыз — хабарлама баптауларында өшіріңіз.` }),
     tgMoved: (d) => ({ title: 'Telegram профильден ажыратылды', body: `${d.username ? `@${s(d.username)} ` : ''}аккаунты енді ${s(d.to)} профиліне байланған.` }),
     scoreConfirm: (d) => ({ title: 'Есепті растаңыз', body: `Қарсылас матч есебін енгізді${sets(d) ? ` ${sets(d)}` : ''} — растаңыз немесе дауласыңыз` }),
+    venue: 'Турнир өтетін орын өзгерді',
   },
   en: {
     open: 'Open on the site',
@@ -218,6 +221,7 @@ const P: Record<Lang, Phrases> = {
     tgLinked: (d) => ({ title: 'New Telegram linked', body: `The account${d.username ? ` @${s(d.username)}` : ''} was linked to your profile. If it was not you, remove it in notification settings.` }),
     tgMoved: (d) => ({ title: 'Telegram unlinked from your profile', body: `The account${d.username ? ` @${s(d.username)}` : ''} is now linked to the profile ${s(d.to)}.` }),
     scoreConfirm: (d) => ({ title: 'Confirm the score', body: `Your opponent entered the match score${sets(d)? ` ${sets(d)}` : ''} — confirm or dispute it` }),
+    venue: 'Tournament venue changed',
   },
 }
 
@@ -315,6 +319,8 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
       return out(p.leagueReminder(d), lUrl)
     case 'lineup_overdue':
       return out(p.lineupOverdue(d), tUrl)
+    case 'tournament_venue_changed':
+      return out({ title: p.venue, body: lines(title, [d.hall, d.address].filter(Boolean).join(', ')) }, tUrl)
     case 'score_confirm':
       return out(p.scoreConfirm(d), d.slug ? `${site}/me/t/${s(d.slug)}` : tUrl)
     default:

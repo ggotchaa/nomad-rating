@@ -8,6 +8,7 @@ import { locale } from '../../i18n/locale.ts'
 import { Async, Field } from '../../ui/kit.tsx'
 import { useAction } from '../account/AccountFlows.tsx'
 import { useClub } from './ManageLayout.tsx'
+import { ClubDisputeForm, ClubDocuments } from './ClubDesk.tsx'
 
 type ClubManage = {
   id: number
@@ -318,6 +319,8 @@ export function ClubSettings() {
                 </button>
               </form>
             </section>
+            <ClubDocuments clubId={c.id} />
+            {c.role === 'organizer' && <ClubDisputeForm clubId={c.id} />}
           </div>
         </div>
         )

@@ -10,7 +10,11 @@ import { ask } from '../../ui/dialogs.tsx'
 
 const useReloadOverview = () => useOutletContext<{ reloadOverview: () => void }>().reloadOverview
 
-type AdminClub = { id: number; slug: string; name: string; description: string; status: string; status_reason: string | null; requisites: Record<string, string>; contact_email: string | null; city: string; owner: string; created_at: string }
+type AdminClub = { id: number; slug: string; name: string; description: string; status: string; status_reason: string | null; requisites: Record<string, string>; contact_email: string | null; city: string; owner: string; created_at: string; commission: Commission | null; documents: { id: number; name: string; url: string }[] }
+
+type Rate = { percent: number; minimum: number | null }
+type Commission = Rate | { tournament?: Rate | null; booking?: Rate | null }
+
 
 export function AdminClubs() {
   const [status, setStatus] = useState('review')
@@ -43,6 +47,20 @@ export function AdminClubs() {
                   <p className="small">{c.description}</p>
                   <p className="small mono">{Object.entries(c.requisites).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—'}</p>
                   {c.status_reason && <p className="note">{c.status_reason}</p>}
+                  <div className="small">
+                    <b>{t.admin.documents}:</b>{' '}
+                    {c.documents.length
+                      ? c.documents.map((d, i) => (
+                          <span key={d.id}>
+                            {i > 0 && ' · '}
+                            <a href={d.url} target="_blank" rel="noreferrer">
+                              {d.name}
+                            </a>
+                          </span>
+                        ))
+                      : '—'}
+                  </div>
+                  <CommissionEditor clubId={c.id} value={c.commission} />
                   <div className="row">
                     {(c.status === 'review' || c.status === 'blocked') && (
                       <button className="button button--sm button--primary" disabled={busy} onClick={() => act(c.id, 'active')}>
@@ -69,6 +87,39 @@ export function AdminClubs() {
         }
       </Async>
     </div>
+  )
+}
+
+function CommissionEditor({ clubId, value }: { clubId: number; value: Commission | null }) {
+  const legacy = value && 'percent' in value ? value : null
+  const init = (k: 'tournament' | 'booking') => {
+    const r = legacy ?? (value && !('percent' in value) ? value[k] : null)
+    return { percent: r ? String(r.percent) : '', minimum: r?.minimum != null ? String(r.minimum / 100) : '' }
+  }
+  const [rates, setRates] = useState({ tournament: init('tournament'), booking: init('booking') })
+  const { busy, run, notes } = useAction()
+  const toRate = (r: { percent: string; minimum: string }) => (r.percent.trim() === '' ? null : { percent: Number(r.percent), minimum: r.minimum.trim() === '' ? null : Math.round(Number(r.minimum) * 100) })
+  return (
+    <fieldset className="stack">
+      <legend className="small">{t.admin.commissionTitle}</legend>
+      {(['tournament', 'booking'] as const).map((k) => (
+        <div key={k} className="row">
+          <span className="small">{k === 'tournament' ? t.admin.commissionTournament : t.admin.commissionBooking}</span>
+          <input type="number" min={0} max={100} step="0.1" style={{ width: 90 }} placeholder={t.admin.defaultRate} aria-label={t.admin.percent} value={rates[k].percent} onChange={(e) => setRates({ ...rates, [k]: { ...rates[k], percent: e.target.value } })} />
+          <span className="small">%</span>
+          <input type="number" min={0} style={{ width: 110 }} placeholder={t.admin.minimum} aria-label={t.admin.minimum} value={rates[k].minimum} onChange={(e) => setRates({ ...rates, [k]: { ...rates[k], minimum: e.target.value } })} />
+          <span className="small">₸</span>
+        </div>
+      ))}
+      <p className="small muted">{t.admin.commissionNote}</p>
+      {notes}
+      <button className="button button--sm" disabled={busy} onClick={() => void run(async () => {
+        await api(`/admin/clubs/${clubId}/commission`, { method: 'PUT', json: { tournament: toRate(rates.tournament), booking: toRate(rates.booking) } })
+        return t.common.saved
+      })}>
+        {t.common.save}
+      </button>
+    </fieldset>
   )
 }
 
