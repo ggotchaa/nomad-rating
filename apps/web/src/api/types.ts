@@ -130,7 +130,7 @@ export type MatchView = {
   table: number | null
 }
 
-export type StandingRow = { id: string; played: number; wins: number; losses: number; points: number; setsWon: number; setsLost: number; place: number; decidedBy: string | null; player?: EntryRef; tiedWith: string[] }
+export type StandingRow = { id: string; played: number; wins: number; losses: number; points: number; setsWon: number; setsLost: number; place: number; decidedBy: string | null; player?: EntryRef; tiedWith: string[]; tiedIds?: number[] }
 
 export type GroupView = { code: string; members: (EntryRef | undefined)[]; standings: { needsDecision: boolean; rows: StandingRow[] } | null; matches: MatchView[] }
 

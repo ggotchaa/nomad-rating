@@ -12,11 +12,15 @@ import { Field } from '../../ui/kit.tsx'
 import { MEETING_SCHEMES } from '../teams/Meeting.tsx'
 import { ask } from '../../ui/dialogs.tsx'
 
-type Stage =
+type Rules = { winsNeeded: number; pointsToWin: number; gamePoints: 'none' | 'optional' | 'required' }
+type StageMatch = { match?: Partial<Rules>; rounds?: { semifinal?: Partial<Rules>; final?: Partial<Rules> } }
+type Stage = StageMatch &
+  (
   | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: 'snake' | 'random' | 'manual'; separateClubs?: boolean }
   | { id: string; kind: 'round_robin'; name: string }
   | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
   | { id: string; kind: 'all_places'; name: string }
+  )
 type Rule = { by: 'places'; places: number[] } | { by: 'top'; count: number } | { by: 'all' } | { by: 'best_of_place'; place: number; count: number }
 export type Format = {
   version: 1
@@ -24,7 +28,7 @@ export type Format = {
   stages: Stage[]
   transitions: { from: string; to: string; rule: Rule }[]
   placement: { stage: string; who: 'all' | 'not_advanced' }[]
-  match: { winsNeeded: number; pointsToWin: number; gamePoints: 'none' | 'optional' | 'required' }
+  match: Rules
   groupPoints: { win: number; loss: number; walkover: number }
   tiebreaks: string[]
   restMinutes: number
@@ -46,7 +50,9 @@ export type TournamentInput = {
   tableIds?: number[]
   seriesId?: number | null
   format?: Format
+  ratingCoefficient?: number
 }
+type ClubTemplate = { id: number; name: string; format: Format }
 
 const KINDS = ['groups', 'round_robin', 'single_elim', 'all_places'] as const
 const TIEBREAKS = ['h2h_points', 'h2h_sets_ratio', 'h2h_points_ratio', 'rating', 'lots']
@@ -79,9 +85,45 @@ function normalize(f: Format): Format {
   return { ...f, template: 'custom', transitions, placement }
 }
 
+/** Override select: empty value = inherit from the tournament setting. */
+function Override({ label, value, options, onChange }: { label: string; value: string | number | undefined; options: [string, string][]; onChange: (v: string | undefined) => void }) {
+  return (
+    <label className="small">
+      {label}{' '}
+      <select value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
+        <option value="">{t.ctor.inherit}</option>
+        {options.map(([k, v]) => (
+          <option key={k} value={k}>
+            {v}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+const WINS: [string, string][] = [2, 3, 4].map((n) => [String(n), `${n} (bo${n * 2 - 1})`])
+
+function StageMatchEditor({ stage, onChange }: { stage: Stage; onChange: (patch: StageMatch) => void }) {
+  const bracket = stage.kind === 'single_elim' || stage.kind === 'all_places'
+  const clean = (r: Partial<Rules>) => (Object.values(r).some((v) => v != null) ? r : undefined)
+  const setMatch = (patch: Partial<Rules>) => onChange({ match: clean({ ...stage.match, ...patch }) })
+  const setRound = (round: 'semifinal' | 'final', wins: string | undefined) => onChange({ rounds: { ...stage.rounds, [round]: wins ? { winsNeeded: Number(wins) } : undefined } })
+  return (
+    <div className="row">
+      <Override label={t.ctor.winsNeeded} value={stage.match?.winsNeeded} options={WINS} onChange={(v) => setMatch({ winsNeeded: v ? Number(v) : undefined })} />
+      <Override label={t.ctor.gamePoints} value={stage.match?.gamePoints} options={Object.entries(t.ctor.gamePointsMode)} onChange={(v) => setMatch({ gamePoints: v as Rules['gamePoints'] | undefined })} />
+      {bracket && <Override label={t.ctor.semifinal} value={stage.rounds?.semifinal?.winsNeeded} options={WINS} onChange={(v) => setRound('semifinal', v)} />}
+      {bracket && <Override label={t.ctor.final} value={stage.rounds?.final?.winsNeeded} options={WINS} onChange={(v) => setRound('final', v)} />}
+    </div>
+  )
+}
+
 function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: Format) => void }) {
   const set = (f: Partial<Format>) => onChange(normalize({ ...format, ...f }))
   const setStage = (i: number, patch: Partial<Stage>) => set({ stages: format.stages.map((s, k) => (k === i ? ({ ...s, ...patch } as Stage) : s)) })
+  const move = (i: number) => set({ stages: format.stages.map((s, k) => (k === i - 1 ? format.stages[i]! : k === i ? format.stages[i - 1]! : s)) })
+  const gp = format.groupPoints
   const setRule = (to: string, rule: Rule) => set({ transitions: format.transitions.map((x) => (x.to === to ? { ...x, rule } : x)) })
   return (
     <div className="stack ctor">
@@ -99,6 +141,11 @@ function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: For
                 ))}
               </select>
               <input value={s.name} onChange={(e) => setStage(i, { name: e.target.value })} aria-label={t.m.name} />
+              {i > 0 && (
+                <button type="button" className="button button--sm" aria-label={t.ctor.moveUp} onClick={() => move(i)}>
+                  {t.ctor.up}
+                </button>
+              )}
               {format.stages.length > 1 && (
                 <button type="button" className="button button--sm" onClick={() => set({ stages: format.stages.filter((_, k) => k !== i) })}>
                   {t.ctor.remove}
@@ -132,6 +179,7 @@ function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: For
                 ))}
               </select>
             )}
+            <StageMatchEditor stage={s} onChange={(patch) => setStage(i, patch)} />
             {incoming && (
               <div className="row small">
                 <span className="muted">
@@ -175,6 +223,15 @@ function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: For
           </button>
         ))}
       </div>
+      <h3>{t.ctor.groupPoints}</h3>
+      <div className="row">
+        {(['win', 'loss', 'walkover'] as const).map((k) => (
+          <label className="small" key={k}>
+            {t.ctor.groupPointsFor[k]}{' '}
+            <input type="number" min={0} max={10} value={gp[k]} onChange={(e) => set({ groupPoints: { ...gp, [k]: Number(e.target.value) } })} />
+          </label>
+        ))}
+      </div>
       <h3>{t.ctor.tiebreaks}</h3>
       <ol className="small">
         {format.tiebreaks.map((tb, i) => (
@@ -183,6 +240,11 @@ function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: For
             {i > 0 && (
               <button type="button" className="button button--sm" onClick={() => set({ tiebreaks: format.tiebreaks.map((x, k) => (k === i - 1 ? tb : k === i ? format.tiebreaks[i - 1]! : x)) })}>
                 {t.ctor.up}
+              </button>
+            )}{' '}
+            {format.tiebreaks.length > 1 && (
+              <button type="button" className="button button--sm" onClick={() => set({ tiebreaks: format.tiebreaks.filter((x) => x !== tb) })}>
+                {t.ctor.off}
               </button>
             )}
           </li>
@@ -209,19 +271,55 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
   const [refund, setRefund] = useState(initial?.refundRules ?? [{ hoursBefore: 24, percent: 100 }])
   const [winsNeeded, setWinsNeeded] = useState(initial?.format?.match.winsNeeded ?? 3)
   const [gamePoints, setGamePoints] = useState(initial?.format?.match.gamePoints ?? 'optional')
+  const [pointsToWin, setPointsToWin] = useState(initial?.format?.match.pointsToWin ?? 11)
+  const clubTemplates = useApi<ClubTemplate[]>(`/clubs/${clubId}/format-templates`)
   const [preview, setPreview] = useState<(FormatPreview & { format: Format }) | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const activeTables = hall.data?.tables.filter((x) => x.status === 'active') ?? []
   const tables = tableIds?.length ?? activeTables.length
-  const effective = template === 'custom' && format ? { ...format, match: { ...format.match, winsNeeded, gamePoints } } : null
+  const effective = template === 'custom' && format ? { ...format, match: { ...format.match, winsNeeded, gamePoints, pointsToWin } } : null
+  const matchParams = { winsNeeded, gamePoints, pointsToWin }
+
+  const applyTemplate = (tpl: ClubTemplate) => {
+    setFormat(normalize(tpl.format))
+    setWinsNeeded(tpl.format.match.winsNeeded)
+    setGamePoints(tpl.format.match.gamePoints)
+    setPointsToWin(tpl.format.match.pointsToWin)
+    setTemplate('custom')
+  }
+  useEffect(() => {
+    if (!template.startsWith('club:') || !clubTemplates.data) return
+    const tpl = clubTemplates.data.find((x) => `club:${x.id}` === template)
+    if (tpl) applyTemplate(tpl)
+    else setTemplate('gs1')
+  }, [template, clubTemplates.data])
+
+  const saveTemplate = async () => {
+    if (!effective) return
+    const name = await ask.prompt(t.ctor.templateName)
+    if (!name) return
+    try {
+      await api(`/clubs/${clubId}/format-templates`, { method: 'POST', json: { name, format: effective } })
+      clubTemplates.reload()
+      setMessage({ ok: true, text: t.ctor.templateSaved })
+    } catch (err) {
+      setMessage({ ok: false, text: errorText(err) })
+    }
+  }
+  const deleteTemplate = async (tpl: ClubTemplate) => {
+    if (!(await ask.confirm(t.ctor.templateDelete(tpl.name)))) return
+    await api(`/clubs/${clubId}/format-templates/${tpl.id}`, { method: 'DELETE' }).catch((err: unknown) => setMessage({ ok: false, text: errorText(err) }))
+    clubTemplates.reload()
+  }
 
   useEffect(() => {
     if (!tables || max < 2) return
     let alive = true
     const id = setTimeout(() => {
-      const body = effective ? { format: effective, players: max, tables } : { template, params: { match: { winsNeeded, gamePoints } }, players: max, tables }
+      if (template.startsWith('club:')) return
+      const body = effective ? { format: effective, players: max, tables } : { template, params: { match: matchParams }, players: max, tables }
       api<FormatPreview & { format: Format }>('/formats/preview', { method: 'POST', json: body })
         .then((p) => {
           if (!alive) return
@@ -234,7 +332,7 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
       alive = false
       clearTimeout(id)
     }
-  }, [template, max, tables, JSON.stringify(effective), winsNeeded, gamePoints])
+  }, [template, max, tables, JSON.stringify(effective), winsNeeded, gamePoints, pointsToWin])
 
   const local = initial?.startsAt ? utcToZoned(new Date(initial.startsAt), TZ) : null
   const r = initial?.restrictions ?? {}
@@ -259,7 +357,8 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
         ...(!editing && { type }),
         title: f.get('title'),
         startsAt: zonedToUtc(String(f.get('date')), parseHhmm(String(f.get('time'))), TZ).toISOString(),
-        ...(effective ? { format: effective } : { template, templateParams: { match: { winsNeeded, gamePoints } } }),
+        ...(effective ? { format: effective } : { template, templateParams: { match: matchParams } }),
+        ratingCoefficient: Number(f.get('ratingCoefficient') || 1),
         maxParticipants: max,
         minParticipants: num('minParticipants') ?? 4,
         ...(!editing || initial?.status === 'draft' ? { fee: Math.round(Number(f.get('fee') || 0) * 100) } : {}),
@@ -350,11 +449,36 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
               </option>
             ))}
             <option value="custom">{t.ctor.custom}</option>
+            {clubTemplates.data?.length ? (
+              <optgroup label={t.ctor.clubTemplates}>
+                {clubTemplates.data.map((x) => (
+                  <option key={x.id} value={`club:${x.id}`}>
+                    {x.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </Field>
+        {clubTemplates.data?.length ? (
+          <div className="field--wide row small">
+            <span className="muted">{t.ctor.clubTemplates}:</span>
+            {clubTemplates.data.map((x) => (
+              <span key={x.id} className="chip">
+                {x.name}{' '}
+                <button type="button" className="button button--sm" aria-label={t.ctor.templateDelete(x.name)} onClick={() => void deleteTemplate(x)}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {template === 'custom' && format && (
           <div className="field--wide">
             <FormatBuilder format={format} onChange={setFormat} />
+            <button type="button" className="button button--sm" disabled={Boolean(previewError)} onClick={() => void saveTemplate()}>
+              {t.ctor.saveTemplate}
+            </button>
           </div>
         )}
         <Field label={t.ctor.winsNeeded}>
@@ -374,6 +498,12 @@ export function TournamentForm({ clubId, hallId, initial, onSaved }: { clubId: n
               </option>
             ))}
           </select>
+        </Field>
+        <Field label={t.ctor.pointsToWin}>
+          <input type="number" min={5} max={21} value={pointsToWin} onChange={(e) => setPointsToWin(Number(e.target.value))} />
+        </Field>
+        <Field label={t.ctor.ratingCoefficient}>
+          <input name="ratingCoefficient" type="number" min={0.5} max={2} step={0.05} defaultValue={initial?.ratingCoefficient ?? 1} />
         </Field>
         <Field label={t.m.max}>
           <input type="number" min={4} max={256} value={max} onChange={(e) => setMax(Number(e.target.value))} required />

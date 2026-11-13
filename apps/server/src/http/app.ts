@@ -9,7 +9,7 @@ import { authRouter } from '../modules/auth.ts'
 import { catalogRouter } from '../modules/catalog.ts'
 import { playersRouter } from '../modules/players.ts'
 import { clubsRouter, hallsRouter, myRouter } from '../modules/clubs.ts'
-import { clubTournamentsRouter, formatsRouter, tournamentsRouter } from '../modules/tournaments.ts'
+import { clubTournamentsRouter, formatsRouter, formatTemplatesRouter, tournamentsRouter } from '../modules/tournaments.ts'
 import { bookingsRouter, hallBookingsRouter, myBookingsRouter } from '../modules/bookings.ts'
 import { accountRouter, myAccountRouter } from '../modules/account.ts'
 import { clubManageRouter } from '../modules/club-manage.ts'
@@ -71,6 +71,7 @@ export function createApp() {
   api.use('/players', playersRouter)
   api.use('/clubs/:clubId/tournaments', clubTournamentsRouter)
   api.use('/clubs/:clubId/series', seriesRouter)
+  api.use('/clubs/:clubId/format-templates', formatTemplatesRouter)
   api.use('/clubs', clubsRouter)
   api.use('/halls/:hallId', hallBookingsRouter)
   api.use('/halls/:hallId', hallSettingsRouter)

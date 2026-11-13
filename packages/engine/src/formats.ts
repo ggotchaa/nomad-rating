@@ -7,11 +7,19 @@ import type { GroupPoints, TieBreakCriterion } from './groups.ts'
 import { DEFAULT_MATCH_RULES } from './scoring.ts'
 import type { MatchRules } from './scoring.ts'
 
-export type StageSpec =
+/** Match format overrides for a stage and, in brackets, for the semi-finals and the final (spec 4.6). */
+export type StageMatch = {
+  match?: Partial<MatchRules>
+  rounds?: { semifinal?: Partial<MatchRules>; final?: Partial<MatchRules> }
+}
+
+export type StageSpec = StageMatch &
+  (
   | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: 'snake' | 'random' | 'manual'; separateClubs?: boolean }
   | { id: string; kind: 'round_robin'; name: string }
   | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
   | { id: string; kind: 'all_places'; name: string }
+  )
 
 export type StageKind = StageSpec['kind']
 
@@ -140,6 +148,13 @@ export function formatTemplate(id: FormatTemplateId, players: number, params: Te
   }
 }
 
+/** Match rules for a match of `stageKey`; `label` is the match round label ('final', '1/2', …). */
+export function matchRulesFor(format: TournamentFormat, stageKey?: string | null, label?: string | null): MatchRules {
+  const stage = format.stages.find((s) => s.id === stageKey)
+  const round = label === 'final' ? stage?.rounds?.final : label === '1/2' ? stage?.rounds?.semifinal : undefined
+  return { ...format.match, ...stage?.match, ...round }
+}
+
 // ---------------------------------------------------------------------------
 // Validation (F-5)
 
@@ -180,7 +195,8 @@ export function validateFormat(format: TournamentFormat): string[] {
     const advancesAll = format.transitions.some((t) => t.from === stage.id && t.rule.by === 'all')
     if (!placed.has(stage.id) && !advancesAll) errors.push(`format.stage_without_places:${stage.id}`)
   }
-  if (format.match.winsNeeded < 2 || format.match.winsNeeded > 4) errors.push('format.wins_needed')
+  const badWins = (m?: Partial<MatchRules>) => m?.winsNeeded != null && (m.winsNeeded < 2 || m.winsNeeded > 4)
+  if (badWins(format.match) || format.stages.some((s) => badWins(s.match) || badWins(s.rounds?.semifinal) || badWins(s.rounds?.final))) errors.push('format.wins_needed')
   if (format.restMinutes < 0 || format.restMinutes > 30) errors.push('format.rest_minutes')
   return errors
 }

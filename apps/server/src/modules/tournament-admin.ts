@@ -71,6 +71,7 @@ tournamentAdminRouter.patch(
         staff_comment: body.staffComment,
         cover_url: body.coverUrl,
         is_rated: body.isRated,
+        rating_coefficient: body.ratingCoefficient,
         refund_rules: body.refundRules ? json(body.refundRules) : undefined,
         series_id: body.seriesId,
         format: json(format),
@@ -125,6 +126,7 @@ tournamentAdminRouter.post(
         coverUrl: t.cover_url,
         tableIds: t.table_ids,
         isRated: t.is_rated,
+        ratingCoefficient: Number(t.rating_coefficient),
         refundRules: t.refund_rules,
         settings: t.settings,
       })

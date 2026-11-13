@@ -10,6 +10,7 @@ import * as m0006 from './migrations/0006_booking_admin.ts'
 import * as m0007 from './migrations/0007_cities_locale.ts'
 import * as m0100 from './migrations/0100_conduct_member_checkin.ts'
 import * as m0140 from './migrations/0140_notify_lang.ts'
+import * as m0200 from './migrations/0200_format_templates.ts'
 import * as m0250 from './migrations/0250_team_start_level.ts'
 
 // Migrations are listed explicitly (works the same from sources and from a bundle).
@@ -23,6 +24,7 @@ const migrations: Record<string, Migration> = {
   '0007_cities_locale': m0007,
   '0100_conduct_member_checkin': m0100,
   '0140_notify_lang': m0140,
+  '0200_format_templates': m0200,
   '0250_team_start_level': m0250,
 }
 

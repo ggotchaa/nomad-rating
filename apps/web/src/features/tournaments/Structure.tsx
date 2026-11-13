@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import type { EntryRef, MatchView, StageView } from '../../api/types.ts'
+import type { EntryRef, MatchView, StageView, StandingRow } from '../../api/types.ts'
 import { t } from '../../i18n/index.ts'
 import { CalibTag } from '../rating/widgets.tsx'
 
@@ -85,6 +85,62 @@ function Bracket({ matches }: { matches: MatchView[] }) {
   )
 }
 
+const played = (m: MatchView) => m.winnerEntryId != null && m.resultType !== 'bye'
+
+/** Head-to-head numbers among the tied players: the calculation behind the tie-break (spec 4.6). */
+function TieBreak({ row, rows, matches }: { row: StandingRow; rows: StandingRow[]; matches: MatchView[] }) {
+  if (!row.decidedBy || !row.tiedIds?.length) return null
+  const ids = [Number(row.id), ...row.tiedIds]
+  const h2h = matches.filter((m) => played(m) && ids.includes(m.home?.entryId ?? -1) && ids.includes(m.away?.entryId ?? -1))
+  const calc = ids.map((id) => {
+    const c = { id, wins: 0, setsW: 0, setsL: 0, ptsW: 0, ptsL: 0 }
+    for (const m of h2h) {
+      const home = m.home?.entryId === id
+      if (!home && m.away?.entryId !== id) continue
+      if (m.winnerEntryId === id) c.wins++
+      c.setsW += (home ? m.setsHome : m.setsAway) ?? 0
+      c.setsL += (home ? m.setsAway : m.setsHome) ?? 0
+      for (const g of m.games ?? []) {
+        c.ptsW += home ? g.home : g.away
+        c.ptsL += home ? g.away : g.home
+      }
+    }
+    return c
+  })
+  const name = (id: number) => rows.find((r) => Number(r.id) === id)?.player?.name ?? '—'
+  const ratio = (w: number, l: number) => (l ? (w / l).toFixed(3) : w ? '∞' : '—')
+  return (
+    <details className="small muted">
+      <summary>{t.t.decidedBy[row.decidedBy] ?? row.decidedBy}</summary>
+      <p>{t.t.tiedWith(row.tiedWith.join(', '))}</p>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>{t.t.player}</th>
+            <th className="num">{t.t.w}</th>
+            <th className="num">{t.t.sets}</th>
+            <th className="num">{t.t.rallyPoints}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {calc.map((c) => (
+            <tr key={c.id}>
+              <td>{name(c.id)}</td>
+              <td className="num">{c.wins}</td>
+              <td className="num">
+                {c.setsW}:{c.setsL} ({ratio(c.setsW, c.setsL)})
+              </td>
+              <td className="num">
+                {c.ptsW}:{c.ptsL} ({ratio(c.ptsW, c.ptsL)})
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  )
+}
+
 export function Structure({ stages, me }: { stages: StageView[]; me?: number }) {
   return (
     <>
@@ -98,6 +154,7 @@ export function Structure({ stages, me }: { stages: StageView[]; me?: number }) 
                   <h3>
                     {s.groups.length > 1 ? `${t.t.group} ${g.code}` : s.name}
                   </h3>
+                  {g.matches.some((m) => played(m) && m.resultType === 'normal' && !m.games?.length) && <p className="note small">{t.t.noGamePoints}</p>}
                   <table className="table">
                     <thead>
                       <tr>
@@ -117,6 +174,7 @@ export function Structure({ stages, me }: { stages: StageView[]; me?: number }) 
                               <td>
                                 {r.player ? <Link to={`/players/${r.player.playerId}`}>{r.player.name}</Link> : '—'}
                                 <CalibTag e={r.player} />
+                                <TieBreak row={r} rows={g.standings!.rows} matches={g.matches} />
                               </td>
                               <td className="num">{r.wins}</td>
                               <td className="num">{r.losses}</td>

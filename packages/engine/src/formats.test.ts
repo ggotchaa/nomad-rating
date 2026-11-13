@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateFormat, FORMAT_TEMPLATES, formatTemplate, validateFormat } from './formats.ts'
+import { estimateFormat, FORMAT_TEMPLATES, formatTemplate, matchRulesFor, validateFormat } from './formats.ts'
 import { groupStandings } from './groups.ts'
 import type { GroupMatchResult } from './groups.ts'
 import { bracketPlaces, resolveBracket } from './bracket.ts'
@@ -96,5 +96,17 @@ describe('ГС-1 end to end: 32 players, 8 groups of 4, 16 to the all-places bra
     const groupPlace = (id: string) => outcomes.flatMap((o) => o.standings.rows).find((r) => r.id === id)!.place
     const rest = places.filter((p) => p.stage === 'groups').sort((a, b) => a.place - b.place)
     expect(rest.slice(0, 8).every((p) => groupPlace(p.id) === 3)).toBe(true)
+  })
+})
+
+describe('match format per stage and round', () => {
+  it('stage and final overrides win over the tournament rules', () => {
+    const f = formatTemplate('gs2', 16)
+    f.stages[1] = { ...f.stages[1]!, match: { gamePoints: 'required' }, rounds: { final: { winsNeeded: 4 } } }
+    expect(matchRulesFor(f, 'groups', 'group:A')).toEqual(f.match)
+    expect(matchRulesFor(f, 'main', '1/2')).toEqual({ ...f.match, gamePoints: 'required' })
+    expect(matchRulesFor(f, 'main', 'final')).toEqual({ ...f.match, gamePoints: 'required', winsNeeded: 4 })
+    f.stages[1] = { ...f.stages[1]!, rounds: { final: { winsNeeded: 5 } } }
+    expect(validateFormat(f)).toContain('format.wins_needed')
   })
 })

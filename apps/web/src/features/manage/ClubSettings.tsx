@@ -88,6 +88,7 @@ export function ClubSettings() {
   const { club } = useClub()
   const state = useApi<ClubManage>(`/clubs/${club.id}/manage`)
   const formats = useApi<FormatOption[]>('/formats')
+  const clubTemplates = useApi<{ id: number; name: string }[]>(`/clubs/${club.id}/format-templates`)
   const { cities } = useSession()
   const [refund, setRefund] = useState<{ hoursBefore: number; percent: number }[] | null>(null)
   const status = useAction()
@@ -200,13 +201,22 @@ export function ClubSettings() {
               </Field>
               <RefundRules value={rules} onChange={setRefund} />
               <Field label={t.clubreg.defaultTemplate}>
-                {formats.data ? (
+                {formats.data && clubTemplates.data ? (
                   <select name="template" defaultValue={d.template ?? 'gs1'}>
                     {formats.data.map((x) => (
                       <option key={x.id} value={x.id}>
                         {x.name}
                       </option>
                     ))}
+                    {clubTemplates.data.length > 0 && (
+                      <optgroup label={t.ctor.clubTemplates}>
+                        {clubTemplates.data.map((x) => (
+                          <option key={x.id} value={`club:${x.id}`}>
+                            {x.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 ) : (
                   <input name="template" type="hidden" value={d.template ?? 'gs1'} />
