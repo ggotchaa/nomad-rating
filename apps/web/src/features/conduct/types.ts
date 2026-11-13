@@ -4,6 +4,7 @@ export type Game = { home: number; away: number }
 
 export type ConductMatch = {
   id: number
+  rules?: { winsNeeded: number; pointsToWin: number; gamePoints: 'none' | 'optional' | 'required' }
   number: number
   round: number
   label: string | null

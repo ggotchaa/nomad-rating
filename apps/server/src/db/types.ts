@@ -98,6 +98,15 @@ export interface PlayerRatingsTable {
   updated_at: DefaultTimestamp
 }
 
+export interface ClubFormatTemplatesTable {
+  id: Id
+  club_id: number
+  name: string
+  format: Json<import('@nomad/engine').TournamentFormat>
+  created_by: number | null
+  created_at: Generated<Timestamp>
+}
+
 export interface ClubsTable {
   id: Id
   slug: string
@@ -442,6 +451,7 @@ export interface Database {
   players: PlayersTable
   player_ratings: PlayerRatingsTable
   clubs: ClubsTable
+  club_format_templates: ClubFormatTemplatesTable
   club_members: ClubMembersTable
   halls: HallsTable
   hall_tables: HallTablesTable

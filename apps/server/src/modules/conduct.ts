@@ -4,7 +4,7 @@
 import { Router } from 'express'
 import type { Request } from 'express'
 import { z } from 'zod'
-import { validateMatchScore } from '@nomad/engine'
+import { matchRulesFor, validateMatchScore } from '@nomad/engine'
 import { db, json } from '../db/index.ts'
 import type { CallAnswer, CallResponses, Match, Tournament } from '../db/types.ts'
 import { audit } from '../audit.ts'
@@ -14,7 +14,7 @@ import { intParam, parseBody } from '../http/validate.ts'
 import { notify } from '../notify/index.ts'
 import { bus } from '../realtime/bus.ts'
 import { conductState } from '../tournaments/queue.ts'
-import { correctResult, finishTournament, recordResult, withdrawEntry } from '../tournaments/structure.ts'
+import { correctResult, finishTournament, recordResult, rulesOfMatch, withdrawEntry } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
 
 export const conductRouter = Router()
@@ -252,7 +252,7 @@ conductRouter.post(
     if ((t.settings.scoreEntry ?? 'staff') !== 'players') throw forbidden('match.players_entry_off')
     if (!['called', 'playing'].includes(m.status)) throw conflict('match.not_playable')
     const body = parseBody(scoreSchema.pick({ setsHome: true, setsAway: true, games: true }), req)
-    const errors = validateMatchScore(body, t.format.match)
+    const errors = validateMatchScore(body, await rulesOfMatch(db, t.format, m))
     if (errors.length) throw unprocessable('match.invalid_score', errors)
     await db.updateTable('matches').set({ reported_score: json(body), reported_by: entryId, disputed: false }).where('id', '=', m.id).execute()
     const { home, away } = await sides(m)
@@ -288,7 +288,8 @@ myCallsRouter.get(
       .innerJoin('tournaments as t', 't.id', 'm.tournament_id')
       .innerJoin('entries as e', (j) => j.on((eb) => eb.or([eb('e.id', '=', eb.ref('m.home_entry_id')), eb('e.id', '=', eb.ref('m.away_entry_id'))])))
       .leftJoin('hall_tables as ht', 'ht.id', 'm.table_id')
-      .select(['m.id', 'm.status', 'm.home_entry_id', 'm.away_entry_id', 'm.call_responses', 'm.reported_score', 'm.reported_by', 'e.id as my_entry', 't.id as tournament_id', 't.slug', 't.title', 't.settings', 't.format', 'ht.number as table'])
+      .innerJoin('stages as st', 'st.id', 'm.stage_id')
+      .select(['st.stage_key', 'm.stage_label', 'm.id', 'm.status', 'm.home_entry_id', 'm.away_entry_id', 'm.call_responses', 'm.reported_score', 'm.reported_by', 'e.id as my_entry', 't.id as tournament_id', 't.slug', 't.title', 't.settings', 't.format', 'ht.number as table'])
       .where('t.status', '=', 'running')
       .where('e.player_id', '=', user.playerId)
       .where('m.status', 'in', ['called', 'playing'])
@@ -309,7 +310,7 @@ myCallsRouter.get(
         opponent: opponent ? playerName(opponent) : null,
         myAnswer: (r.call_responses as CallResponses)[side]?.answer ?? null,
         scoreEntry: r.settings.scoreEntry ?? 'staff',
-        rules: r.format.match,
+        rules: matchRulesFor(r.format, r.stage_key, r.stage_label),
         reportedScore: r.reported_score,
         reportedByMe: r.reported_by === r.my_entry,
       })

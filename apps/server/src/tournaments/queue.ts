@@ -1,6 +1,6 @@
 // Tables screen / live page state: tables with their current match and the queue of ready matches (M-3, M-6).
 
-import { planQueue } from '@nomad/engine'
+import { matchRulesFor, planQueue } from '@nomad/engine'
 import { db } from '../db/index.ts'
 import type { CallResponses, Tournament } from '../db/types.ts'
 import { playerName } from '../modules/players.ts'
@@ -24,6 +24,7 @@ export async function conductState(t: Tournament, now = new Date()) {
   )
   const matches = await db.selectFrom('matches').selectAll().where('tournament_id', '=', t.id).orderBy('number').execute()
   const tableNumber = new Map(tables.map((x) => [x.id, x.number]))
+  const stageKeys = new Map((await db.selectFrom('stages').select(['id', 'stage_key']).where('tournament_id', '=', t.id).execute()).map((s) => [s.id, s.stage_key]))
   const view = (m: (typeof matches)[number]) => ({
     id: m.id,
     number: m.number,
@@ -50,6 +51,7 @@ export async function conductState(t: Tournament, now = new Date()) {
     reportedScore: m.reported_score,
     reportedBy: m.reported_by,
     disputed: m.disputed,
+    rules: matchRulesFor(t.format, stageKeys.get(m.stage_id), m.stage_label),
   })
   const active = matches.filter((m) => m.status === 'called' || m.status === 'playing')
   const busy = new Set(active.flatMap((m) => [m.home_entry_id!, m.away_entry_id!]))

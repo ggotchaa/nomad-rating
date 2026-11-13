@@ -10,7 +10,7 @@ import { audit } from '../audit.ts'
 import { badRequest, conflict, notFound, unprocessable } from '../http/errors.ts'
 import { notify } from '../notify/index.ts'
 import { playerName } from '../modules/players.ts'
-import { recordResult } from '../tournaments/structure.ts'
+import { recordResult, rulesOfMatch } from '../tournaments/structure.ts'
 
 type Trx = Transaction<Database>
 type Side = 'home' | 'away'
@@ -167,7 +167,7 @@ export async function recordGame(trx: Trx, t: Tournament, m: Match, index: numbe
   if (!['scheduled', 'called', 'playing'].includes(m.status)) throw conflict('match.not_playable')
   const g = await gameOf(trx, m.id, index)
   if (g.status === 'finished' || g.status === 'skipped') throw conflict('match.already_recorded')
-  const errors = validateMatchScore(score, t.format.match)
+  const errors = validateMatchScore(score, await rulesOfMatch(trx, t.format, m))
   if (errors.length) throw unprocessable('match.invalid_score', errors)
   const winner: Side = score.setsHome > score.setsAway ? 'home' : 'away'
   await trx

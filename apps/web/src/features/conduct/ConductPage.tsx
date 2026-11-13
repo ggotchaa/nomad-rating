@@ -346,7 +346,7 @@ export function ConductPage() {
             {scoring && (
               <ScoreEntry
                 match={scoring.match}
-                rules={d.tournament.match}
+                rules={scoring.match.rules ?? d.tournament.match}
                 mode={scoring.mode}
                 path={`${base}/matches/${scoring.match.id}/${scoring.mode === 'correct' ? 'correct' : 'result'}`}
                 enqueue={scoring.mode === 'result' ? enqueue : undefined}

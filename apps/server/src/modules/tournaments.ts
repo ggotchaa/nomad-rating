@@ -39,11 +39,13 @@ const FORMAT_NAMES: Record<FormatTemplateId, string> = {
   groups_main_consolation: 'Группы по 4 → основная + утешительная',
 }
 
+const ruleOverride = z.object({ winsNeeded: z.number().int().min(2).max(4).optional(), pointsToWin: z.number().int().min(5).max(21).optional(), gamePoints: z.enum(['none', 'optional', 'required']).optional() })
+const stageMatch = { match: ruleOverride.optional(), rounds: z.object({ semifinal: ruleOverride.optional(), final: ruleOverride.optional() }).optional() }
 const stageSchema = z.discriminatedUnion('kind', [
-  z.object({ id: z.string().min(1).max(30), kind: z.literal('groups'), name: z.string().min(1).max(60), groupSize: z.number().int(), seeding: z.enum(['snake', 'random', 'manual']), separateClubs: z.boolean().optional() }),
-  z.object({ id: z.string().min(1).max(30), kind: z.literal('round_robin'), name: z.string().min(1).max(60) }),
-  z.object({ id: z.string().min(1).max(30), kind: z.literal('single_elim'), name: z.string().min(1).max(60), thirdPlace: z.enum(['match', 'shared']) }),
-  z.object({ id: z.string().min(1).max(30), kind: z.literal('all_places'), name: z.string().min(1).max(60) }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('groups'), name: z.string().min(1).max(60), groupSize: z.number().int(), seeding: z.enum(['snake', 'random', 'manual']), separateClubs: z.boolean().optional() }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('round_robin'), name: z.string().min(1).max(60) }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('single_elim'), name: z.string().min(1).max(60), thirdPlace: z.enum(['match', 'shared']) }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('all_places'), name: z.string().min(1).max(60) }),
 ])
 
 /** Custom format from the constructor (F-1…F-3); deeper rules are checked by validateFormat (F-5). */
@@ -65,7 +67,7 @@ export const formatSchema = z.object({
   ),
   placement: z.array(z.object({ stage: z.string(), who: z.enum(['all', 'not_advanced']) })),
   match: z.object({ winsNeeded: z.number().int(), pointsToWin: z.number().int().min(5).max(21).default(11), gamePoints: z.enum(['none', 'optional', 'required']) }),
-  groupPoints: z.object({ win: z.number().int(), loss: z.number().int(), walkover: z.number().int() }).default({ win: 2, loss: 1, walkover: 0 }),
+  groupPoints: z.object({ win: z.number().int().min(0).max(10), loss: z.number().int().min(0).max(10), walkover: z.number().int().min(0).max(10) }).default({ win: 2, loss: 1, walkover: 0 }),
   tiebreaks: z.array(z.enum(['h2h_points', 'h2h_sets_ratio', 'h2h_points_ratio', 'rating', 'lots'])).min(1),
   restMinutes: z.number().int(),
 })
@@ -75,10 +77,50 @@ const templateParams = z
     groupSize: z.number().int().min(3).max(8).optional(),
     advance: z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32), z.literal(64)]).optional(),
     bracket: z.enum(['all_places', 'single_elim']).optional(),
-    match: z.object({ winsNeeded: z.number().int().min(2).max(4).optional(), gamePoints: z.enum(['none', 'optional', 'required']).optional() }).optional(),
+    match: ruleOverride.optional(),
     restMinutes: z.number().int().min(0).max(30).optional(),
   })
   .default({})
+
+/** Organiser format templates (F-3). */
+export const formatTemplatesRouter = Router({ mergeParams: true })
+
+formatTemplatesRouter.get(
+  '/',
+  handler(async (req, res) => {
+    const clubId = intParam(req, 'clubId')
+    await requireClubRight(req, clubId, 'tournaments')
+    res.json(await db.selectFrom('club_format_templates').select(['id', 'name', 'format', 'created_at']).where('club_id', '=', clubId).orderBy('name').execute())
+  }),
+)
+
+formatTemplatesRouter.post(
+  '/',
+  handler(async (req, res) => {
+    const clubId = intParam(req, 'clubId')
+    const user = await requireClubRight(req, clubId, 'tournaments')
+    const body = parseBody(z.object({ name: z.string().trim().min(1).max(80), format: formatSchema }), req)
+    const format = { ...(body.format as TournamentFormat), template: 'custom' as const }
+    const errors = validateFormat(format)
+    if (errors.length) throw unprocessable('format.invalid', errors)
+    const row = await db.insertInto('club_format_templates').values({ club_id: clubId, name: body.name, format: json(format), created_by: user.id }).returning(['id', 'name']).executeTakeFirstOrThrow()
+    await audit({ actorUserId: user.id, clubId, entity: 'format_template', entityId: row.id, action: 'create', after: { name: body.name } })
+    res.status(201).json(row)
+  }),
+)
+
+formatTemplatesRouter.delete(
+  '/:templateId',
+  handler(async (req, res) => {
+    const clubId = intParam(req, 'clubId')
+    const user = await requireClubRight(req, clubId, 'tournaments')
+    const id = intParam(req, 'templateId')
+    const row = await db.deleteFrom('club_format_templates').where('id', '=', id).where('club_id', '=', clubId).returning('name').executeTakeFirst()
+    if (!row) throw notFound('format_template.not_found')
+    await audit({ actorUserId: user.id, clubId, entity: 'format_template', entityId: id, action: 'delete', before: { name: row.name } })
+    res.json({ ok: true })
+  }),
+)
 
 formatsRouter.get('/', (_req, res) => {
   res.json(FORMAT_TEMPLATES.map((id) => ({ id, name: FORMAT_NAMES[id] })))
@@ -362,7 +404,7 @@ export async function structure(t: Tournament) {
               ? {
                   needsDecision: standings.needsDecision,
                   missingGamePoints: standings.missingGamePoints,
-                  rows: standings.rows.map((r) => ({ ...r, player: names.get(Number(r.id)), tiedWith: r.tiedWith.map((x) => names.get(Number(x))?.name) })),
+                  rows: standings.rows.map((r) => ({ ...r, player: names.get(Number(r.id)), tiedWith: r.tiedWith.map((x) => names.get(Number(x))?.name), tiedIds: r.tiedWith.map(Number) })),
                 }
               : null,
             matches: stageMatches.filter((m) => m.group_id === g.id).map(matchView),
@@ -429,6 +471,7 @@ tournamentsRouter.get(
       staffComment: isStaff ? t.staff_comment : undefined,
       coverUrl: t.cover_url,
       isRated: t.is_rated,
+      ratingCoefficient: Number(t.rating_coefficient),
       refundRules: t.refund_rules,
       settings: isStaff ? { scoreEntry: 'staff', checkinWindowMinutes: 60, ...settings } : { scoreEntry: settings.scoreEntry ?? 'staff', checkinWindowMinutes: settings.checkinWindowMinutes ?? 60, sameDayRegistration: settings.sameDayRegistration ?? false },
       cancelledReason: t.cancelled_reason,
@@ -497,6 +540,8 @@ export const createSchema = z.object({
   coverUrl: z.string().url().nullable().optional(),
   tableIds: z.array(z.number().int()).optional(),
   isRated: z.boolean().default(true),
+  /** Rating coefficient of the tournament (spec 5), e.g. 1.25 for a season final. */
+  ratingCoefficient: z.number().min(0.5).max(2).optional(),
   refundRules: z.array(z.object({ hoursBefore: z.number().int().min(0), percent: z.number().int().min(0).max(100) })).optional(),
   settings: z
     .object({
@@ -529,14 +574,22 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
   const defaults = club.tournament_defaults as {
     fee?: number
     refundRules?: RefundRule[]
-    template?: FormatTemplateId
+    template?: string
     maxParticipants?: number
     settings?: Record<string, unknown>
   }
   const tables = await trx.selectFrom('hall_tables').select('id').where('hall_id', '=', hall.id).where('status', '=', 'active').orderBy('number').execute()
   const tableIds = input.tableIds?.length ? input.tableIds.filter((id) => tables.some((t) => t.id === id)) : tables.map((t) => t.id)
   if (!tableIds.length) throw unprocessable('tournament.no_tables')
-  const format = input.format ? (input.format as TournamentFormat) : formatTemplate(input.template ?? defaults.template ?? 'gs1', input.maxParticipants, input.templateParams as TemplateParams)
+  const clubTemplate = !input.format && !input.template && defaults.template?.startsWith('club:')
+    ? await trx.selectFrom('club_format_templates').select('format').where('id', '=', Number(defaults.template.slice(5))).where('club_id', '=', clubId).executeTakeFirst()
+    : undefined
+  const preset = defaults.template && (FORMAT_TEMPLATES as readonly string[]).includes(defaults.template) ? (defaults.template as FormatTemplateId) : 'gs1'
+  const format = input.format
+    ? (input.format as TournamentFormat)
+    : clubTemplate
+      ? clubTemplate.format
+      : formatTemplate(input.template ?? preset, input.maxParticipants, input.templateParams as TemplateParams)
   if (input.settings.restMinutes != null) format.restMinutes = input.settings.restMinutes
   const errors = validateFormat(format)
   if (errors.length) throw unprocessable('format.invalid', errors)
@@ -574,6 +627,7 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
       refund_rules: json(input.refundRules ?? defaults.refundRules ?? DEFAULT_REFUND),
       table_ids: tableIds,
       is_rated: input.isRated,
+      rating_coefficient: input.ratingCoefficient ?? 1,
       series_id: input.seriesId ?? null,
       created_by: userId,
     })

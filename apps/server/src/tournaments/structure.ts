@@ -7,6 +7,7 @@ import {
   buildGroupStage,
   finalPlaces,
   groupStandings,
+  matchRulesFor,
   resolveBracket,
   selectQualifiers,
   seedsFromQualifiers,
@@ -215,6 +216,12 @@ async function syncBracket(trx: Trx, stageId: number): Promise<void> {
   }
 }
 
+/** Match rules with the stage and round overrides of the format. */
+export async function rulesOfMatch(trx: Pick<Trx, 'selectFrom'>, format: TournamentFormat, match: Pick<Match, 'stage_id' | 'stage_label'>) {
+  const stage = await trx.selectFrom('stages').select('stage_key').where('id', '=', match.stage_id).executeTakeFirst()
+  return matchRulesFor(format, stage?.stage_key, match.stage_label)
+}
+
 export type ScoreInput = {
   setsHome: number
   setsAway: number
@@ -234,10 +241,11 @@ export async function recordResult(trx: Trx, matchId: number, input: ScoreInput,
   if (!['scheduled', 'called', 'playing'].includes(match.status)) throw conflict('match.not_playable')
   if (match.home_entry_id == null || match.away_entry_id == null) throw conflict('match.players_unknown')
   const type = input.resultType ?? 'normal'
-  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, t.format.match) }
+  const rules = await rulesOfMatch(trx, t.format, match)
+  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, rules) }
   const games = input.games ?? []
   if (type === 'normal' && !input.teamMeeting) {
-    const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, t.format.match)
+    const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, rules)
     if (errors.length) throw unprocessable('match.invalid_score', errors)
   } else if (type !== 'normal' && !input.winner) throw badRequest('match.winner_required')
   const winnerSide = type === 'normal' ? (input.setsHome > input.setsAway ? 'home' : 'away') : input.winner!
@@ -468,10 +476,11 @@ export async function correctResult(trx: Trx, matchId: number, input: ScoreInput
   if (t.status !== 'running') throw conflict('tournament.not_running')
   if (!['finished', 'walkover', 'retired'].includes(match.status) || match.result_type === 'bye') throw conflict('match.not_finished')
   const type = input.resultType ?? 'normal'
-  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, t.format.match) }
+  const rules = await rulesOfMatch(trx, t.format, match)
+  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, rules) }
   const games = input.games ?? []
   if (type === 'normal') {
-    const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, t.format.match)
+    const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, rules)
     if (errors.length) throw unprocessable('match.invalid_score', errors)
   } else if (!input.winner) throw badRequest('match.winner_required')
   const winnerSide = type === 'normal' ? (input.setsHome > input.setsAway ? 'home' : 'away') : input.winner!
