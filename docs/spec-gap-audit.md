@@ -10,6 +10,13 @@ commission ledger, payouts, receipts, refunds and the payment result screen.
 
 ## P0: before inviting real clubs
 
+**Status 2026-11-13: all P0 items are implemented on `main`.** They passed typecheck, lint and unit tests, but have not been run against PostgreSQL or e2e yet.
+Notes:
+- (8) The finance screen counts expected at-club money and money marked «Получено».
+- (10) Users who sign in only with Google set a password before deleting their account.
+- (11) Backups, certificate renewal and log rotation are configured in `ops/`. The uptime check itself is an external service to sign up for.
+
+
 | # | Spec | Gap | Effort |
 |---|---|---|---|
 | 1 | 4.4 | Technical defeat is stored as 0:0 (`conduct.ts` no-show). It should be 3:0 / 11:0 (`walkoverScore()` exists but is unused) | S |
