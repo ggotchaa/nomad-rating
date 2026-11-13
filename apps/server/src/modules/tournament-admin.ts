@@ -20,7 +20,7 @@ export const tournamentAdminRouter = Router()
 export const seriesRouter = Router({ mergeParams: true })
 
 // Same fields as creation without defaults: a missing field keeps its current value.
-const updateSchema = z.object(
+export const updateSchema = z.object(
   Object.fromEntries(
     Object.entries(createSchema.omit({ hallId: true }).shape).map(([k, v]) => [k, (v instanceof z.ZodDefault ? v.unwrap() : v).optional()]),
   ) as unknown as { [K in Exclude<keyof typeof createSchema.shape, 'hallId'>]: z.ZodOptional<z.ZodType<z.infer<typeof createSchema>[K]>> },
@@ -33,7 +33,18 @@ tournamentAdminRouter.patch(
     const { club_id, hall_id } = await clubOfTournament(id)
     const user = await requireClubRight(req, club_id, 'tournaments', { tournamentId: id, hallId: hall_id })
     const body = parseBody(updateSchema, req)
-    const result = await db.transaction().execute(async (trx) => {
+    const result = await updateTournament(id, body, user.id)
+    bus.publish(`tournament:${id}`, 'tournament.updated', { tournamentId: id })
+    bus.publish(`hall:${hall_id}`, 'hall.availability_changed', { hallId: hall_id })
+    res.json(result)
+  }),
+)
+
+export type TournamentPatch = z.infer<typeof updateSchema>
+
+/** Edits a not started tournament (shared by the club and the admin panel). */
+export async function updateTournament(id: number, body: TournamentPatch, actorUserId: number, reason?: string) {
+  return db.transaction().execute(async (trx) => {
       const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', id).forUpdate().executeTakeFirstOrThrow()
       if (!['draft', 'published', 'registration_closed'].includes(t.status)) throw conflict('tournament.not_editable')
       const taken = Number(
@@ -86,14 +97,10 @@ tournamentAdminRouter.patch(
           .where('tournament_id', '=', id)
           .execute()
       }
-      await audit({ actorUserId: user.id, clubId: club_id, entity: 'tournament', entityId: id, action: 'update', before: { title: t.title, startsAt: t.starts_at, max: t.max_participants }, after: body }, trx)
+      await audit({ actorUserId, clubId: t.club_id, entity: 'tournament', entityId: id, action: 'update', reason, before: { title: t.title, startsAt: t.starts_at, max: t.max_participants }, after: body }, trx)
       return { estimate, status: updated.status }
-    })
-    bus.publish(`tournament:${id}`, 'tournament.updated', { tournamentId: id })
-    bus.publish(`hall:${hall_id}`, 'hall.availability_changed', { hallId: hall_id })
-    res.json(result)
-  }),
-)
+  })
+}
 
 /** Copy (T-7): a new draft with the same settings and a new date. */
 tournamentAdminRouter.post(

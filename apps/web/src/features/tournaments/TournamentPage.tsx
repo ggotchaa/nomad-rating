@@ -106,6 +106,11 @@ export function TournamentPage() {
                   <StatusChip status={d.status} />
                   {d.isRated && <span className="chip chip--holo">{t.t.rated}</span>}
                   {limits && <span className="chip">{limits}</span>}
+                  {me.user?.role === 'admin' && (
+                    <Link className="button button--sm" to={`/admin/tournaments/${d.id}`}>
+                      {t.adminT.manage}
+                    </Link>
+                  )}
                 </div>
                 <h1>{d.title}</h1>
                 <p>

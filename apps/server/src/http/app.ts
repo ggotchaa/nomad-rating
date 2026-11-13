@@ -1,3 +1,4 @@
+import { adminTournamentsRouter } from '../modules/admin-tournaments.ts'
 import cookieParser from 'cookie-parser'
 import express from 'express'
 import helmet from 'helmet'
@@ -64,6 +65,7 @@ export function createApp() {
   api.use('/my', claimRouter)
   api.use('/rttf', rttfRouter)
   api.use('/admin/rttf', adminRttfRouter)
+  api.use('/admin/tournaments', adminTournamentsRouter)
   api.use('/admin', adminRouter)
   api.use('/admin', adminPlayersRouter)
   api.use('/admin', adminSystemRouter)

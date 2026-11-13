@@ -7,6 +7,7 @@ type Overview = { clubs: number; merges: number; rttf: number }
 
 /** Admin sections: add an entry here and a route in main.tsx. `badge` reads a counter of /admin/overview. */
 export const ADMIN_SECTIONS: { to: string; label: string; badge?: keyof Overview }[] = [
+  { to: 'tournaments', label: t.adminT.title },
   { to: 'clubs', label: t.admin.clubs, badge: 'clubs' },
   { to: 'merges', label: t.admin.merges, badge: 'merges' },
   { to: 'rttf', label: t.admin.rttf, badge: 'rttf' },

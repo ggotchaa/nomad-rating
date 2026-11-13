@@ -233,6 +233,18 @@ export function ConductPage() {
                 <button className="button button--sm" onClick={() => void run(`${base}/matches/${m.id}/uncall`)}>
                   {t.conduct.uncall}
                 </button>
+                <button
+                  className="button button--sm"
+                  onClick={async () => {
+                    const n = (await dialog.prompt(t.adminT.tablePrompt))?.trim()
+                    if (!n) return
+                    const table = d.hallTables.find((x) => String(x.number) === n && d.tournament.tableIds.includes(x.id))
+                    if (!table) return setMessage({ ok: false, text: t.adminT.noSuchTable })
+                    void run(`${base}/matches/${m.id}/table`, { tableId: table.id }, t.adminT.tableMoved)
+                  }}
+                >
+                  {t.adminT.moveTable}
+                </button>
               </>
             )}
             <button className="button button--sm button--primary" onClick={() => setScoring({ match: m, mode: 'result' })}>

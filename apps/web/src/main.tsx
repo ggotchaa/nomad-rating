@@ -43,6 +43,7 @@ import { Finance } from './features/manage/Finance.tsx'
 import { ClubToday } from './features/manage/ClubDesk.tsx'
 import { AdminLayout } from './features/admin/AdminLayout.tsx'
 import { AdminDashboard } from './features/admin/AdminDashboard.tsx'
+import { AdminTournament, AdminTournaments } from './features/admin/AdminTournaments.tsx'
 import { AdminClubs, AdminMerges, AdminRttf } from './features/admin/AdminQueues.tsx'
 import { AdminAudit, AdminDisputes, AdminPlayers, AdminSettings, AdminViewAs } from './features/admin/AdminTools.tsx'
 import { CancelBooking } from './features/booking/CancelBooking.tsx'
@@ -105,6 +106,8 @@ const router = createBrowserRouter([
         element: <AdminLayout />,
         children: [
           { index: true, element: <AdminDashboard /> },
+          { path: 'tournaments', element: <AdminTournaments /> },
+          { path: 'tournaments/:id', element: <AdminTournament /> },
           { path: 'clubs', element: <AdminClubs /> },
           { path: 'merges', element: <AdminMerges /> },
           { path: 'rttf', element: <AdminRttf /> },
