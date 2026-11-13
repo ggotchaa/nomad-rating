@@ -6,8 +6,9 @@ import { t } from '../../i18n/index.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
 import { Structure } from '../tournaments/Structure.tsx'
 import { TournamentPlan } from '../booking/TournamentPlan.tsx'
+import { CalibTag } from '../rating/widgets.tsx'
 
-type LiveSide = { name: string; rating: number | null } | null
+type LiveSide = { name: string; rating: number | null; calibrating?: boolean; startLevel?: number } | null
 type LiveMatch = { id: number; number: number; label: string | null; status: string; table: number | null; home: LiveSide; away: LiveSide; setsHome: number | null; setsAway: number | null; waitReason?: string | null }
 type Live = { id: number; slug: string; title: string; status: string; tables: { id: number; number: number; match: LiveMatch | null }[]; next: LiveMatch[]; recent: LiveMatch[]; structure: StageView[] | null }
 
@@ -66,8 +67,10 @@ export function LivePage() {
                         <p className="small muted">{label(x.match.label)}</p>
                         <p className="live__pair">
                           {x.match.home?.name}
+                          <CalibTag e={x.match.home} />
                           <br />
                           {x.match.away?.name}
+                          <CalibTag e={x.match.away} />
                         </p>
                       </>
                     ) : (
@@ -82,7 +85,9 @@ export function LivePage() {
                 <h2>{t.live.next}</h2>
                 {d.next.map((m) => (
                   <p key={m.id} className="small">
-                    <span className="mono muted">№ {m.number}</span> {m.home?.name} — {m.away?.name} <span className="muted">· {label(m.label)}</span>
+                    <span className="mono muted">№ {m.number}</span> {m.home?.name}
+                    <CalibTag e={m.home} /> — {m.away?.name}
+                    <CalibTag e={m.away} /> <span className="muted">· {label(m.label)}</span>
                   </p>
                 ))}
               </section>
@@ -90,7 +95,9 @@ export function LivePage() {
                 <h2>{t.live.recent}</h2>
                 {d.recent.map((m) => (
                   <p key={m.id} className="small">
-                    {m.home?.name} — {m.away?.name}{' '}
+                    {m.home?.name}
+                    <CalibTag e={m.home} /> — {m.away?.name}
+                    <CalibTag e={m.away} />{' '}
                     <b className="mono">
                       {m.setsHome}:{m.setsAway}
                     </b>

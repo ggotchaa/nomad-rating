@@ -626,7 +626,8 @@
 .linklist {
   display: grid;
 }
-.linklist > a {
+.linklist > a,
+.linklist > button {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -634,10 +635,22 @@
   padding: 12px 0;
   border-bottom: 1px solid rgba(94, 242, 255, 0.07);
 }
-.linklist > a:last-child {
+.linklist > button {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid rgba(94, 242, 255, 0.07);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.linklist > a:last-child,
+.linklist > button:last-child {
   border-bottom: 0;
 }
-.linklist > a:hover b {
+.linklist > a:hover b,
+.linklist > button:hover b {
   color: var(--holo);
 }
 .linklist span {
@@ -1236,6 +1249,46 @@
   padding: 16px;
   text-align: center;
   background: var(--bg);
+}
+.monthgrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.monthgrid__wd {
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: center;
+}
+.monthgrid__day {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-height: 84px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.monthgrid__day.is-today {
+  border-color: var(--holo);
+}
+.monthgrid__day a {
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px) {
+  .monthgrid__day {
+    min-height: 52px;
+    padding: 3px;
+  }
+  .monthgrid__day a .mono {
+    display: none;
+  }
 }
 .sharebox {
   display: grid;

@@ -107,7 +107,7 @@ export type Participant = {
   ratingChange?: { delta: number | null; rating_after: number | null; calibrated: boolean } | null
 }
 
-export type EntryRef = { entryId: number; playerId: number; name: string; rating: number | null; seed: number | null }
+export type EntryRef = { entryId: number; playerId: number; name: string; rating: number | null; seed: number | null; calibrating?: boolean; startLevel?: number }
 
 export type MatchView = {
   id: number

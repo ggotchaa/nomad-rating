@@ -48,6 +48,7 @@ import { JoinTeam, MyTeams } from './features/teams/Teams.tsx'
 import { MeetingPage } from './features/teams/Meeting.tsx'
 import { LeaguePage, LeaguesList } from './features/leagues/Leagues.tsx'
 import { ManageLeagues } from './features/leagues/ManageLeagues.tsx'
+import { ShortLink } from './features/tournaments/ShareBox.tsx'
 
 const Landing = lazy(() => import('./features/landing/Landing.tsx').then((m) => ({ default: m.Landing })))
 
@@ -96,6 +97,7 @@ const router = createBrowserRouter([
       { path: 'meeting/:tournamentId/:matchId', element: <MeetingPage /> },
       { path: 'leagues', element: <LeaguesList /> },
       { path: 'leagues/:slug', element: <LeaguePage /> },
+      { path: 's/:code', element: <ShortLink /> },
       {
         path: 'admin',
         element: <AdminLayout />,

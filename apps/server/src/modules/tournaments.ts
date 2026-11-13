@@ -305,10 +305,11 @@ export async function structure(t: Tournament) {
         .selectFrom('entries as e')
         .innerJoin('players as p', 'p.id', 'e.player_id')
         .leftJoin('teams as tm', 'tm.id', 'e.team_id')
-        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'e.rating_at_start', 'e.seed', 'tm.name as team_name'])
+        .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
+        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'p.start_level', 'r.rating', 'e.rating_at_start', 'e.seed', 'tm.name as team_name'])
         .where('e.tournament_id', '=', t.id)
         .execute()
-    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: e.team_name ?? playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew' }]),
+    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: e.team_name ?? playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew', calibrating: !e.team_name && e.rating == null, startLevel: e.start_level }]),
   )
   const matches = await db
     .selectFrom('matches as m')
@@ -447,7 +448,7 @@ tournamentsRouter.get(
       avgRating: ratings.length ? Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length) : null,
       participants: list.map((p) => ({ ...p, paymentMethod: isStaff ? p.paymentMethod : undefined, paymentStatus: isStaff ? p.paymentStatus : undefined, ratingChange: deltas.find((d) => d.player_id === p.playerId) ?? null })),
       myEntry,
-      shareUrl: `${config.SITE_URL}/t/${t.slug}`,
+      shareUrl: `${config.SITE_URL}/s/t${t.id.toString(36)}`,
       structure: await structure(t),
     })
   }),

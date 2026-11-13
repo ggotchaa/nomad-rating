@@ -41,6 +41,8 @@ export const kk: Messages = {
     book: 'Үстел брондау',
   },
   home: {
+    findPlayer: 'Ойыншыны табу',
+    findPlaceholder: 'Тегі немесе аты',
     eyebrow: 'Үстел теннисінен рейтингтік турнирлер',
     title: 'Ойна. Өс. Рейтингте көтеріл.',
     lead: 'Қазақстан клубтарының турнирлеріне жазылу, бірыңғай Эло рейтингі және үстел брондау — бір жерде.',
@@ -56,6 +58,9 @@ export const kk: Messages = {
     titleB: 'Рейтингте көтеріл.',
   },
   t: {
+    viewList: 'Тізім',
+    viewMonth: 'Ай',
+    view: 'Көрініс',
     title: 'Турнирлер',
     upcoming: 'Алдағы',
     live: 'Қазір өтуде',
@@ -132,6 +137,8 @@ export const kk: Messages = {
     forPlaces: (a: number, b: number) => (a === b ? `${a}-орын үшін` : `${a}–${b}-орындар үшін`),
   },
   r: {
+    ageFrom: 'Жасы, бастап',
+    ageTo: 'дейін',
     title: 'Рейтинг-тізім',
     lead: 'Қазақстан бойынша бірыңғай Эло рейтингі. «К» — рейтинг әлі калибрленуде.',
     gender: 'Жынысы',
@@ -146,6 +153,9 @@ export const kk: Messages = {
     total: (n: number) => `Ойыншылар: ${n}`,
   },
   p: {
+    h2hPick: 'Ойыншымен салыстыру',
+    h2hSearch: 'Ойыншыны табу…',
+    h2hChange: 'Басқа ойыншы',
     rating: 'Рейтинг',
     noRating: 'Рейтинг жоқ',
     calibration: (a: number, b: number) => `Калибрлеу: ${b} турнирдің ${a}-ін ойнады`,
@@ -241,6 +251,9 @@ export const kk: Messages = {
     google: 'Google арқылы кіру',
   },
   me: {
+    next: 'Жақын турнир',
+    nextMatch: 'Менің келесі матчым',
+    noNext: 'Алдағы турнирлер жоқ',
     title: 'Ойыншы кабинеті',
     entries: 'Менің турнирлерім',
     bookings: 'Менің брондауларым',
@@ -1100,6 +1113,7 @@ export const kk: Messages = {
     footer: 'Үстел теннисінен рейтингтік турнирлер',
   },
   errors: {
+    'link.not_found': 'Сілтеме табылмады',
     'booking.not_movable': 'Бұл брондауды көшіруге болмайды',
     'booking.slot_blocked': 'Бұл уақытта үстел бұғатталған',
     'block.too_many': 'Тұрақты бұғаттаулар тым көп',

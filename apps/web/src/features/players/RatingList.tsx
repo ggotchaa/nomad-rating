@@ -17,6 +17,8 @@ export function RatingList() {
   const [q, setQ] = useState('')
   const [term, setTerm] = useState('')
   const [inactive, setInactive] = useState(false)
+  const [ageMin, setAgeMin] = useState('')
+  const [ageMax, setAgeMax] = useState('')
   const [calibrating, setCalibrating] = useState(false)
   const [offset, setOffset] = useState(0)
   const [kind, setKind] = useState<'singles' | 'doubles'>('singles')
@@ -35,6 +37,8 @@ export function RatingList() {
   if (gender) query.set('gender', gender)
   if (term) query.set('q', term)
   if (inactive) query.set('inactive', 'true')
+  if (/^\d+$/.test(ageMin)) query.set('ageMin', ageMin)
+  if (/^\d+$/.test(ageMax)) query.set('ageMax', ageMax)
   if (calibrating) query.set('calibrating', 'true')
   const list = useApi<{ total: number; items: RatingRow[] }>(`/players?${query}`)
   const reset = <T,>(set: (v: T) => void) => (v: T) => {
@@ -67,6 +71,12 @@ export function RatingList() {
               ['f', t.r.women],
             ]}
           />
+          <label className="check">
+            {t.r.ageFrom}
+            <input type="number" min={5} max={99} inputMode="numeric" style={{ width: 64 }} value={ageMin} onChange={(e) => reset(setAgeMin)(e.target.value)} />
+            {t.r.ageTo}
+            <input type="number" min={5} max={99} inputMode="numeric" style={{ width: 64 }} value={ageMax} onChange={(e) => reset(setAgeMax)(e.target.value)} />
+          </label>
           <input type="search" placeholder={t.r.searchName} aria-label={t.r.searchName} value={q} onChange={(e) => setQ(e.target.value)} />
           <label className="check">
             <input type="checkbox" checked={inactive} onChange={(e) => reset(setInactive)(e.target.checked)} />

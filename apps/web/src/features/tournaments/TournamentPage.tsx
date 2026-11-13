@@ -148,7 +148,7 @@ export function TournamentPage() {
                 <div className="stack">
                   <div className="stack">
                     {!finished && d.status !== 'running' && <Register d={d} reload={state.reload} />}
-                    <ShareBox slug={d.slug} url={(d as { shareUrl?: string }).shareUrl ?? location.href} live={d.status === 'running' || finished} />
+                    <ShareBox slug={d.slug} url={(d as { shareUrl?: string }).shareUrl ?? location.href} text={d.title} live={d.status === 'running' || finished} />
                   </div>
                   <section className="panel">
                     <h2>{t.t.scheme}</h2>

@@ -41,6 +41,8 @@ export const en: Messages = {
     book: 'Book a table',
   },
   home: {
+    findPlayer: 'Find a player',
+    findPlaceholder: 'Last or first name',
     eyebrow: 'Rated table tennis tournaments',
     title: 'Play. Grow. Climb the rating.',
     lead: 'Sign up for Kazakhstan club tournaments, get a unified Elo rating and book tables, all in one place.',
@@ -56,6 +58,9 @@ export const en: Messages = {
     titleB: 'Climb the rating.',
   },
   t: {
+    viewList: 'List',
+    viewMonth: 'Month',
+    view: 'View',
     title: 'Tournaments',
     upcoming: 'Upcoming',
     live: 'Live now',
@@ -132,6 +137,8 @@ export const en: Messages = {
     forPlaces: (a: number, b: number) => (a === b ? `For place ${a}` : `For places ${a}–${b}`),
   },
   r: {
+    ageFrom: 'Age from',
+    ageTo: 'to',
     title: 'Rating list',
     lead: 'Unified Elo rating for Kazakhstan. "C" means the rating is still calibrating.',
     gender: 'Gender',
@@ -146,6 +153,9 @@ export const en: Messages = {
     total: (n: number) => `Players: ${n}`,
   },
   p: {
+    h2hPick: 'Compare with a player',
+    h2hSearch: 'Find a player…',
+    h2hChange: 'Another player',
     rating: 'Rating',
     noRating: 'No rating',
     calibration: (a: number, b: number) => `Calibration: ${a} of ${b} tournaments played`,
@@ -241,6 +251,9 @@ export const en: Messages = {
     google: 'Log in with Google',
   },
   me: {
+    next: 'Next tournament',
+    nextMatch: 'My next match',
+    noNext: 'No upcoming tournaments',
     title: 'Player account',
     entries: 'My tournaments',
     bookings: 'My bookings',
@@ -1100,6 +1113,7 @@ export const en: Messages = {
     footer: 'Rated table tennis tournaments',
   },
   errors: {
+    'link.not_found': 'Link not found',
     'booking.not_movable': 'This booking cannot be moved',
     'booking.slot_blocked': 'The table is blocked at this time',
     'block.too_many': 'Too many recurring blocks',

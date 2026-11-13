@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import type { EntryRef, MatchView, StageView } from '../../api/types.ts'
 import { t } from '../../i18n/index.ts'
+import { CalibTag } from '../rating/widgets.tsx'
 
 function sourceLabel(source: unknown): string {
   const s = source as { kind?: string; match?: number; seed?: number } | null
@@ -13,7 +14,10 @@ function sourceLabel(source: unknown): string {
 function Side({ entry, source, sets, win }: { entry: EntryRef | null; source: unknown; sets: number | null; win: boolean }) {
   return (
     <div className={`match__side${win ? ' is-win' : ''}${entry ? '' : ' is-tbd'}`}>
-      <span>{entry ? entry.name : sourceLabel(source)}</span>
+      <span>
+        {entry ? entry.name : sourceLabel(source)}
+        <CalibTag e={entry} />
+      </span>
       <span className="mono">{sets ?? ''}</span>
     </div>
   )
@@ -110,7 +114,10 @@ export function Structure({ stages, me }: { stages: StageView[]; me?: number }) 
                         ? g.standings.rows.map((r) => (
                             <tr key={r.id} className={r.player?.playerId === me ? 'is-me' : ''}>
                               <td className="rank">{r.place}</td>
-                              <td>{r.player ? <Link to={`/players/${r.player.playerId}`}>{r.player.name}</Link> : '—'}</td>
+                              <td>
+                                {r.player ? <Link to={`/players/${r.player.playerId}`}>{r.player.name}</Link> : '—'}
+                                <CalibTag e={r.player} />
+                              </td>
                               <td className="num">{r.wins}</td>
                               <td className="num">{r.losses}</td>
                               <td className="num">
@@ -122,7 +129,10 @@ export function Structure({ stages, me }: { stages: StageView[]; me?: number }) 
                         : g.members.map((p, i) => (
                             <tr key={p?.entryId ?? i}>
                               <td className="rank">{i + 1}</td>
-                              <td colSpan={5}>{p?.name}</td>
+                              <td colSpan={5}>
+                                {p?.name}
+                                <CalibTag e={p} />
+                              </td>
                             </tr>
                           ))}
                     </tbody>

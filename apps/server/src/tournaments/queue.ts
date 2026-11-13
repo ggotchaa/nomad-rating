@@ -5,7 +5,7 @@ import { db } from '../db/index.ts'
 import type { CallResponses, Tournament } from '../db/types.ts'
 import { playerName } from '../modules/players.ts'
 
-export type MatchSide = { entryId: number; playerId: number; userId: number | null; name: string; rating: number | null }
+export type MatchSide = { entryId: number; playerId: number; userId: number | null; name: string; rating: number | null; calibrating: boolean; startLevel: number }
 
 export async function conductState(t: Tournament, now = new Date()) {
   const tables = await db.selectFrom('hall_tables').select(['id', 'number']).where('id', 'in', t.table_ids.length ? t.table_ids : [0]).orderBy('number').execute()
@@ -20,7 +20,7 @@ export async function conductState(t: Tournament, now = new Date()) {
   const members = memberIds.length ? await db.selectFrom('players').select(['id', 'first_name', 'last_name']).where('id', 'in', memberIds).execute() : []
   const memberName = new Map(members.map((p) => [p.id, playerName(p)]))
   const side = new Map<number, MatchSide>(
-    entries.map((e) => [e.id, { entryId: e.id, playerId: e.player_id, userId: e.user_id, name: playerName(e), rating: e.rating_at_start ?? e.rating }]),
+    entries.map((e) => [e.id, { entryId: e.id, playerId: e.player_id, userId: e.user_id, name: playerName(e), rating: e.rating_at_start ?? e.rating, calibrating: e.rating == null, startLevel: e.start_level }]),
   )
   const matches = await db.selectFrom('matches').selectAll().where('tournament_id', '=', t.id).orderBy('number').execute()
   const tableNumber = new Map(tables.map((x) => [x.id, x.number]))

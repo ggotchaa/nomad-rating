@@ -1,13 +1,15 @@
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import type { Home as HomeData } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
 import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { Async, TournamentCard } from '../../ui/kit.tsx'
+import { PlayerSearch } from '../players/PlayerSearch.tsx'
 
 export function Home() {
   const { city } = useSession()
   const home = useApi<HomeData>(`/home?city=${city}`)
+  const navigate = useNavigate()
   return (
     <main className="page">
       <section className="hero">
@@ -24,6 +26,10 @@ export function Home() {
             {t.c.book}
           </Link>
         </div>
+      </section>
+      <section className="panel stack">
+        <h2>{t.home.findPlayer}</h2>
+        <PlayerSearch placeholder={t.home.findPlaceholder} onPick={(p) => void navigate(`/players/${p.id}`)} />
       </section>
       <Async state={home} skeleton={2}>
         {(h) => (

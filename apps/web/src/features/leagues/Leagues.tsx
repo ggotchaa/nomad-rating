@@ -7,6 +7,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { formatTenge } from '../../i18n/format.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
+import { ShareBox } from '../tournaments/ShareBox.tsx'
 
 export type LeagueRow = { id: number; slug: string; name: string; format: string; description: string; club: string; club_slug: string; season_id: number | null }
 export type TableRow = { participantId: number; playerId: number; name: string; rating: number | null; divisionId: number | null; status: string; missedTours: number; total: number; tours: number; dropped: number[] }
@@ -177,6 +178,7 @@ export function LeaguePage() {
                 </p>
                 {l.description && <p className="muted">{l.description}</p>}
               </header>
+              <ShareBox url={`${location.origin}/s/l${l.id.toString(36)}`} text={l.name} />
               {s && (
                 <>
                   <section className="panel stack">
