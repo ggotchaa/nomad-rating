@@ -635,7 +635,7 @@ export interface TelegramAccountsTable {
   chat_id: number
   player_id: number
   username: string | null
-  lang: Generated<string>
+  lang: string | null
   stopped: Generated<boolean>
   blocked_at: Timestamp | null
   created_at: DefaultTimestamp

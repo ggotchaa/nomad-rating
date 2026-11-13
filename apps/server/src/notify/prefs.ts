@@ -16,6 +16,15 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   booking_reminder: { channels: ['push', 'telegram'] },
   booking_moved: { channels: ['push', 'telegram', 'email'] },
   booking_cancelled: { channels: ['push', 'telegram', 'email'] },
+  team_invitation: { channels: ['push', 'telegram', 'email'] },
+  team_request: { channels: ['push', 'telegram'] },
+  team_invitation_answer: { channels: ['push', 'telegram'] },
+  league_move: { channels: ['push', 'telegram', 'email'] },
+  league_confirm: { channels: ['push', 'telegram', 'email'] },
+  league_fixture: { channels: ['push', 'telegram'] },
+  league_reminder: { channels: ['push', 'telegram'] },
+  lineup_overdue: { channels: ['push', 'telegram'] },
+  score_confirm: { channels: ['push', 'telegram'] },
 }
 
 const FALLBACK: NotifyChannel[] = ['push', 'telegram']

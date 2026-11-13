@@ -11,7 +11,7 @@ import { sendTelegram, telegramEnabled } from '../telegram/send.ts'
 import { sendEmail } from './email.ts'
 import { resolveChannels } from './prefs.ts'
 import { pushEnabled, sendPush } from './push.ts'
-import { render } from './text.ts'
+import { render, toLang } from './text.ts'
 
 export type NotifyInput = { userId: number; type: string; data: Record<string, unknown>; urgent?: boolean }
 export type DeliveryJob = { notificationId: number; userId: number; type: string; data: Record<string, unknown>; urgent: boolean; createdAt: number; channel: NotifyChannel }
@@ -83,17 +83,18 @@ export async function deliver(job: DeliveryJob, attempt: number): Promise<void> 
       .insertInto('notification_log')
       .values({ notification_id: job.notificationId, user_id: job.userId, type: job.type, channel: job.channel, attempt, status, error, latency_ms: Date.now() - job.createdAt })
       .execute()
-  const message = render(job.type, job.data)
   try {
+    const user = await defaultDb.selectFrom('users').select(['email', 'locale']).where('id', '=', job.userId).executeTakeFirst()
+    const lang = toLang(user?.locale)
+    const message = render(job.type, job.data, lang)
     let sent = 0
     if (job.channel === 'push') {
       if (!pushEnabled) return void (await log('skipped', 'push.disabled'))
       sent = await sendPush(job.userId, { ...message, urgent: job.urgent, tag: job.data.matchId ? `match:${String(job.data.matchId)}` : undefined })
     } else if (job.channel === 'telegram') {
       if (!telegramEnabled) return void (await log('skipped', 'telegram.disabled'))
-      sent = await sendTelegram(job.userId, message, job.data.matchId ? `match:${String(job.data.matchId)}` : undefined)
+      sent = await sendTelegram(job.userId, (chatLang) => render(job.type, job.data, toLang(chatLang, lang)), job.data.matchId ? `match:${String(job.data.matchId)}` : undefined)
     } else {
-      const user = await defaultDb.selectFrom('users').select('email').where('id', '=', job.userId).executeTakeFirst()
       if (user) sent = (await sendEmail({ to: user.email, subject: message.title, text: `${message.body}\n\n${message.url}` }), 1)
     }
     await log(sent ? 'sent' : 'skipped', sent ? null : 'no_recipient')
