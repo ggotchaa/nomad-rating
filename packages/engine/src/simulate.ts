@@ -1,4 +1,4 @@
-// Realistic random match results, used for demo data and engine tests only.
+// Realistic random match results, used for dev data and engine tests only.
 
 import { expectedScore } from './elo.ts'
 import type { Rng } from './random.ts'

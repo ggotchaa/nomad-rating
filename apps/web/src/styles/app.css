@@ -63,27 +63,6 @@
   background: #0a1222;
 }
 
-.demo-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 6px var(--gutter);
-  background: rgba(255, 138, 61, 0.12);
-  border-bottom: 1px solid rgba(255, 138, 61, 0.35);
-  color: #ffd2b3;
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.demo-bar select {
-  width: auto;
-  min-height: 30px;
-  padding: 2px 8px;
-  font-size: 12px;
-  border-color: rgba(255, 138, 61, 0.5);
-}
-
 .topbar {
   position: sticky;
   top: 0;

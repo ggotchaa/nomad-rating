@@ -3,19 +3,21 @@ import type { APIRequestContext, PlaywrightWorkerArgs } from '@playwright/test'
 
 export type Playwright = PlaywrightWorkerArgs['playwright']
 
-export type DemoKey = 'player' | 'newbie' | 'organizer' | 'hall_admin' | 'referee' | 'rttf' | 'new_club' | 'admin'
+export type AccountKey = 'player' | 'newbie' | 'organizer' | 'hall_admin' | 'referee' | 'rttf' | 'new_club' | 'admin'
+const LOGIN: Record<AccountKey, string> = { player: 'player', newbie: 'newbie', organizer: 'organizer', hall_admin: 'hall', referee: 'referee', rttf: 'rttf', new_club: 'newclub', admin: 'admin' }
+export const emailOf = (key: AccountKey) => `${LOGIN[key]}@dev.nomad.test`
 
 export const baseURL = 'http://127.0.0.1:5190'
-export const PASSWORD = 'nomad-demo-2026'
+export const PASSWORD = 'nomad-dev-2026'
 
-export async function loginAs(request: APIRequestContext, key: DemoKey) {
-  const res = await request.post('/api/demo/login-as', { data: { key } })
+export async function loginAs(request: APIRequestContext, key: AccountKey) {
+  const res = await request.post('/api/auth/login', { data: { email: emailOf(key), password: PASSWORD } })
   expect(res.ok(), `login-as ${key}`).toBeTruthy()
   return res.json()
 }
 
-/** Separate cookie jar per call, signed in as the demo account. */
-export async function apiAs(playwright: Playwright, key: DemoKey): Promise<APIRequestContext> {
+/** Separate cookie jar per call, signed in as the seeded account. */
+export async function apiAs(playwright: Playwright, key: AccountKey): Promise<APIRequestContext> {
   const ctx = await playwright.request.newContext({ baseURL })
   await loginAs(ctx, key)
   return ctx
@@ -75,7 +77,7 @@ export async function createPublishedTournament(organizer: APIRequestContext, id
   return created
 }
 
-/** The upcoming Saturday tournament the demo referee is scoped to, and another published one outside that scope. */
+/** The upcoming Saturday tournament the seeded referee is scoped to, and another published one outside that scope. */
 export async function refereeScope(organizer: APIRequestContext, clubId: number) {
   const list = await json<{ id: number; title: string; status: string }[]>(await organizer.get(`/api/clubs/${clubId}/tournaments`))
   const scoped = list.find((t) => t.status === 'published' && t.title === 'Субботний рейтинговый турнир')!

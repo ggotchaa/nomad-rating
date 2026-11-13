@@ -20,7 +20,7 @@ import { Clubs } from './features/clubs/Clubs.tsx'
 import { Home } from './features/home/Home.tsx'
 import { BookingDesk } from './features/manage/BookingDesk.tsx'
 import { HallSettings } from './features/manage/HallSettings.tsx'
-import { Guard, ManageIndex, ManageLayout, ManageMore } from './features/manage/ManageLayout.tsx'
+import { Guard, ManageIndex, ManageLayout } from './features/manage/ManageLayout.tsx'
 import { ManagePlayers } from './features/manage/ManagePlayers.tsx'
 import { ManageTournamentPage, ManageTournaments, NewTournament } from './features/manage/ManageTournaments.tsx'
 import { Profile } from './features/players/Profile.tsx'
@@ -128,7 +128,6 @@ const router = createBrowserRouter([
           { path: 'helpers', element: <Guard right="organizer"><Helpers /></Guard> },
           { path: 'audit', element: <Guard right="organizer"><ManageAudit /></Guard> },
           { path: 'leagues', element: <Guard right="tournaments"><ManageLeagues /></Guard> },
-          { path: 'more', element: <ManageMore /> },
         ],
       },
       { path: '*', element: <main className="page"><p className="empty">{t.common.notFound}</p></main> },

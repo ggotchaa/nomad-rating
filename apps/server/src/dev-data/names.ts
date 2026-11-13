@@ -1,4 +1,4 @@
-// Fictional names for demo players (any match with real people is accidental).
+// Fictional names for development players (any match with real people is accidental).
 
 export const MALE_FIRST = [
   'Арман', 'Ерлан', 'Нурлан', 'Данияр', 'Алихан', 'Асхат', 'Бауыржан', 'Ерболат', 'Мади', 'Санжар', 'Тимур', 'Ринат',

@@ -1,4 +1,4 @@
-// Stage 5 demo data through the real services: pairs and a finished doubles tournament, teams and a finished
+// Stage 5 dev data through the real services: pairs and a finished doubles tournament, teams and a finished
 // team tournament (line-ups, meeting games), a 3-division league with two applied tours and a planned one.
 
 import { MEETING_SCHEMES, seededRandom, simulateMatch } from '@nomad/engine'
@@ -83,7 +83,7 @@ export async function seedStage5(log: (s: string) => void): Promise<void> {
       .limit(60)
       .execute()
   ).map((p) => p.id)
-  const me = await db.selectFrom('users as u').innerJoin('players as p', 'p.user_id', 'u.id').select('p.id').where('u.email', '=', 'player@demo.nomad.kz').executeTakeFirst()
+  const me = await db.selectFrom('users as u').innerJoin('players as p', 'p.user_id', 'u.id').select('p.id').where('u.email', '=', 'player@dev.nomad.test').executeTakeFirst()
   const day = (offset: number, hour: number) => zonedToUtc(addDays(new Date().toISOString().slice(0, 10), offset), hour * 60, TZ)
 
   // Pairs + finished doubles tournament.

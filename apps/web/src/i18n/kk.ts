@@ -19,8 +19,6 @@ export const kk: Messages = {
     players: 'ойыншы',
     tables: 'үстел',
     more: 'Толығырақ',
-    soon: 'Әзірленуде',
-    soonText: 'Бұл бөлім келесі кезеңдерде пайда болады. Демо-нұсқаға кірмейді.',
     notFound: 'Бет табылмады',
     yes: 'Иә',
     no: 'Жоқ',
@@ -33,7 +31,6 @@ export const kk: Messages = {
     female: 'әйел',
     male: 'ер',
   },
-  demo: { banner: 'Демо-нұсқа · деректер ойдан шығарылған, төлем өшірулі', loginAs: 'Былай кіру…', guest: 'Қонақ (шығу)', personas: { player: 'Ойыншы', newbie: 'Жаңа ойыншы', organizer: 'Клуб ұйымдастырушысы', hall_admin: 'Зал әкімшісі', referee: 'Төреші', manager: 'Турнир менеджері', accountant: 'Клуб бухгалтері', rttf: 'RTTF профилі бар ойыншы', new_club: 'Тексерудегі жаңа клуб', admin: 'Платформа әкімшісі' } as Record<string, string> },
   bookIdx: {
     kicker: 'Брондау',
     nav: 'Брондау',
@@ -314,8 +311,6 @@ export const kk: Messages = {
     horizon: 'Горизонт, күн',
     freeCancel: 'Тегін бас тарту, басталуына дейін сағ',
     defaultPrice: 'Әдепкі баға, ₸/сағ',
-    editor: 'Зал жоспарының редакторы',
-    other: ['Көмекшілер және құқықтар', 'Қаржы және төлемдер', 'Лигалар және маусымдар', 'Ойыншыларды және RTTF импорттау'],
   },
   notif: {
     title: 'Хабарламалар',
@@ -352,8 +347,6 @@ export const kk: Messages = {
     subClub: (club: string) => `«${club}» клубының жаңа турнирлері`,
     subscribe: 'Жазылу',
     unsubscribe: 'Жазылымнан шығу',
-    sent: 'Сынақ хабарлама жіберілді',
-    test: 'Сынақ хабарлама жіберу',
   },
   tg: {
     title: 'Telegram',

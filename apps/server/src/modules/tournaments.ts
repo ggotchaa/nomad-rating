@@ -521,7 +521,7 @@ async function uniqueSlug(trx: Trx, title: string, startsAt: Date): Promise<stri
   return slug
 }
 
-/** Creates a draft tournament; address, tables and defaults come from the club (C-3). Used by the API and the demo seed. */
+/** Creates a draft tournament; address, tables and defaults come from the club (C-3). Used by the API and the dev seed. */
 export async function createTournament(trx: Trx, clubId: number, userId: number | null, input: Omit<z.infer<typeof createSchema>, 'type'> & { type?: Tournament['type'] }): Promise<Tournament> {
   const hall = await trx.selectFrom('halls').selectAll().where('id', '=', input.hallId).where('club_id', '=', clubId).executeTakeFirst()
   if (!hall) throw badRequest('tournament.hall_not_in_club')
@@ -704,7 +704,7 @@ async function overlapping(trx: Trx, t: Tournament, playerId: number) {
 
 export type RegisterResult = { entryId: number; status: EntryStatus; paymentMethod: 'online' | 'at_club' | null; redirectUrl: string | null }
 
-/** Registers a player (self or by the club). Used by the API and by the demo seed. */
+/** Registers a player (self or by the club). Used by the API and by the dev seed. */
 export async function registerPlayer(trx: Trx, tournamentId: number, playerId: number, actorUserId: number | null, options: { byClub?: boolean } = {}): Promise<RegisterResult> {
   const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', tournamentId).forUpdate().executeTakeFirstOrThrow()
   if (t.type !== 'singles') throw badRequest('entry.team_required')

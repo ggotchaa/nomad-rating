@@ -1,5 +1,5 @@
 // B-10 against a real database: two simultaneous bookings of one slot → exactly one succeeds.
-// Runs only with DATABASE_URL pointing at a seeded database (`npm run demo:reset`).
+// Runs only with DATABASE_URL pointing at a seeded database (`npm run dev:reset`).
 
 import { afterAll, describe, expect, it } from 'vitest'
 

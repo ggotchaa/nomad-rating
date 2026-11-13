@@ -3,11 +3,11 @@ import type { APIRequestContext } from '@playwright/test'
 import type { Playwright } from '../support/api'
 import { PASSWORD, addClubPlayer, apiAs, guestApi, json, loginAs, smashIds } from '../support/api'
 
-/** Organisers of other demo clubs have no player profile, so they can take a club-added profile. */
+/** Organisers of other seeded clubs have no player profile, so they can take a club-added profile. */
 async function accountWithoutProfile(playwright: Playwright): Promise<APIRequestContext> {
   for (const email of ['karaganda', 'shymkent', 'astana', 'topspin']) {
     const api = await guestApi(playwright)
-    await json(await api.post('/api/auth/login', { data: { email: `${email}@demo.nomad.kz`, password: PASSWORD } }))
+    await json(await api.post('/api/auth/login', { data: { email: `${email}@dev.nomad.test`, password: PASSWORD } }))
     if ((await json(await api.get('/api/auth/me'))).player === null) return api
   }
   throw new Error('no account without a profile left')

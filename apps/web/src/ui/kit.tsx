@@ -103,10 +103,3 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   )
 }
 
-export const Soon = ({ title }: { title?: string }) => (
-  <div className="panel">
-    <span className="chip chip--warn">{t.common.soon}</span>
-    {title && <h2>{title}</h2>}
-    <p className="muted">{t.common.soonText}</p>
-  </div>
-)

@@ -1,39 +1,39 @@
-// Stage 1 demo data: helpers with different rights, a club in review, club-added players with claim codes,
+// Stage 1 dev data: helpers with different rights, a club in review, club-added players with claim codes,
 // an RTTF base (~200 profiles, a few matching seeded players), open admin queues.
 
 import { seededRandom } from '@nomad/engine'
 import { RIGHT_TEMPLATES, START_LEVELS, normalizeText, searchName } from '@nomad/shared'
 import { db, json } from '../db/index.ts'
 import { hashPassword } from '../auth/password.ts'
-import { DEMO_PASSWORD } from './accounts.ts'
+import { DEV_PASSWORD } from './accounts.ts'
 import { FEMALE_FIRST, MALE_FIRST, SURNAMES, surnameFor } from './names.ts'
 
-const log = (...args: unknown[]) => console.log('[demo:stage1]', ...args)
+const log = (...args: unknown[]) => console.log('[seed:stage1]', ...args)
 
 /** Fixed claim codes so the presenter can type them. */
-export const DEMO_CLAIM_CODES = ['111111001', '111111002', '111111003', '111111004', '111111005']
+export const DEV_CLAIM_CODES = ['111111001', '111111002', '111111003', '111111004', '111111005']
 
 export async function seedStage1(): Promise<void> {
   const rng = seededRandom(20261112)
-  const passwordHash = await hashPassword(DEMO_PASSWORD)
+  const passwordHash = await hashPassword(DEV_PASSWORD)
   await db.updateTable('users').set({ consent_at: new Date() }).execute()
   const almaty = (await db.selectFrom('cities').select('id').where('slug', '=', 'almaty').executeTakeFirstOrThrow()).id
   const smash = await db.selectFrom('clubs').select(['id', 'owner_user_id']).where('slug', '=', 'smash-arena').executeTakeFirstOrThrow()
-  // Accounts listed in DEMO_ACCOUNTS are already created by seed.ts.
+  // Accounts listed in DEV_ACCOUNTS are already created by seed.ts.
   const user = async (email: string) =>
     (await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst())?.id ??
     (await db.insertInto('users').values({ email, password_hash: passwordHash, email_verified_at: new Date(), consent_at: new Date() }).returning('id').executeTakeFirstOrThrow()).id
 
   // Referee: only «Проведение», only for the next upcoming tournament of the club.
   const next = await db.selectFrom('tournaments').select('id').where('club_id', '=', smash.id).where('status', '=', 'published').orderBy('starts_at').executeTakeFirst()
-  const referee = await user('referee@demo.nomad.kz')
+  const referee = await user('referee@dev.nomad.test')
   await db
     .insertInto('club_members')
     .values({ club_id: smash.id, user_id: referee, role: 'helper', rights: ['conduct'], scope: json(next ? { kind: 'tournaments', ids: [next.id] } : { kind: 'club' }), invited_by: smash.owner_user_id })
     .execute()
 
   // Helpers by the spec templates «Менеджер турниров» and «Бухгалтер».
-  for (const [email, template] of [['manager@demo.nomad.kz', 'tournament_manager'], ['accountant@demo.nomad.kz', 'accountant']] as const) {
+  for (const [email, template] of [['manager@dev.nomad.test', 'tournament_manager'], ['accountant@dev.nomad.test', 'accountant']] as const) {
     await db
       .insertInto('club_members')
       .values({ club_id: smash.id, user_id: await user(email), role: 'helper', rights: RIGHT_TEMPLATES[template], scope: json({ kind: 'club' }), invited_by: smash.owner_user_id })
@@ -41,7 +41,7 @@ export async function seedStage1(): Promise<void> {
   }
 
   // Second club owner whose club waits for verification.
-  const owner = await user('newclub@demo.nomad.kz')
+  const owner = await user('newclub@dev.nomad.test')
   const club = await db
     .insertInto('clubs')
     .values({ slug: 'ping-pong-lab', name: 'Ping Pong Lab', description: 'Новый клуб, ждёт проверки.', city_id: almaty, status: 'review', owner_user_id: owner, contact_email: 'lab@nomad.kz', requisites: json({ legalName: 'ИП Лаборатория', bin: '990101300123', iban: 'KZ12345678901234567A', bank: 'Демо-банк', bik: '' }) })
@@ -61,14 +61,14 @@ export async function seedStage1(): Promise<void> {
   for (const [i, [last, first, gender, year]] of clubPlayers.entries()) {
     const p = await db
       .insertInto('players')
-      .values({ first_name: first, last_name: last, gender, birth_year: year, city_id: almaty, added_by_club_id: smash.id, claim_code: DEMO_CLAIM_CODES[i]!, search_name: searchName({ lastName: last, firstName: first }), start_level: START_LEVELS.amateur })
+      .values({ first_name: first, last_name: last, gender, birth_year: year, city_id: almaty, added_by_club_id: smash.id, claim_code: DEV_CLAIM_CODES[i]!, search_name: searchName({ lastName: last, firstName: first }), start_level: START_LEVELS.amateur })
       .returning('id')
       .executeTakeFirstOrThrow()
     await db.insertInto('player_ratings').values({ player_id: p.id, kind: 'singles', rating: null, calibration: json({ tournaments: 0 }) }).execute()
   }
 
-  // A player account without matches whose RTTF profile exists: «Это я» demo.
-  const rttfUser = await user('rttf@demo.nomad.kz')
+  // A player account without matches whose RTTF profile exists: «Это я» flow.
+  const rttfUser = await user('rttf@dev.nomad.test')
   const rttfPlayer = await db
     .insertInto('players')
     .values({ user_id: rttfUser, first_name: 'Тимур', last_name: 'Галиев', gender: 'm', birth_year: 1990, city_id: almaty, search_name: searchName({ lastName: 'Галиев', firstName: 'Тимур' }) })
@@ -76,7 +76,7 @@ export async function seedStage1(): Promise<void> {
     .executeTakeFirstOrThrow()
   await db.insertInto('player_ratings').values({ player_id: rttfPlayer.id, kind: 'singles', rating: null, calibration: json({ tournaments: 0 }) }).execute()
 
-  // RTTF base: 6 profiles for real demo players + random fictional ones.
+  // RTTF base: 6 profiles for real seeded players + random fictional ones.
   const seeded = await db.selectFrom('players').select(['id', 'first_name', 'last_name', 'birth_year']).where('user_id', 'is not', null).where('id', '<>', rttfPlayer.id).orderBy('id').limit(5).execute()
   const profiles: { full_name: string; birth_year: number | null; city: string; rating: number; player_id?: number | null }[] = [
     { full_name: 'Галиев Тимур', birth_year: 1990, city: 'Алматы', rating: 312 },
@@ -104,8 +104,8 @@ export async function seedStage1(): Promise<void> {
       await db.updateTable('rttf_profiles').set({ player_id: first.id }).where('id', '=', firstProfile.id).execute()
       await db.insertInto('rttf_claims').values({ kind: 'claim', rttf_profile_id: firstProfile.id, player_id: second.id, status: 'conflict', reason: 'taken' }).execute()
     }
-    const dup = await db.selectFrom('players').select('id').where('claim_code', '=', DEMO_CLAIM_CODES[4]!).executeTakeFirstOrThrow()
+    const dup = await db.selectFrom('players').select('id').where('claim_code', '=', DEV_CLAIM_CODES[4]!).executeTakeFirstOrThrow()
     await db.insertInto('player_merge_requests').values({ club_id: smash.id, source_player_id: dup.id, target_player_id: second.id, reason: 'Похоже, это один человек', requested_by: smash.owner_user_id }).execute()
   }
-  log(`helpers, review club, ${clubPlayers.length} club players (codes ${DEMO_CLAIM_CODES.join(', ')}), ${inserted.length} RTTF profiles`)
+  log(`helpers, review club, ${clubPlayers.length} club players (codes ${DEV_CLAIM_CODES.join(', ')}), ${inserted.length} RTTF profiles`)
 }

@@ -10,7 +10,6 @@ import { config } from '../config.ts'
 import { db, json } from '../db/index.ts'
 import { conflict, forbidden, handler, notFound } from '../http/errors.ts'
 import { intParam, parseBody, parseQuery } from '../http/validate.ts'
-import { notify } from '../notify/index.ts'
 import { CHANNELS, NOTIFY_TYPES } from '../notify/prefs.ts'
 import { pushEnabled } from '../notify/push.ts'
 import { MAX_ACCOUNTS, telegramEnabled } from '../telegram/send.ts'
@@ -224,14 +223,3 @@ notificationsRouter.get(
   }),
 )
 
-/** Demo only: sends a test notification to yourself. */
-notificationsRouter.post(
-  '/test',
-  handler(async (req, res) => {
-    if (!config.DEMO_MODE) throw forbidden()
-    const user = requireUser(req)
-    const { type } = parseBody(z.object({ type: z.string().max(40).default('tournament_reminder') }), req)
-    await notify({ userId: user.id, type, data: { title: 'Тестовый турнир', tournamentTitle: 'Тестовый турнир', hours: 2, startsAtText: 'сегодня 19:00', table: 3, opponent: 'Иванов Иван', matchNumber: 12 } })
-    res.status(201).json({ ok: true })
-  }),
-)

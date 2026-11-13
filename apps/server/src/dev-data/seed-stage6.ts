@@ -1,4 +1,4 @@
-// Stage 6 demo data: a zone on the main hall plan and a recurring children's training block.
+// Stage 6 dev data: a zone on the main hall plan and a recurring children's training block.
 
 import { utcToZoned } from '@nomad/shared'
 import { db, json } from '../db/index.ts'

@@ -45,7 +45,7 @@ test('platform admin corrects an old match: ratings are recalculated and the cha
     await admin.get(`/api/admin/audit?entity=match&action=correct_finished&entityId=${target.matchId}`),
   )
   expect(audit).toHaveLength(1)
-  expect(audit[0]!.actor).toBe('admin@demo.nomad.kz')
+  expect(audit[0]!.actor).toBe('admin@dev.nomad.test')
   expect(audit[0]!.reason).toContain(attempt.reason)
   expect(audit[0]!.before).not.toEqual(audit[0]!.after)
 })

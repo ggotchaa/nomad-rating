@@ -1,4 +1,4 @@
-// Stage 3 demo data: chronological rating replay, inbox notifications, subscriptions and an open dispute.
+// Stage 3 dev data: chronological rating replay, inbox notifications, subscriptions and an open dispute.
 
 import { sql } from 'kysely'
 import { db, json } from '../db/index.ts'
@@ -13,7 +13,7 @@ export async function seedStage3(log: (s: string) => void): Promise<void> {
     .selectFrom('users as u')
     .innerJoin('players as p', 'p.user_id', 'u.id')
     .select(['u.id as user_id', 'p.id as player_id', 'p.city_id'])
-    .where('u.email', '=', 'player@demo.nomad.kz')
+    .where('u.email', '=', 'player@dev.nomad.test')
     .executeTakeFirst()
   if (!player) return
   const last = await db

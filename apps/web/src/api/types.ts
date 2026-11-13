@@ -67,7 +67,6 @@ export type Me = {
   activeClubId?: number | null
 }
 
-export type DemoAccount = { key: string; role: string; title: string; description: string; email: string }
 
 export type TournamentCard = {
   id: number

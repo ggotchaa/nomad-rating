@@ -2,7 +2,6 @@ import cookieParser from 'cookie-parser'
 import express from 'express'
 import helmet from 'helmet'
 import { pinoHttp } from 'pino-http'
-import { config } from '../config.ts'
 import { db } from '../db/index.ts'
 import { logger } from '../logger.ts'
 import { sessionMiddleware } from '../auth/sessions.ts'
@@ -12,7 +11,6 @@ import { playersRouter } from '../modules/players.ts'
 import { clubsRouter, hallsRouter, myRouter } from '../modules/clubs.ts'
 import { clubTournamentsRouter, formatsRouter, tournamentsRouter } from '../modules/tournaments.ts'
 import { bookingsRouter, hallBookingsRouter, myBookingsRouter } from '../modules/bookings.ts'
-import { demoRouter } from '../demo/routes.ts'
 import { accountRouter, myAccountRouter } from '../modules/account.ts'
 import { clubManageRouter } from '../modules/club-manage.ts'
 import { claimRouter, clubPlayersRouter } from '../modules/club-players.ts'
@@ -49,7 +47,7 @@ export function createApp() {
   const api = express.Router()
   api.get('/health', async (_req, res) => {
     await db.selectFrom('cities').select('id').limit(1).execute()
-    res.json({ ok: true, demo: config.DEMO_MODE })
+    res.json({ ok: true })
   })
   api.use('/uploads', express.static(UPLOADS_ROOT, { maxAge: '7d', fallthrough: false }))
   api.use('/auth', authRouter)
@@ -93,7 +91,6 @@ export function createApp() {
   api.use('/my', myBookingsRouter)
   api.use('/rating', ratingRouter)
   api.use('/notifications', notificationsRouter)
-  if (config.DEMO_MODE) api.use('/demo', demoRouter)
   api.use((_req, _res, next) => next(notFound('route.not_found')))
 
   app.use('/api', api)

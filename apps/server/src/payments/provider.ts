@@ -1,7 +1,7 @@
 // Payment adapter (spec P-1). Callers never talk to a provider directly: they call
 // `startPayment` (service.ts), which stores the payment row and asks the active provider.
 //
-//  - PayAtClubProvider (demo, and «оплата в зале» later): no money moves online,
+//  - PayAtClubProvider («оплата в зале», current MVP): no money moves online,
 //    the booking / entry is confirmed immediately and the club collects the money.
 //  - MockOnlineProvider (stage 2): hosted-page simulation with webhooks and holds.
 //  - Real provider (stage 4): Kaspi / Freedom Pay / Halyk ePay / ioka.

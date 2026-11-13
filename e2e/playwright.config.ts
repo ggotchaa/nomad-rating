@@ -26,13 +26,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Rebuilds the e2e database (migrations + demo data), then starts the API.
-      command: 'npm run demo:reset && npm start -w @nomad/server',
+      // Rebuilds the e2e database (migrations + dev data), then starts the API.
+      command: 'npm run dev:reset && npm start -w @nomad/server',
       cwd: '..',
       url: `http://127.0.0.1:${API_PORT}/api/health`,
       timeout: 300_000,
       reuseExistingServer: Boolean(process.env.E2E_REUSE),
-      env: { DATABASE_URL, DEMO_MODE: 'true', REDIS_URL: '', PORT: String(API_PORT), HOST: '127.0.0.1', NODE_ENV: 'development', SITE_URL: `http://127.0.0.1:${WEB_PORT}` },
+      env: { DATABASE_URL, REDIS_URL: '', PORT: String(API_PORT), HOST: '127.0.0.1', NODE_ENV: 'development', SITE_URL: `http://127.0.0.1:${WEB_PORT}` },
     },
     {
       command: `npm run dev -w @nomad/web -- --port ${WEB_PORT} --strictPort`,

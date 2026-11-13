@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Navigate } from 'react-router'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
-import { DemoBar } from '../demo/DemoBar.tsx'
 import { t } from '../i18n/index.ts'
 import { locale } from '../i18n/locale.ts'
 import { LangLinks, LangSelect } from '../ui/Lang.tsx'
@@ -12,7 +11,7 @@ import { DialogHost } from '../ui/dialogs.tsx'
 import '../styles/app.css'
 
 export function AppShell() {
-  const { me, demo, cities, city, setCity, logout, setActiveClub } = useSession()
+  const { me, cities, city, setCity, logout, setActiveClub } = useSession()
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
@@ -25,7 +24,6 @@ export function AppShell() {
 
   return (
     <div className="app">
-      {demo && <DemoBar />}
       <CallPopup />
       <DialogHost />
       <header className="topbar">

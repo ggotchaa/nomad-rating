@@ -1,4 +1,4 @@
-// Stage 2 demo additions: a tournament starting soon with check-in open (QR, seeding, «Старт»)
+// Stage 2 dev additions: a tournament starting soon with check-in open (QR, seeding, «Старт»)
 // and a series of the Smash Arena weekend tournaments.
 
 import { db } from '../db/index.ts'

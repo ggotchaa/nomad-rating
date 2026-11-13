@@ -11,7 +11,7 @@ import type { NotificationItem, NotifySettings } from './model.ts'
 import { currentSubscription, disablePush, enablePush, isIos, isStandalone, pushSupported } from './push.ts'
 
 export function Notifications() {
-  const { me, ready, demo } = useSession()
+  const { me, ready } = useSession()
   const list = useApi<{ unread: number; items: NotificationItem[] }>(me.user ? '/notifications?limit=100' : null)
   const settings = useApi<NotifySettings>(me.user ? '/notifications/settings' : null)
   const [error, setError] = useState<string | null>(null)
@@ -46,11 +46,6 @@ export function Notifications() {
           <div className="panel__head">
             <h2>{t.notif.all}</h2>
             <div className="row">
-              {demo && (
-                <button className="button button--sm" onClick={() => void run(() => api('/notifications/test', { method: 'POST', json: {} }), t.notif.sent)}>
-                  {t.notif.test}
-                </button>
-              )}
               <button className="button button--sm" onClick={() => void run(() => api('/notifications/read', { method: 'POST', json: {} }))}>
                 {t.notif.readAll}
               </button>

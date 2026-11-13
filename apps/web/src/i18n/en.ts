@@ -19,8 +19,6 @@ export const en: Messages = {
     players: 'players',
     tables: 'tables',
     more: 'More',
-    soon: 'Coming soon',
-    soonText: 'This section will appear in later stages. It is not part of the demo.',
     notFound: 'Page not found',
     yes: 'Yes',
     no: 'No',
@@ -33,7 +31,6 @@ export const en: Messages = {
     female: 'female',
     male: 'male',
   },
-  demo: { banner: 'Demo version · data is fictional, payments are disabled', loginAs: 'Log in as…', guest: 'Guest (log out)', personas: { player: 'Player', newbie: 'Newcomer', organizer: 'Club organiser', hall_admin: 'Hall administrator', referee: 'Referee', manager: 'Tournament manager', accountant: 'Club accountant', rttf: 'Player with an RTTF profile', new_club: 'New club under review', admin: 'Platform administrator' } as Record<string, string> },
   bookIdx: {
     kicker: 'Booking',
     nav: 'Booking',
@@ -314,8 +311,6 @@ export const en: Messages = {
     horizon: 'Horizon, days',
     freeCancel: 'Free cancellation, h before start',
     defaultPrice: 'Default price, ₸/hour',
-    editor: 'Hall plan editor',
-    other: ['Assistants and permissions', 'Finance and payouts', 'Leagues and seasons', 'Player and RTTF import'],
   },
   notif: {
     title: 'Notifications',
@@ -352,8 +347,6 @@ export const en: Messages = {
     subClub: (club: string) => `New tournaments from club "${club}"`,
     subscribe: 'Subscribe',
     unsubscribe: 'Unsubscribe',
-    sent: 'Test notification sent',
-    test: 'Send a test',
   },
   tg: {
     title: 'Telegram',

@@ -9,7 +9,7 @@ import type { PaymentProvider } from './provider.ts'
 
 const providers = new Map<string, PaymentProvider>([['at_club', new PayAtClubProvider()]])
 
-/** The provider used for new online payments. Demo: everything is paid at the club. */
+/** The provider used for new online payments. Until an online provider is connected, everything is paid at the club. */
 export function activeProvider(): PaymentProvider {
   return providers.get('at_club') as PaymentProvider
 }

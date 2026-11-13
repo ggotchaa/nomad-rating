@@ -5,7 +5,7 @@ import type { ClubRight, MyClub, PlayerSearchItem } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
 import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
-import { Async, Soon } from '../../ui/kit.tsx'
+import { Async } from '../../ui/kit.tsx'
 import { VIEW_AS_KEY } from '../admin/AdminTools.tsx'
 
 const viewAsId = () => {
@@ -89,7 +89,6 @@ export function ManageLayout() {
                       {s.label}
                     </NavLink>
                   ))}
-                  <NavLink to="more">{t.common.soon}</NavLink>
                 </nav>
               </header>
               <Outlet context={{ club, can } satisfies ClubCtx} />
@@ -104,7 +103,7 @@ export function ManageLayout() {
 export function ManageIndex() {
   const { can } = useClub()
   const first = SECTIONS.find((s) => can(s.right))
-  return <Navigate to={first?.to ?? 'more'} replace />
+  return first ? <Navigate to={first.to} replace /> : <p className="note note--error">{t.m.noRight}</p>
 }
 
 export function Guard({ right, children }: { right: Need; children: React.ReactNode }) {
@@ -112,13 +111,6 @@ export function Guard({ right, children }: { right: Need; children: React.ReactN
   return can(right) ? <>{children}</> : <p className="note note--error">{t.m.noRight}</p>
 }
 
-export const ManageMore = () => (
-  <div className="grid grid--cards">
-    {[...t.m.other, t.m.editor].map((title) => (
-      <Soon key={title} title={title} />
-    ))}
-  </div>
-)
 
 export function PlayerSearch({ onPick, placeholder }: { onPick: (p: PlayerSearchItem) => void; placeholder?: string }) {
   const [q, setQ] = useState('')

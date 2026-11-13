@@ -15,7 +15,7 @@ void loadTemplateOverrides().catch(() => {})
 const wss = attachGateway(server)
 
 server.listen(config.PORT, config.HOST, () => {
-  logger.info(`API on http://${config.HOST}:${config.PORT}/api  (WebSocket /ws, demo mode: ${config.DEMO_MODE})`)
+  logger.info(`API on http://${config.HOST}:${config.PORT}/api  (WebSocket /ws)`)
 })
 
 async function shutdown(signal: string) {

@@ -7,7 +7,6 @@ x-app-env: &app-env
   DATABASE_URL: postgres://nomad:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/nomad
   REDIS_URL: redis://redis:6379
   SITE_URL: ${SITE_URL:-https://nomad.example.kz}
-  DEMO_MODE: "false"
   ADMIN_2FA_REQUIRED: "true"
   SMTP_URL: ${SMTP_URL:-}
   MAIL_FROM: ${MAIL_FROM:-Nomad <no-reply@nomad.kz>}

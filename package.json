@@ -14,7 +14,7 @@
     "dev:worker": "npm run dev -w @nomad/worker",
     "db:up": "docker compose up -d postgres redis",
     "db:migrate": "npm run migrate -w @nomad/server",
-    "demo:reset": "npm run demo:reset -w @nomad/server",
+    "dev:reset": "npm run dev:reset -w @nomad/server",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",

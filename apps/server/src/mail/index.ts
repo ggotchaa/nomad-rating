@@ -1,4 +1,4 @@
-// Transactional e-mail: SMTP when SMTP_URL is set, otherwise printed to the console (dev, demo).
+// Transactional e-mail: SMTP when SMTP_URL is set, otherwise printed to the console (development).
 
 import nodemailer from 'nodemailer'
 import type { Transporter } from 'nodemailer'

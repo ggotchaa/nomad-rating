@@ -1,4 +1,4 @@
-// Demo data for the client presentation (stage D). Everything goes through the real services:
+// Development and e2e data. Everything goes through the real services:
 // tournaments are created, published, filled, started, played match by match with simulated results,
 // closed and rated by the same code the product uses; bookings go through createBooking.
 // Only history that cannot be created "in the past" by the API (past bookings) is inserted directly.
@@ -13,7 +13,7 @@ import { hashPassword } from '../auth/password.ts'
 import { createBooking } from '../modules/bookings.ts'
 import { createTournament, publishTournament, registerPlayer } from '../modules/tournaments.ts'
 import { finishTournament, playableMatches, recordResult, startTournament } from '../tournaments/structure.ts'
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from './accounts.ts'
+import { DEV_ACCOUNTS, DEV_PASSWORD } from './accounts.ts'
 import { seedStage1 } from './seed-stage1.ts'
 import { seedStage2 } from './seed-stage2.ts'
 import { FEMALE_FIRST, GUEST_NAMES, MALE_FIRST, SURNAMES, surnameFor } from './names.ts'
@@ -21,7 +21,7 @@ import { FEMALE_FIRST, GUEST_NAMES, MALE_FIRST, SURNAMES, surnameFor } from './n
 type Trx = Transaction<Database>
 const TZ = 'Asia/Almaty'
 
-const log = (...args: unknown[]) => console.log('[demo]', ...args)
+const log = (...args: unknown[]) => console.log('[seed]', ...args)
 
 function pick<T>(list: readonly T[], rng: Rng): T {
   return list[Math.floor(rng() * list.length)] as T
@@ -70,7 +70,7 @@ const CLUBS: ClubSeed[] = [
     city: 'almaty',
     description: 'Клуб настольного тенниса в центре Алматы: 10 столов Stiga, рейтинговые турниры каждую субботу, тренировки для взрослых и детей.',
     status: 'active',
-    organizerEmail: 'organizer@demo.nomad.kz',
+    organizerEmail: 'organizer@dev.nomad.test',
     hall: {
       name: 'Основной зал',
       address: 'Алматы, ул. Абая, 52, 2 этаж',
@@ -90,7 +90,7 @@ const CLUBS: ClubSeed[] = [
     city: 'almaty',
     description: 'Камерный клуб на 6 столов для любителей. Воскресные турниры «до 1300» для тех, кто растёт.',
     status: 'active',
-    organizerEmail: 'topspin@demo.nomad.kz',
+    organizerEmail: 'topspin@dev.nomad.test',
     hall: {
       name: 'Зал Topspin',
       address: 'Алматы, пр. Сейфуллина, 410',
@@ -109,7 +109,7 @@ const CLUBS: ClubSeed[] = [
     city: 'astana',
     description: 'Крупнейший любительский клуб столицы: 8 столов, турниры по субботам, корпоративные лиги.',
     status: 'active',
-    organizerEmail: 'astana@demo.nomad.kz',
+    organizerEmail: 'astana@dev.nomad.test',
     hall: {
       name: 'Зал на Кабанбай батыра',
       address: 'Астана, пр. Кабанбай батыра, 11',
@@ -128,7 +128,7 @@ const CLUBS: ClubSeed[] = [
     city: 'shymkent',
     description: 'Теннисный центр Шымкента: 6 столов, турниры раз в две недели.',
     status: 'active',
-    organizerEmail: 'shymkent@demo.nomad.kz',
+    organizerEmail: 'shymkent@dev.nomad.test',
     hall: {
       name: 'Центральный зал',
       address: 'Шымкент, ул. Тауке хана, 35',
@@ -147,7 +147,7 @@ const CLUBS: ClubSeed[] = [
     city: 'karaganda',
     description: 'Новый клуб в Караганде. Ожидает проверки платформой.',
     status: 'review',
-    organizerEmail: 'karaganda@demo.nomad.kz',
+    organizerEmail: 'karaganda@dev.nomad.test',
     hall: {
       name: 'Зал',
       address: 'Караганда, ул. Ерубаева, 20',
@@ -164,10 +164,10 @@ const CLUBS: ClubSeed[] = [
 
 type SeedPlayer = { id: number; city: string; strength: number; gender: 'm' | 'f' }
 
-export async function seedDemo(): Promise<void> {
+export async function seedDevData(): Promise<void> {
   const rng = seededRandom(20261109)
   const started = Date.now()
-  const passwordHash = await hashPassword(DEMO_PASSWORD)
+  const passwordHash = await hashPassword(DEV_PASSWORD)
 
   // --- Reference data -------------------------------------------------------
   // Cities come from the reference migration (0007).
@@ -183,7 +183,7 @@ export async function seedDemo(): Promise<void> {
 
   // --- Accounts ---------------------------------------------------------------
   const userId: Record<string, number> = {}
-  const emails = new Set<string>([...DEMO_ACCOUNTS.map((a) => a.email), ...CLUBS.map((c) => c.organizerEmail)])
+  const emails = new Set<string>([...DEV_ACCOUNTS.map((a) => a.email), ...CLUBS.map((c) => c.organizerEmail)])
   for (const email of emails) {
     const row = await db
       .insertInto('users')
@@ -205,7 +205,7 @@ export async function seedDemo(): Promise<void> {
         city_id: cityId[c.city]!,
         status: c.status,
         owner_user_id: userId[c.organizerEmail]!,
-        contact_email: c.organizerEmail.replace('@demo.', '@'),
+        contact_email: c.organizerEmail.replace('@dev.', '@'),
         contact_telegram: `@${c.slug.replace(/-/g, '_')}`,
         telegram_url: `https://t.me/${c.slug.replace(/-/g, '_')}`,
         requisites: json({ bin: '000000000000', iban: 'KZ00 0000 0000 0000 0000', note: 'демо-реквизиты' }),
@@ -271,7 +271,7 @@ export async function seedDemo(): Promise<void> {
   const smash = clubs[0]!
   await db
     .insertInto('club_members')
-    .values({ club_id: smash.id, user_id: userId['hall@demo.nomad.kz']!, role: 'helper', rights: ['bookings', 'players'], scope: json({ kind: 'club' }), invited_by: smash.organizer })
+    .values({ club_id: smash.id, user_id: userId['hall@dev.nomad.test']!, role: 'helper', rights: ['bookings', 'players'], scope: json({ kind: 'club' }), invited_by: smash.organizer })
     .execute()
   log(`clubs: ${clubs.length}`)
 
@@ -322,9 +322,9 @@ export async function seedDemo(): Promise<void> {
     return row.id
   }
 
-  const arman = await createPlayer({ first: 'Арман', last: 'Сейтов', gender: 'm', birthYear: 1991, city: 'almaty', strength: 1270, rttf: true, user: userId['player@demo.nomad.kz'] })
-  await createPlayer({ first: 'Ерлан', last: 'Ахметов', gender: 'm', birthYear: 1985, city: 'almaty', strength: 1380, rttf: true, user: userId['organizer@demo.nomad.kz'] })
-  const newbie = await createPlayer({ first: 'Дана', last: 'Ермекова', gender: 'f', birthYear: 1999, city: 'almaty', strength: 1020, rttf: false, user: userId['newbie@demo.nomad.kz'] })
+  const arman = await createPlayer({ first: 'Арман', last: 'Сейтов', gender: 'm', birthYear: 1991, city: 'almaty', strength: 1270, rttf: true, user: userId['player@dev.nomad.test'] })
+  await createPlayer({ first: 'Ерлан', last: 'Ахметов', gender: 'm', birthYear: 1985, city: 'almaty', strength: 1380, rttf: true, user: userId['organizer@dev.nomad.test'] })
+  const newbie = await createPlayer({ first: 'Дана', last: 'Ермекова', gender: 'f', birthYear: 1999, city: 'almaty', strength: 1020, rttf: false, user: userId['newbie@dev.nomad.test'] })
   const cityWeights: [string, number][] = [
     ['almaty', 0.5],
     ['astana', 0.32],
@@ -662,7 +662,7 @@ export async function seedDemo(): Promise<void> {
     const date = addDays(today, d)
     try {
       await db.transaction().execute((trx) =>
-        createBooking(trx, { hallId: smash.hallId, tableId: null, start: zonedToUtc(date, hour * 60, TZ), minutes: 60, playerId: arman, source: 'online', actorUserId: userId['player@demo.nomad.kz']! }),
+        createBooking(trx, { hallId: smash.hallId, tableId: null, start: zonedToUtc(date, hour * 60, TZ), minutes: 60, playerId: arman, source: 'online', actorUserId: userId['player@dev.nomad.test']! }),
       )
     } catch (e) {
       log('arman booking skipped', (e as Error).message)

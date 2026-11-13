@@ -1,76 +1,76 @@
-// Demo accounts created by `npm run demo:reset` (password for all: DEMO_PASSWORD).
+// Development and e2e accounts created by `npm run dev:reset` (password for all: DEV_PASSWORD).
 
-export const DEMO_PASSWORD = 'nomad-demo-2026'
+export const DEV_PASSWORD = 'nomad-dev-2026'
 
-export const DEMO_ACCOUNTS = [
+export const DEV_ACCOUNTS = [
   {
     key: 'player',
     role: 'player',
     title: 'Игрок',
     description: 'Любитель из Алматы с рейтингом и историей турниров',
-    email: 'player@demo.nomad.kz',
+    email: 'player@dev.nomad.test',
   },
   {
     key: 'newbie',
     role: 'player',
     title: 'Новичок',
     description: 'Только зарегистрировался, проходит калибровку',
-    email: 'newbie@demo.nomad.kz',
+    email: 'newbie@dev.nomad.test',
   },
   {
     key: 'organizer',
     role: 'organizer',
     title: 'Организатор клуба',
     description: 'Организатор клуба «Smash Arena» (Алматы)',
-    email: 'organizer@demo.nomad.kz',
+    email: 'organizer@dev.nomad.test',
   },
   {
     key: 'hall_admin',
     role: 'helper',
     title: 'Администратор зала',
     description: 'Помощник с правами «Брони» и «Игроки»',
-    email: 'hall@demo.nomad.kz',
+    email: 'hall@dev.nomad.test',
   },
   {
     key: 'referee',
     role: 'helper',
     title: 'Судья',
     description: 'Помощник с правом «Проведение» только на ближайший турнир',
-    email: 'referee@demo.nomad.kz',
+    email: 'referee@dev.nomad.test',
   },
   {
     key: 'manager',
     role: 'helper',
     title: 'Менеджер турниров',
     description: 'Помощник по шаблону «Менеджер турниров»: турниры, проведение, исправление счёта, игроки',
-    email: 'manager@demo.nomad.kz',
+    email: 'manager@dev.nomad.test',
   },
   {
     key: 'accountant',
     role: 'helper',
     title: 'Бухгалтер клуба',
     description: 'Помощник по шаблону «Бухгалтер»: только просмотр финансов',
-    email: 'accountant@demo.nomad.kz',
+    email: 'accountant@dev.nomad.test',
   },
   {
     key: 'rttf',
     role: 'player',
     title: 'Игрок с профилем RTTF',
     description: 'Без матчей, может перенести рейтинг RTTF («Это я»)',
-    email: 'rttf@demo.nomad.kz',
+    email: 'rttf@dev.nomad.test',
   },
   {
     key: 'new_club',
     role: 'organizer',
     title: 'Новый клуб на проверке',
     description: 'Организатор клуба «Ping Pong Lab» (статус «На проверке»)',
-    email: 'newclub@demo.nomad.kz',
+    email: 'newclub@dev.nomad.test',
   },
   {
     key: 'admin',
     role: 'admin',
     title: 'Администратор платформы',
     description: 'Владелец сервиса',
-    email: 'admin@demo.nomad.kz',
+    email: 'admin@dev.nomad.test',
   },
 ] as const
