@@ -90,6 +90,8 @@ clubManageRouter.get(
       name: club.name,
       description: club.description,
       cityId: club.city_id,
+      logoUrl: club.logo_url,
+      coverUrl: club.cover_url,
       status: club.status,
       statusReason: club.status_reason,
       commentForPlayers: club.comment_for_players,

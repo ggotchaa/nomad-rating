@@ -9,6 +9,7 @@ import { Async, StatusChip } from '../../ui/kit.tsx'
 import { TournamentForm } from '../conduct/TournamentForm.tsx'
 import type { TournamentInput } from '../conduct/TournamentForm.tsx'
 import { PlayerSearch, useClub } from './ManageLayout.tsx'
+import type { ClubDefaults } from './ClubSettings.tsx'
 import { ask } from '../../ui/dialogs.tsx'
 
 export function ManageTournaments() {
@@ -64,8 +65,20 @@ export function NewTournament() {
   const { club } = useClub()
   const navigate = useNavigate()
   const hallId = club.halls[0]?.id
+  const defaults = useApi<{ tournamentDefaults: ClubDefaults }>(`/clubs/${club.id}/manage`)
   if (!hallId) return <p className="note">{t.m.noClub}</p>
-  return <TournamentForm clubId={club.id} hallId={hallId} onSaved={(id) => navigate(`../tournaments/${id}`)} />
+  return (
+    <Async state={defaults}>
+      {({ tournamentDefaults: d }) => (
+        <TournamentForm
+          clubId={club.id}
+          hallId={hallId}
+          initial={{ fee: d.fee, refundRules: d.refundRules, template: d.template, maxParticipants: d.maxParticipants, settings: d.settings }}
+          onSaved={(id) => navigate(`../tournaments/${id}`)}
+        />
+      )}
+    </Async>
+  )
 }
 
 export function ManageTournamentPage() {

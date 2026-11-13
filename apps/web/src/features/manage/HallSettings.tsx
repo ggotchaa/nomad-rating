@@ -44,6 +44,7 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
   const [name, setName] = useState(club.name)
   const [description, setDescription] = useState(club.description)
   const [hall, setHall] = useState({ address: initial.address, howToFind: initial.howToFind, commentForPlayers: initial.commentForPlayers })
+  const [equipment, setEquipment] = useState<Record<string, string>>(initial.equipment)
   const [hours, setHours] = useState<OpeningHours>(initial.openingHours)
   const [tables, setTables] = useState<HallTable[]>(initial.tables)
   const [booking, setBooking] = useState<BookingSettings>(initial.booking)
@@ -69,7 +70,7 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
             </Field>
           </div>
         </Section>
-        <Section title={`${t.m.hall} · ${initial.name}`} save={() => api(`/halls/${initial.id}`, { method: 'PATCH', json: { ...hall, openingHours: hours } })}>
+        <Section title={`${t.m.hall} · ${initial.name}`} save={() => api(`/halls/${initial.id}`, { method: 'PATCH', json: { ...hall, openingHours: hours, equipment } })}>
           <div className="form">
             <Field label={t.c.address}>
               <input value={hall.address} onChange={(e) => setHall({ ...hall, address: e.target.value })} />
@@ -80,6 +81,14 @@ function Editor({ club, hall: initial, reload }: { club: ClubDetail; hall: Hall;
             <Field label={t.c.comment}>
               <textarea value={hall.commentForPlayers} onChange={(e) => setHall({ ...hall, commentForPlayers: e.target.value })} />
             </Field>
+          </div>
+          <h3>{t.clubreg.equipment}</h3>
+          <div className="form">
+            {(['tables', 'balls', 'floor'] as const).map((k) => (
+              <Field key={k} label={{ tables: t.clubreg.eqTables, balls: t.clubreg.eqBalls, floor: t.clubreg.eqFloor }[k]}>
+                <input value={equipment[k] ?? ''} maxLength={100} onChange={(e) => setEquipment({ ...equipment, [k]: e.target.value })} />
+              </Field>
+            ))}
           </div>
           <h3>{t.m.openingHours}</h3>
           <div className="stack">
