@@ -494,6 +494,7 @@ export const en: Messages = {
     consent: 'I agree to the terms of service and the processing of personal data',
     welcomeTitle: 'Welcome!',
     welcomeLead: 'Fill in your player profile — it is required to register for tournaments.',
+    welcomeConsentLead: 'Confirm that you accept the terms to continue working in your club.',
     continue: 'Continue',
     security: 'Sign-in and security',
     methods: 'Sign-in methods',

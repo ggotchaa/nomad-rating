@@ -9,7 +9,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { ask } from '../../ui/dialogs.tsx'
 import { Async, Field } from '../../ui/kit.tsx'
-import { afterLogin, safePath } from './Auth.tsx'
+import { afterLogin, homeOf, returnTarget, safePath } from './Auth.tsx'
 
 /** busy / error / ok state around one async action. */
 export function useAction() {
@@ -137,10 +137,11 @@ export function Welcome() {
   const navigate = useNavigate()
   const { busy, run, notes } = useAction()
   if (ready && !me.user) return <Navigate to="/login" replace />
-  const needProfile = !me.player
+  if (ready && me.user && !me.user.needsWelcome) return <Navigate to={returnTarget(params.get('returnTo')) ?? homeOf(me)} replace />
+  const needProfile = !me.player && me.clubs.length === 0
   return (
     <Narrow title={t.acc.welcomeTitle}>
-      <p className="muted">{t.acc.welcomeLead}</p>
+      <p className="muted">{needProfile ? t.acc.welcomeLead : t.acc.welcomeConsentLead}</p>
       <form
         className="panel form form--cols"
         onSubmit={(e) => {
@@ -163,7 +164,7 @@ export function Welcome() {
               },
             })
             setMe(next)
-            navigate(safePath(params.get('returnTo')) ?? '/me', { replace: true })
+            navigate(returnTarget(params.get('returnTo')) ?? homeOf(next), { replace: true })
           })
         }}
       >

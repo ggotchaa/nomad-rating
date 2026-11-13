@@ -37,10 +37,14 @@ const HOURS = Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((d) => [d, { open: (d
 async function user(trx: Trx, email: string, hash: string, admin = false) {
   const found = await trx.selectFrom('users').select('id').where((eb) => eb(eb.fn('lower', ['email']), '=', email)).executeTakeFirst()
   if (found) {
-    await trx.updateTable('users').set({ password_hash: hash, blocked_at: null, ...(admin ? { platform_role: 'admin' } : {}) }).where('id', '=', found.id).execute()
+    await trx
+      .updateTable('users')
+      .set((eb) => ({ password_hash: hash, blocked_at: null, consent_at: eb.fn.coalesce('consent_at', eb.val(new Date())), ...(admin ? { platform_role: 'admin' as const } : {}) }))
+      .where('id', '=', found.id)
+      .execute()
     return found.id
   }
-  const row = await trx.insertInto('users').values({ email, password_hash: hash, email_verified_at: new Date(), platform_role: admin ? 'admin' : 'user' }).returning('id').executeTakeFirstOrThrow()
+  const row = await trx.insertInto('users').values({ email, password_hash: hash, email_verified_at: new Date(), consent_at: new Date(), platform_role: admin ? 'admin' : 'user' }).returning('id').executeTakeFirstOrThrow()
   return row.id
 }
 

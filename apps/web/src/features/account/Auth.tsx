@@ -16,7 +16,15 @@ export function afterLogin(me: Me, from: string | undefined): string {
   const back = from ? `?returnTo=${encodeURIComponent(from)}` : ''
   if (me.user?.mfaRequired) return `/mfa${back}`
   if (me.user?.needsWelcome) return `/welcome${back}`
-  return from ?? (me.clubs.length ? '/manage' : '/me')
+  return from ?? homeOf(me)
+}
+
+export const homeOf = (me: Me) => (me.user?.role === 'admin' && !me.player ? '/admin' : me.clubs.length ? '/manage' : '/me')
+
+/** Return target after a gate page; auth pages are never a destination. */
+export const returnTarget = (v: string | null) => {
+  const p = safePath(v)
+  return p && !/^\/(login|register|welcome|mfa)\b/.test(p) ? p : undefined
 }
 
 function useAuthSubmit() {
