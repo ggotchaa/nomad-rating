@@ -34,6 +34,9 @@ npm run dev
 - API reference: `/api/docs` (`apps/server/openapi.yaml`) · user guides per role: [docs/guides](docs/guides)
 - Production setup: `ops/` (Dockerfiles, `compose.prod.yaml`, nginx, `backup.sh`)
 - First platform admin (production has no seeded accounts): `docker compose -f ops/compose.prod.yaml exec -e ADMIN_PASSWORD='...' app npm run admin:create -w @nomad/server -- you@example.kz`. An existing user is promoted instead. `/admin` then requires setting up 2FA (`ADMIN_2FA_REQUIRED=true`).
+- Backups: host cron `15 3 * * * /srv/nomad/ops/backup.sh >> /var/log/nomad-backup.log 2>&1` (database + uploaded photos, 14 daily / 8 weekly). Off-site copy and failure alert: set `BACKUP_REMOTE` (rclone remote) and `BACKUP_PING_URL` (e.g. healthchecks.io) in `ops/.env.backup`. Restore steps are in the script header.
+- TLS: first certificate `docker compose -f ops/compose.prod.yaml run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot -d $DOMAIN --agree-tos -m <ops e-mail>`, copy `ops/letsencrypt/live/$DOMAIN/{fullchain,privkey}.pem` to `ops/certs/`, then keep renewing with `DOMAIN=... docker compose -f ops/compose.prod.yaml --profile certbot up -d`. nginx reloads every 6 h.
+- Monitoring: point an external uptime check (UptimeRobot, healthchecks.io, etc.) at `https://<domain>/api/ready` (checks PostgreSQL and Redis). Container logs are rotated (20 MB × 5).
 
 `npm run dev:reset` (refuses with `NODE_ENV=production`) wipes the database and creates development and e2e data through the real services: 5 clubs, ~180 players,
 ~57 finished tournaments played match by match and rated by Elo, one tournament running now, upcoming tournaments

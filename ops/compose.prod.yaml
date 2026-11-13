@@ -18,6 +18,11 @@ x-app-env: &app-env
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
 
+# Rotated container logs (docker's default json-file grows without limit).
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
 services:
   app:
     build: { context: .., dockerfile: ops/Dockerfile.app }
@@ -34,6 +39,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *logging
 
   worker:
     image: nomad-app
@@ -42,6 +48,7 @@ services:
     depends_on:
       app: { condition: service_healthy }
     restart: unless-stopped
+    logging: *logging
 
   web:
     build: { context: .., dockerfile: ops/Dockerfile.web }
@@ -53,9 +60,12 @@ services:
       - ./certs:/etc/nginx/certs:ro
       - certbot:/var/www/certbot
       - nginx-cache:/var/cache/nginx
+    # Reload every 6 h so renewed certificates are picked up without a restart.
+    command: ["/bin/sh", "-c", "while :; do sleep 6h; nginx -s reload; done & exec nginx -g 'daemon off;'"]
     depends_on:
       app: { condition: service_healthy }
     restart: unless-stopped
+    logging: *logging
 
   postgres:
     image: postgres:17-alpine
@@ -72,6 +82,7 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    logging: *logging
 
   redis:
     image: redis:8-alpine
@@ -84,6 +95,29 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    logging: *logging
+
+  # Let's Encrypt renewal (opt-in: `--profile certbot up -d`); first issuance is described in README.
+  # Renewed files are copied into ./certs, which nginx reads.
+  certbot:
+    image: certbot/certbot:v2.11.0
+    profiles: ["certbot"]
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - certbot:/var/www/certbot
+      - ./certs:/certs
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        trap exit TERM; while :; do
+        certbot renew --webroot -w /var/www/certbot --quiet
+        --deploy-hook 'cp -L /etc/letsencrypt/live/$$DOMAIN/fullchain.pem /etc/letsencrypt/live/$$DOMAIN/privkey.pem /certs/';
+        sleep 12h & wait $${!}; done
+    restart: unless-stopped
+    logging: *logging
 
 volumes:
   pgdata:
