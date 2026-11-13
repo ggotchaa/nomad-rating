@@ -21,7 +21,7 @@ type Trx = Transaction<Database>
 export const DEFAULT_RULES: Required<Omit<SeasonRules, 'transferWindow' | 'confirmBy' | 'bestTours'>> & Pick<SeasonRules, 'transferWindow' | 'confirmBy' | 'bestTours'> = {
   boundaries: [],
   missedRule: 'last',
-  pointsTable: [25, 20, 16, 13, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+  pointsTable: [],
   participationPoints: 1,
   bestTours: null,
   minDivisionSize: 4,
@@ -79,6 +79,56 @@ export async function createSeason(
   await trx.insertInto('league_divisions').values(divisions.map((name, i) => ({ season_id: season.id, name, level: i + 1 }))).execute()
   await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: season.id, action: 'create', after: input }, trx)
   return season
+}
+
+const FORMAT_FIELDS = ['boundaries', 'missedRule', 'pointsTable', 'participationPoints', 'bestTours', 'minDivisionSize', 'playoffSize'] as const
+
+/** Edit season settings; format-affecting fields are locked once the first tour exists (4.12). */
+export async function updateSeason(
+  trx: Trx,
+  seasonId: number,
+  userId: number | null,
+  input: { name?: string; startsOn?: string; endsOn?: string; divisions?: string[]; rules?: SeasonRules; payment?: SeasonPayment },
+) {
+  const { season, league } = await seasonContext(trx, seasonId)
+  if (season.status === 'finished') throw conflict('league.season_finished')
+  const toured = await trx.selectFrom('league_tours').select('id').where('season_id', '=', seasonId).executeTakeFirst()
+  const rules: SeasonRules = { ...season.rules, ...input.rules }
+  if (toured) {
+    const before = rulesOf(season.rules)
+    const changed = FORMAT_FIELDS.some((k) => input.rules?.[k] !== undefined && JSON.stringify(input.rules[k]) !== JSON.stringify(before[k]))
+    const current = await divisionsOf(trx, seasonId)
+    if (changed || (input.divisions && JSON.stringify(input.divisions) !== JSON.stringify(current.map((d) => d.name)))) throw conflict('league.format_locked')
+  } else if (input.divisions) {
+    const names = league.format === 'divisions' ? input.divisions : input.divisions.slice(0, 1)
+    const current = await trx.selectFrom('league_divisions').selectAll().where('season_id', '=', seasonId).orderBy('level').execute()
+    for (const [i, name] of names.entries()) {
+      const d = current[i]
+      if (d) await trx.updateTable('league_divisions').set({ name, merged_into: null }).where('id', '=', d.id).execute()
+      else await trx.insertInto('league_divisions').values({ season_id: seasonId, name, level: i + 1 }).execute()
+    }
+    const removed = current.slice(names.length).map((d) => d.id)
+    if (removed.length) {
+      await trx.updateTable('league_participants').set({ division_id: null }).where('division_id', 'in', removed).execute()
+      await trx.deleteFrom('league_divisions').where('id', 'in', removed).execute()
+    }
+    if (!input.rules?.boundaries) rules.boundaries = names.slice(1).map((_, i) => season.rules.boundaries?.[i] ?? { promote: 2, relegate: 2 })
+  }
+  const updated = await trx
+    .updateTable('league_seasons')
+    .set({
+      name: input.name ?? season.name,
+      ...(input.startsOn ? { starts_on: input.startsOn } : {}),
+      ...(input.endsOn ? { ends_on: input.endsOn } : {}),
+      rules: json(rules),
+      payment: json({ ...season.payment, ...input.payment }),
+    })
+    .where('id', '=', seasonId)
+    .returningAll()
+    .executeTakeFirstOrThrow()
+  if (updated.ends_on < updated.starts_on) throw unprocessable('league.dates_invalid')
+  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'update', before: season, after: input }, trx)
+  return updated
 }
 
 /** R-29: other running seasons of the player whose dates overlap — a warning, not a ban. */
@@ -246,7 +296,7 @@ export async function applyTour(trx: Trx, tourId: number, userId: number | null)
     if (isMissed) missed.add(String(p.id))
     await trx
       .insertInto('league_results')
-      .values({ tour_id: tourId, participant_id: p.id, division_id: p.division_id, place, points: place == null ? 0 : tourPoints(place, rules.pointsTable, rules.participationPoints), missed: isMissed })
+      .values({ tour_id: tourId, participant_id: p.id, division_id: p.division_id, place, points: place == null ? 0 : rules.pointsTable.length ? tourPoints(place, rules.pointsTable, rules.participationPoints) : Math.max(participants.length - place + 1, rules.participationPoints), missed: isMissed })
       .execute()
     if (isMissed) await trx.updateTable('league_participants').set({ missed_tours: p.missed_tours + 1 }).where('id', '=', p.id).execute()
   }
