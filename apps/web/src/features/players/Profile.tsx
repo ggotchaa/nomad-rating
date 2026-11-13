@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import type { H2H, PlayerMatch, PlayerProfile, PlayerTournament, RatingPoint } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
@@ -7,6 +7,7 @@ import { t } from '../../i18n/index.ts'
 import { formatDateShort } from '../../i18n/format.ts'
 import { Async, Delta, Seg } from '../../ui/kit.tsx'
 import { RatingChart } from './RatingChart.tsx'
+import { PlayerSearch } from './PlayerSearch.tsx'
 import { CalibratingMark, DisputeButton, RecalcBanner } from '../rating/widgets.tsx'
 
 type Period = '3m' | '1y' | 'all'
@@ -58,7 +59,10 @@ export function Profile() {
   const tournaments = useApi<PlayerTournament[]>(`/players/${id}/tournaments`)
   const best = useApi<PlayerMatch[]>(`/players/${id}/best-matches`)
   const myId = me.player?.id
-  const h2h = useApi<H2H>(myId && myId !== id ? `/players/${myId}/h2h/${id}` : null)
+  const [rival, setRival] = useState<{ id: number; name: string } | null>(null)
+  useEffect(() => setRival(null), [id])
+  const left = rival ?? (myId && myId !== id ? { id: myId, name: `${me.player!.last_name} ${me.player!.first_name}` } : null)
+  const h2h = useApi<H2H>(left ? `/players/${left.id}/h2h/${id}` : null)
 
   return (
     <main className="page">
@@ -193,10 +197,22 @@ export function Profile() {
                   </Async>
                 </section>
                 <div className="stack">
-                  {h2h.data && (
-                    <section className="panel">
+                  <section className="panel stack">
+                    <div className="panel__head">
                       <h2>{t.p.h2h}</h2>
-                      {h2h.data.matches.length ? (
+                      {rival && (
+                        <button className="button button--sm" onClick={() => setRival(null)}>
+                          {t.p.h2hChange}
+                        </button>
+                      )}
+                    </div>
+                    {left && (
+                      <p className="small muted">
+                        {left.name} — {p.name}
+                      </p>
+                    )}
+                    {!rival && <PlayerSearch placeholder={t.p.h2hPick} exclude={id} onPick={(x) => setRival({ id: x.id, name: x.name })} />}
+                    {left && h2h.data && (h2h.data.matches.length ? (
                         <>
                           <p className="stat">
                             <b>
@@ -205,11 +221,10 @@ export function Profile() {
                           </p>
                           <Matches rows={h2h.data.matches} withTournament />
                         </>
-                      ) : (
-                        <p className="muted">{t.p.h2hNone}</p>
-                      )}
-                    </section>
-                  )}
+                    ) : (
+                      <p className="muted">{t.p.h2hNone}</p>
+                    ))}
+                  </section>
                   <section className="panel">
                     <h2>{t.p.best}</h2>
                     <Async state={best}>{(rows) => (rows.length ? <Matches rows={rows} withTournament /> : <p className="empty">—</p>)}</Async>

@@ -20,6 +20,21 @@ export const CalibratingMark = () => (
   </span>
 )
 
+/** «К» and the start level next to a calibrating player's name. */
+export const CalibTag = ({ e }: { e: { calibrating?: boolean; startLevel?: number } | null | undefined }) =>
+  e?.calibrating ? (
+    <>
+      {' '}
+      <CalibratingMark />
+      {e.startLevel != null && (
+        <span className="muted small mono" title={t.misc.startLevel}>
+          {' '}
+          {e.startLevel}
+        </span>
+      )}
+    </>
+  ) : null
+
 /** On a running tournament page: my preliminary change and a link to «Мой турнир». */
 export function MyTournamentStrip({ tournamentId, slug, status }: { tournamentId: number; slug: string; status: string }) {
   const { me } = useSession()

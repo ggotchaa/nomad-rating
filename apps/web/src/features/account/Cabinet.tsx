@@ -12,6 +12,41 @@ import { ask } from '../../ui/dialogs.tsx'
 
 const BOOKING_TONE: Record<string, string> = { confirmed: 'chip--ok', arrived: 'chip--ok', no_show: 'chip--bad', cancelled_by_player: '', cancelled_by_club: 'chip--bad' }
 
+const ACTIVE_ENTRY = ['awaiting_payment', 'paid', 'checked_in', 'playing', 'assembling', 'waitlist', 'invited']
+
+/** «Ближайший турнир»: the nearest tournament I'm in that hasn't finished. */
+function NextTournament({ rows }: { rows: MyEntry[] }) {
+  const soon = Date.now() - 12 * 3600_000
+  const next = rows
+    .filter((e) => ['published', 'registration_closed', 'running'].includes(e.tournament_status) && ACTIVE_ENTRY.includes(e.status) && (e.tournament_status === 'running' || new Date(e.starts_at).getTime() > soon))
+    .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))[0]
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>{t.me.next}</h2>
+        {next && <StatusChip status={next.tournament_status} />}
+      </div>
+      {next ? (
+        <div className="row row--between">
+          <div>
+            <Link to={`/t/${next.slug}`}>
+              <b>{next.title}</b>
+            </Link>
+            <div className="small muted">
+              {formatDateTime(next.starts_at)} · {next.club}
+            </div>
+          </div>
+          <Link className="button button--primary button--sm" to={`/me/t/${next.slug}`}>
+            {t.me.nextMatch}
+          </Link>
+        </div>
+      ) : (
+        <p className="empty">{t.me.noNext}</p>
+      )}
+    </section>
+  )
+}
+
 export function Cabinet() {
   const { me, ready } = useSession()
   const entries = useApi<MyEntry[]>(me.player ? '/my/entries' : null)
@@ -64,6 +99,7 @@ export function Cabinet() {
         </div>
       </header>
       <LiveDeltas />
+      {entries.data && <NextTournament rows={entries.data} />}
       <div className="grid grid--half">
         <section className="panel">
           <h2>{t.me.entries}</h2>
