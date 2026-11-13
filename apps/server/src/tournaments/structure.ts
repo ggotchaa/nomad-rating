@@ -11,6 +11,7 @@ import {
   selectQualifiers,
   seedsFromQualifiers,
   validateMatchScore,
+  walkoverScore,
 } from '@nomad/engine'
 import type {
   Bracket,
@@ -233,6 +234,7 @@ export async function recordResult(trx: Trx, matchId: number, input: ScoreInput,
   if (!['scheduled', 'called', 'playing'].includes(match.status)) throw conflict('match.not_playable')
   if (match.home_entry_id == null || match.away_entry_id == null) throw conflict('match.players_unknown')
   const type = input.resultType ?? 'normal'
+  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, t.format.match) }
   const games = input.games ?? []
   if (type === 'normal' && !input.teamMeeting) {
     const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, t.format.match)
@@ -466,6 +468,7 @@ export async function correctResult(trx: Trx, matchId: number, input: ScoreInput
   if (t.status !== 'running') throw conflict('tournament.not_running')
   if (!['finished', 'walkover', 'retired'].includes(match.status) || match.result_type === 'bye') throw conflict('match.not_finished')
   const type = input.resultType ?? 'normal'
+  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, t.format.match) }
   const games = input.games ?? []
   if (type === 'normal') {
     const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, t.format.match)

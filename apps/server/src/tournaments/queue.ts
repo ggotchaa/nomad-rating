@@ -13,9 +13,12 @@ export async function conductState(t: Tournament, now = new Date()) {
     .selectFrom('entries as e')
     .innerJoin('players as p', 'p.id', 'e.player_id')
     .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-    .select(['e.id', 'e.status', 'e.seed', 'e.checked_in_at', 'e.rating_at_start', 'p.id as player_id', 'p.user_id', 'p.first_name', 'p.last_name', 'p.start_level', 'r.rating'])
+    .select(['e.id', 'e.status', 'e.seed', 'e.checked_in_at', 'e.rating_at_start', 'e.roster', 'e.checked_in_players', 'p.id as player_id', 'p.user_id', 'p.first_name', 'p.last_name', 'p.start_level', 'r.rating'])
     .where('e.tournament_id', '=', t.id)
     .execute()
+  const memberIds = [...new Set(entries.flatMap((e) => e.roster ?? []))]
+  const members = memberIds.length ? await db.selectFrom('players').select(['id', 'first_name', 'last_name']).where('id', 'in', memberIds).execute() : []
+  const memberName = new Map(members.map((p) => [p.id, playerName(p)]))
   const side = new Map<number, MatchSide>(
     entries.map((e) => [e.id, { entryId: e.id, playerId: e.player_id, userId: e.user_id, name: playerName(e), rating: e.rating_at_start ?? e.rating }]),
   )
@@ -83,7 +86,7 @@ export async function conductState(t: Tournament, now = new Date()) {
       .slice(0, 20)
       .map(view),
     entries: entries
-      .map((e) => ({ entryId: e.id, playerId: e.player_id, name: playerName(e), status: e.status, seed: e.seed, checkedInAt: e.checked_in_at, rating: e.rating_at_start ?? e.rating ?? e.start_level, calibrating: e.rating == null }))
+      .map((e) => ({ entryId: e.id, playerId: e.player_id, name: playerName(e), status: e.status, seed: e.seed, checkedInAt: e.checked_in_at, members: e.roster?.length ? e.roster.map((id) => ({ playerId: id, name: memberName.get(id) ?? '', present: e.checked_in_players.includes(id) })) : null, rating: e.rating_at_start ?? e.rating ?? e.start_level, calibrating: e.rating == null }))
       .sort((a, b) => (a.seed ?? 1e6) - (b.seed ?? 1e6) || b.rating - a.rating),
   }
 }

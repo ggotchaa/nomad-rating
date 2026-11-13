@@ -663,6 +663,12 @@ export const en: Messages = {
     done: 'You are checked in. Wait to be called to a table.',
     login: 'Log in to check in',
     noCode: 'Scan the QR code at the registration desk',
+    partial: (a: number, b: number) => `You are checked in. Waiting for the others: ${a} of ${b}`,
+    sameDay: 'You are not registered. You can register right now, payment at the club.',
+    register: 'Register and check in',
+    full: 'No free places. You can join the waiting list.',
+    joinWaitlist: 'Join the waiting list',
+    waitlist: 'You are on the waiting list. The organiser will call you if a place frees up.',
   },
   live: {
     title: 'Live broadcast',

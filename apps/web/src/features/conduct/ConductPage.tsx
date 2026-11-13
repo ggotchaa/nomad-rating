@@ -81,7 +81,30 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
           <tbody>
             {d.entries.map((e) => (
               <tr key={e.entryId}>
-                <td>{e.name}</td>
+                <td>
+                  {e.name}
+                  {e.members && (
+                    <div className="row" style={{ flexWrap: 'wrap', gap: 4 }}>
+                      {e.members.map((m) =>
+                        m.present ? (
+                          <span key={m.playerId} className="chip chip--ok">
+                            {m.name}
+                          </span>
+                        ) : (
+                          <button
+                            key={m.playerId}
+                            className="chip"
+                            title={t.conduct.checkin}
+                            disabled={!['paid', 'checked_in'].includes(e.status)}
+                            onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`, { playerId: m.playerId })}
+                          >
+                            {m.name}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className="num mono">{e.rating}</td>
                 <td>{e.status === 'checked_in' ? <span className="chip chip--ok">{t.conduct.checkedIn}</span> : <span className="chip">{t.t.entryStatus[e.status] ?? e.status}</span>}</td>
                 <td>

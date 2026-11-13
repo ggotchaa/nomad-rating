@@ -29,7 +29,7 @@ export type ConductMatch = {
 
 export type QueueMatch = ConductMatch & { suggestedTableId: number | null; suggestedTable: number | null; waitReason: 'busy' | 'rest' | 'no_table' | null; readyAt: string | null }
 
-export type ConductEntry = { entryId: number; playerId: number; name: string; status: string; seed: number | null; checkedInAt: string | null; rating: number; calibrating: boolean }
+export type ConductEntry = { entryId: number; playerId: number; name: string; status: string; seed: number | null; checkedInAt: string | null; members: { playerId: number; name: string; present: boolean }[] | null; rating: number; calibrating: boolean }
 
 export type ConductState = {
   tournament: {
