@@ -28,6 +28,7 @@ const SECTIONS: { to: string; right: Need; label: string }[] = [
   { to: 'players', right: 'players', label: t.m.players },
   { to: 'settings', right: 'club', label: t.m.settings },
   { to: 'import', right: 'players', label: t.imp.title },
+  { to: 'finance', right: 'finance', label: t.finance.title },
   { to: 'helpers', right: 'organizer', label: t.helpers.title },
   { to: 'audit', right: 'organizer', label: t.helpers.audit },
 ]

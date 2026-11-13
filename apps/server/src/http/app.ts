@@ -14,6 +14,7 @@ import { bookingsRouter, hallBookingsRouter, myBookingsRouter } from '../modules
 import { accountRouter, myAccountRouter } from '../modules/account.ts'
 import { clubManageRouter } from '../modules/club-manage.ts'
 import { claimRouter, clubPlayersRouter } from '../modules/club-players.ts'
+import { financeRouter } from '../modules/finance.ts'
 import { helpersRouter, invitationsRouter } from '../modules/helpers.ts'
 import { adminRouter } from '../modules/admin.ts'
 import { adminRttfRouter, rttfRouter } from '../modules/rttf.ts'
@@ -55,6 +56,7 @@ export function createApp() {
   api.use('/clubs', clubManageRouter)
   api.use('/clubs', helpersRouter)
   api.use('/clubs', clubPlayersRouter)
+  api.use('/clubs', financeRouter)
   api.use('/invitations', invitationsRouter)
   api.use('/my', myAccountRouter)
   api.use('/my', claimRouter)

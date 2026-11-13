@@ -39,6 +39,7 @@ import { RegisterClub } from './features/clubs/RegisterClub.tsx'
 import { ClubSettings } from './features/manage/ClubSettings.tsx'
 import { Helpers, ManageAudit } from './features/manage/Helpers.tsx'
 import { ImportPlayers } from './features/manage/ImportPlayers.tsx'
+import { Finance } from './features/manage/Finance.tsx'
 import { AdminIndex, AdminLayout } from './features/admin/AdminLayout.tsx'
 import { AdminClubs, AdminMerges, AdminRttf } from './features/admin/AdminQueues.tsx'
 import { AdminAudit, AdminDisputes, AdminPlayers, AdminSettings, AdminViewAs } from './features/admin/AdminTools.tsx'
@@ -125,6 +126,7 @@ const router = createBrowserRouter([
           { path: 'settings', element: <Guard right="club"><HallSettings /></Guard> },
           { path: 'club', element: <ClubSettings /> },
           { path: 'import', element: <Guard right="players"><ImportPlayers /></Guard> },
+          { path: 'finance', element: <Guard right="finance"><Finance /></Guard> },
           { path: 'helpers', element: <Guard right="organizer"><Helpers /></Guard> },
           { path: 'audit', element: <Guard right="organizer"><ManageAudit /></Guard> },
           { path: 'leagues', element: <Guard right="tournaments"><ManageLeagues /></Guard> },
