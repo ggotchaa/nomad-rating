@@ -21,7 +21,7 @@ test('a small round-robin tournament is run from the conduct screen and rated', 
   await page.goto(`/manage/tournaments/${t.id}/conduct`)
   await page.getByRole('button', { name: /^Старт · 4$/ }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Да' }).click()
-  await expect(page.getByRole('heading', { name: 'Столы' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Столы' })).toBeVisible()
 
   await page.getByRole('button', { name: /^Вызвать → \d+$/ }).first().click()
   const card = page.locator('.tablecard--called')
