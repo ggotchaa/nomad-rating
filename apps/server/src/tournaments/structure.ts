@@ -231,6 +231,36 @@ export type ScoreInput = {
   winner?: 'home' | 'away'
   /** Team meeting: «sets» are games won, checked by the meeting scheme instead of the match rules. */
   teamMeeting?: boolean
+  /** Retirement: reason (injury, …). */
+  note?: string
+}
+
+type MatchRules = TournamentFormat['match']
+
+const fullGame = (g: GameScore, rules: MatchRules) => Math.max(g.home, g.away) >= rules.pointsToWin && Math.abs(g.home - g.away) >= 2
+
+/** Validated score of a result or correction; a retirement credits the unplayed games to the opponent (spec 4.4). */
+function resolveScore(input: ScoreInput, rules: MatchRules, match: Match, ratedTournament: boolean) {
+  const type = input.resultType ?? 'normal'
+  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, rules) }
+  const games = input.games ?? []
+  let { setsHome, setsAway } = input
+  let rated = ratedTournament && type === 'normal'
+  if (type === 'normal' && !input.teamMeeting) {
+    const errors = validateMatchScore({ setsHome, setsAway, games }, rules)
+    if (errors.length) throw unprocessable('match.invalid_score', errors)
+  } else if (type !== 'normal' && !input.winner) throw badRequest('match.winner_required')
+  if (type === 'retired' && !input.teamMeeting) {
+    const done = games.filter((g) => fullGame(g, rules))
+    const home = games.length ? done.filter((g) => g.home > g.away).length : setsHome
+    const away = games.length ? done.length - home : setsAway
+    setsHome = input.winner === 'home' ? rules.winsNeeded : Math.min(home, rules.winsNeeded - 1)
+    setsAway = input.winner === 'away' ? rules.winsNeeded : Math.min(away, rules.winsNeeded - 1)
+    rated = ratedTournament && (games.length ? done.length > 0 : home + away > 0)
+  } else if (type === 'retired') rated = ratedTournament && games.length > 0
+  const winnerSide = type === 'normal' ? (setsHome > setsAway ? 'home' : 'away') : input.winner!
+  const winnerEntry = winnerSide === 'home' ? match.home_entry_id : match.away_entry_id
+  return { type, games, setsHome, setsAway, winnerEntry, rated, note: type === 'retired' ? (input.note?.trim() || null) : null }
 }
 
 /** Saves a match result (M-5); completes the stage and builds the next ones when everything is played (M-2). */
@@ -240,28 +270,20 @@ export async function recordResult(trx: Trx, matchId: number, input: ScoreInput,
   if (t.status !== 'running') throw conflict('tournament.not_running')
   if (!['scheduled', 'called', 'playing'].includes(match.status)) throw conflict('match.not_playable')
   if (match.home_entry_id == null || match.away_entry_id == null) throw conflict('match.players_unknown')
-  const type = input.resultType ?? 'normal'
   const rules = await rulesOfMatch(trx, t.format, match)
-  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, rules) }
-  const games = input.games ?? []
-  if (type === 'normal' && !input.teamMeeting) {
-    const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, rules)
-    if (errors.length) throw unprocessable('match.invalid_score', errors)
-  } else if (type !== 'normal' && !input.winner) throw badRequest('match.winner_required')
-  const winnerSide = type === 'normal' ? (input.setsHome > input.setsAway ? 'home' : 'away') : input.winner!
-  const winnerEntry = winnerSide === 'home' ? match.home_entry_id : match.away_entry_id
   // Walkovers and no-shows are not rated; a retirement is rated if at least one full game was played (spec 4.4).
-  const rated = t.is_rated && (type === 'normal' || (type === 'retired' && games.length > 0))
+  const { type, games, setsHome, setsAway, winnerEntry, rated, note } = resolveScore(input, rules, match, t.is_rated)
   const updated = await trx
     .updateTable('matches')
     .set({
       status: type === 'normal' ? 'finished' : type,
       result_type: type,
-      sets_home: input.setsHome,
-      sets_away: input.setsAway,
+      sets_home: setsHome,
+      sets_away: setsAway,
       games: json(games),
       winner_entry_id: winnerEntry,
       is_rated: rated,
+      result_note: note,
       finished_at: now,
       version: match.version + 1,
       reported_score: null,
@@ -271,7 +293,7 @@ export async function recordResult(trx: Trx, matchId: number, input: ScoreInput,
     .where('id', '=', matchId)
     .returningAll()
     .executeTakeFirstOrThrow()
-  await audit({ actorUserId, clubId: t.club_id, entity: 'match', entityId: matchId, action: 'result', before: { status: match.status }, after: { setsHome: input.setsHome, setsAway: input.setsAway, games, type } }, trx)
+  await audit({ actorUserId, clubId: t.club_id, entity: 'match', entityId: matchId, action: 'result', before: { status: match.status }, after: { setsHome, setsAway, games, type }, reason: note ?? undefined }, trx)
 
   const stage = await trx.selectFrom('stages').selectAll().where('id', '=', match.stage_id).executeTakeFirstOrThrow()
   if (stage.bracket) await syncBracket(trx, stage.id)
@@ -290,8 +312,11 @@ async function groupOutcomes(trx: Trx, stageId: number, format: TournamentFormat
   const groups = await trx.selectFrom('groups').selectAll().where('stage_id', '=', stageId).orderBy('order_index').execute()
   const outcomes: GroupOutcome[] = []
   for (const g of groups) {
-    const members = await trx.selectFrom('group_members').select('entry_id').where('group_id', '=', g.id).orderBy('seed_index').execute()
-    const matches = await trx.selectFrom('matches').selectAll().where('group_id', '=', g.id).where('status', 'in', ['finished', 'walkover', 'retired']).execute()
+    const matches = await trx.selectFrom('matches').selectAll().where('group_id', '=', g.id).where('status', 'in', ['finished', 'walkover', 'retired']).where('excluded', '=', false).execute()
+    // A withdrawn player whose group matches were all annulled leaves the table.
+    const members = (
+      await trx.selectFrom('group_members as gm').innerJoin('entries as e', 'e.id', 'gm.entry_id').select(['gm.entry_id', 'e.status']).where('gm.group_id', '=', g.id).orderBy('gm.seed_index').execute()
+    ).filter((m) => m.status !== 'withdrew' || matches.some((x) => x.home_entry_id === m.entry_id || x.away_entry_id === m.entry_id))
     const results: GroupMatchResult[] = matches.map((m) => ({
       home: String(m.home_entry_id),
       away: String(m.away_entry_id),
@@ -338,6 +363,9 @@ async function completeStage(trx: Trx, tournamentId: number, stageId: number): P
     for (const transition of t.format.transitions.filter((x) => x.from === stage.stage_key)) {
       const qualifiers = selectQualifiers(transition.rule, outcomes, ratings)
       const target = t.format.stages.find((s) => s.id === transition.to)!
+      // A later stage kept after a correction (already started) is not rebuilt.
+      const targetRow = await trx.selectFrom('stages').select('status').where('tournament_id', '=', tournamentId).where('stage_key', '=', target.id).executeTakeFirst()
+      if (targetRow && targetRow.status !== 'pending') continue
       const ids = target.kind === 'single_elim' || target.kind === 'all_places'
         ? seedsFromQualifiers(qualifiers).filter((x): x is string => x != null)
         : qualifiers.map((q) => q.id)
@@ -433,15 +461,72 @@ async function autoWalkovers(trx: Trx, tournamentId: number, actorUserId: number
   await recordResult(trx, match.id, { setsHome: 0, setsAway: 0, resultType: 'walkover', winner: homeOut ? 'away' : 'home' }, actorUserId, now)
 }
 
-/** Player leaves the running tournament: remaining matches go to opponents as walkovers. */
-export async function withdrawEntry(trx: Trx, entryId: number, actorUserId: number | null, reason: string, now = new Date()): Promise<void> {
+const OPEN_MATCH = ['waiting', 'scheduled', 'called', 'playing'] as const
+
+/**
+ * Player leaves the running tournament. In a group stage the organiser chooses (spec 4.4): `annul` (default) —
+ * unplayed group matches are annulled and played ones leave the table (they stay rated); `walkover` — the remaining
+ * matches go to opponents. Bracket matches are always walkovers.
+ */
+export async function withdrawEntry(trx: Trx, entryId: number, actorUserId: number | null, reason: string, now = new Date(), mode: 'annul' | 'walkover' = 'annul'): Promise<void> {
   const entry = await trx.selectFrom('entries').selectAll().where('id', '=', entryId).forUpdate().executeTakeFirstOrThrow()
   const t = await trx.selectFrom('tournaments').select(['club_id', 'status']).where('id', '=', entry.tournament_id).executeTakeFirstOrThrow()
   if (t.status !== 'running') throw conflict('tournament.not_running')
   assertTransition('entry', entryStatus, entry.status, 'withdrew')
   await trx.updateTable('entries').set({ status: 'withdrew', updated_at: now }).where('id', '=', entryId).execute()
-  await audit({ actorUserId, clubId: t.club_id, entity: 'entry', entityId: entryId, action: 'withdraw', reason }, trx)
+  await audit({ actorUserId, clubId: t.club_id, entity: 'entry', entityId: entryId, action: 'withdraw', reason, after: { mode } }, trx)
+  if (mode === 'annul') {
+    const stages = await trx.selectFrom('stages').select('id').where('tournament_id', '=', entry.tournament_id).where('status', '=', 'running').where('kind', 'in', ['groups', 'round_robin']).execute()
+    const stageIds = stages.map((s) => s.id)
+    if (stageIds.length) {
+      const own = () =>
+        trx.updateTable('matches').where('stage_id', 'in', stageIds).where((eb) => eb.or([eb('home_entry_id', '=', entryId), eb('away_entry_id', '=', entryId)]))
+      await own().set({ status: 'annulled', is_rated: false, table_id: null }).where('status', 'in', [...OPEN_MATCH]).execute()
+      await own().set({ excluded: true }).where('status', 'in', ['finished', 'walkover', 'retired']).execute()
+      for (const id of stageIds) {
+        const open = await trx.selectFrom('matches').select('id').where('stage_id', '=', id).where('status', 'not in', [...FINISHED_MATCH]).executeTakeFirst()
+        if (!open) await completeStage(trx, entry.tournament_id, id)
+      }
+    }
+  }
   await autoWalkovers(trx, entry.tournament_id, actorUserId, now)
+}
+
+/** Manual replacement of a player who has not played yet (F-7); the entry, seed and matches stay. */
+export async function replaceEntryPlayer(trx: Trx, entryId: number, playerId: number, reason: string, actorUserId: number | null, now = new Date()): Promise<void> {
+  const entry = await trx.selectFrom('entries').selectAll().where('id', '=', entryId).forUpdate().executeTakeFirstOrThrow()
+  const t = await trx.selectFrom('tournaments').select(['id', 'club_id', 'status', 'type']).where('id', '=', entry.tournament_id).executeTakeFirstOrThrow()
+  if (t.type !== 'singles') throw conflict('entry.replace_singles_only')
+  if (!['paid', 'checked_in', 'playing'].includes(entry.status)) throw conflict('entry.not_active')
+  const started = await trx
+    .selectFrom('matches')
+    .select('id')
+    .where('tournament_id', '=', t.id)
+    .where((eb) => eb.or([eb('home_entry_id', '=', entryId), eb('away_entry_id', '=', entryId)]))
+    .where((eb) => eb.or([eb('status', 'in', ['called', 'playing', 'finished', 'retired']), eb.and([eb('status', '=', 'walkover'), eb('result_type', '<>', 'bye')])]))
+    .executeTakeFirst()
+  if (started) throw conflict('entry.has_played_matches')
+  const taken = await trx
+    .selectFrom('entries')
+    .select('id')
+    .where('tournament_id', '=', t.id)
+    .where('player_id', '=', playerId)
+    .where('status', 'in', ['awaiting_payment', 'paid', 'checked_in', 'playing', 'waitlist', 'invited'])
+    .executeTakeFirst()
+  if (taken) throw conflict('entry.already_registered')
+  const p = await trx
+    .selectFrom('players as p')
+    .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
+    .select(['p.id', 'p.start_level', 'r.rating'])
+    .where('p.id', '=', playerId)
+    .executeTakeFirst()
+  if (!p) throw badRequest('player.not_found')
+  await trx
+    .updateTable('entries')
+    .set({ player_id: playerId, rating_at_start: entry.rating_at_start == null ? null : (p.rating ?? p.start_level), updated_at: now })
+    .where('id', '=', entryId)
+    .execute()
+  await audit({ actorUserId, clubId: t.club_id, entity: 'entry', entityId: entryId, action: 'replace_player', reason, before: { playerId: entry.player_id }, after: { playerId } }, trx)
 }
 
 const sourceMatch = (s: unknown): number | null => {
@@ -449,7 +534,7 @@ const sourceMatch = (s: unknown): number | null => {
   return src && src.kind !== 'seed' ? (src.match ?? null) : null
 }
 
-const wasPlayed = (m: Match) => ['playing', 'finished', 'retired'].includes(m.status) || (m.status === 'walkover' && m.result_type !== 'bye')
+const wasPlayed = (m: Match) => ['called', 'playing', 'finished', 'retired'].includes(m.status) || (m.status === 'walkover' && m.result_type !== 'bye')
 
 /** Bracket matches fed (directly or further down) by match `number`. */
 export function dependentMatches<M extends Pick<Match, 'bracket_number' | 'home_source' | 'away_source'>>(rows: readonly M[], number: number): M[] {
@@ -466,52 +551,67 @@ export function dependentMatches<M extends Pick<Match, 'bracket_number' | 'home_
   return [...found]
 }
 
+export type CorrectionImpact = { rebuild: number[]; kept: number[] }
+
 /**
- * Score correction with a reason (M-7). Dependent matches that have not started are rebuilt;
- * if one of them was already played the correction is refused.
+ * Score correction with a reason (M-7). Dependent matches that have not started are rebuilt; started or played
+ * ones stay, with everything they feed. `dryRun` only reports the affected match numbers.
  */
-export async function correctResult(trx: Trx, matchId: number, input: ScoreInput, reason: string, actorUserId: number | null, now = new Date()): Promise<void> {
+export async function correctResult(
+  trx: Trx,
+  matchId: number,
+  input: ScoreInput,
+  reason: string,
+  actorUserId: number | null,
+  now = new Date(),
+  options: { dryRun?: boolean } = {},
+): Promise<CorrectionImpact> {
   const match = await trx.selectFrom('matches').selectAll().where('id', '=', matchId).forUpdate().executeTakeFirstOrThrow()
   const t = await trx.selectFrom('tournaments').select(['id', 'club_id', 'status', 'format', 'is_rated']).where('id', '=', match.tournament_id).executeTakeFirstOrThrow()
   if (t.status !== 'running') throw conflict('tournament.not_running')
   if (!['finished', 'walkover', 'retired'].includes(match.status) || match.result_type === 'bye') throw conflict('match.not_finished')
-  const type = input.resultType ?? 'normal'
   const rules = await rulesOfMatch(trx, t.format, match)
-  if (type === 'walkover' && !input.teamMeeting && input.winner) input = { ...input, ...walkoverScore(input.winner, rules) }
-  const games = input.games ?? []
-  if (type === 'normal') {
-    const errors = validateMatchScore({ setsHome: input.setsHome, setsAway: input.setsAway, games }, rules)
-    if (errors.length) throw unprocessable('match.invalid_score', errors)
-  } else if (!input.winner) throw badRequest('match.winner_required')
-  const winnerSide = type === 'normal' ? (input.setsHome > input.setsAway ? 'home' : 'away') : input.winner!
-  const winnerEntry = winnerSide === 'home' ? match.home_entry_id : match.away_entry_id
+  const { type, games, setsHome, setsAway, winnerEntry, rated, note } = resolveScore(input, rules, match, t.is_rated)
   const stage = await trx.selectFrom('stages').selectAll().where('id', '=', match.stage_id).executeTakeFirstOrThrow()
-  const winnerChanged = winnerEntry !== match.winner_entry_id
 
-  let affected: Match[] = []
-  let laterStages: number[] = []
+  const rebuild: Match[] = []
+  const kept: Match[] = []
+  const rebuildStages: number[] = []
   if (stage.bracket) {
-    if (winnerChanged) affected = dependentMatches(await trx.selectFrom('matches').selectAll().where('stage_id', '=', stage.id).execute(), match.bracket_number!)
+    if (winnerEntry !== match.winner_entry_id) {
+      const rows = await trx.selectFrom('matches').selectAll().where('stage_id', '=', stage.id).execute()
+      const deps = dependentMatches(rows, match.bracket_number!)
+      kept.push(...deps.filter(wasPlayed))
+      const fixed = new Set(kept.flatMap((k) => dependentMatches(rows, k.bracket_number!)))
+      rebuild.push(...deps.filter((d) => !wasPlayed(d) && !fixed.has(d)))
+    }
   } else {
-    // A group correction may change standings even with the same winner, so built later stages are rebuilt.
-    laterStages = (
-      await trx.selectFrom('stages').select('id').where('tournament_id', '=', t.id).where('order_index', '>', stage.order_index).where('status', '<>', 'pending').execute()
-    ).map((s) => s.id)
-    if (laterStages.length) affected = await trx.selectFrom('matches').selectAll().where('stage_id', 'in', laterStages).execute()
+    // Group standings may change even with the same winner: later stages that have not started are rebuilt.
+    const later = await trx.selectFrom('stages').select('id').where('tournament_id', '=', t.id).where('order_index', '>', stage.order_index).where('status', '<>', 'pending').execute()
+    for (const s of later) {
+      const rows = await trx.selectFrom('matches').selectAll().where('stage_id', '=', s.id).execute()
+      if (rows.some(wasPlayed)) kept.push(...rows.filter(wasPlayed))
+      else {
+        rebuildStages.push(s.id)
+        rebuild.push(...rows.filter((r) => r.result_type !== 'bye'))
+      }
+    }
   }
-  const played = affected.filter(wasPlayed)
-  if (played.length) throw conflict('match.dependents_started', { matches: played.map((m) => m.number) })
+  const numbers = (ms: Match[]) => ms.map((m) => m.number).sort((a, b) => a - b)
+  const impact: CorrectionImpact = { rebuild: numbers(rebuild), kept: numbers(kept) }
+  if (options.dryRun) return impact
 
   await trx
     .updateTable('matches')
     .set({
       status: type === 'normal' ? 'finished' : type,
       result_type: type,
-      sets_home: input.setsHome,
-      sets_away: input.setsAway,
+      sets_home: setsHome,
+      sets_away: setsAway,
       games: json(games),
       winner_entry_id: winnerEntry,
-      is_rated: t.is_rated && (type === 'normal' || (type === 'retired' && games.length > 0)),
+      is_rated: rated,
+      result_note: note,
       version: match.version + 1,
     })
     .where('id', '=', matchId)
@@ -525,28 +625,29 @@ export async function correctResult(trx: Trx, matchId: number, input: ScoreInput
       action: 'correct',
       reason,
       before: { setsHome: match.sets_home, setsAway: match.sets_away, games: match.games, type: match.result_type },
-      after: { setsHome: input.setsHome, setsAway: input.setsAway, games, type },
+      after: { setsHome, setsAway, games, type, ...impact },
     },
     trx,
   )
   if (stage.bracket) {
-    if (affected.length) {
+    if (rebuild.length) {
       await trx
         .updateTable('matches')
         .set({ home_entry_id: null, away_entry_id: null, status: 'waiting', result_type: null, winner_entry_id: null, table_id: null, called_at: null, call_count: 0, call_responses: json({}) })
-        .where('id', 'in', affected.map((m) => m.id))
+        .where('id', 'in', rebuild.map((m) => m.id))
         .execute()
       await syncBracket(trx, stage.id)
       await autoWalkovers(trx, t.id, actorUserId, now)
     }
-    return
+    return impact
   }
-  if (laterStages.length) {
-    await trx.deleteFrom('matches').where('stage_id', 'in', laterStages).execute()
-    await trx.deleteFrom('groups').where('stage_id', 'in', laterStages).execute()
-    await trx.updateTable('stages').set({ status: 'pending', bracket: null, seeds: null }).where('id', 'in', laterStages).execute()
+  if (rebuildStages.length) {
+    await trx.deleteFrom('matches').where('stage_id', 'in', rebuildStages).execute()
+    await trx.deleteFrom('groups').where('stage_id', 'in', rebuildStages).execute()
+    await trx.updateTable('stages').set({ status: 'pending', bracket: null, seeds: null }).where('id', 'in', rebuildStages).execute()
     await trx.updateTable('stages').set({ status: 'running' }).where('id', '=', stage.id).execute()
   }
   const open = await trx.selectFrom('matches').select('id').where('stage_id', '=', stage.id).where('status', 'not in', [...FINISHED_MATCH]).executeTakeFirst()
   if (!open) await completeStage(trx, t.id, stage.id)
+  return impact
 }

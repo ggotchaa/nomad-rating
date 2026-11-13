@@ -44,6 +44,9 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
     ;[next[i], next[j]] = [next[j]!, next[i]!]
     setOrder(next)
   }
+  const s = d.structure
+  const shape = s ? (s.groups ? t.conduct.structureGroups(s.players, s.groups.join(' + ')) : s.bracket ? t.conduct.structureBracket(s.players, s.bracket) : '') : ''
+  const under = d.entries.filter((e) => ['paid', 'checked_in', 'awaiting_payment'].includes(e.status)).length < d.tournament.minParticipants
   return (
     <section className="panel">
       <div className="panel__head">
@@ -51,11 +54,22 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
         <button
           className="button button--primary"
           disabled={order.length < Math.max(2, d.tournament.minParticipants)}
-          onClick={async () => (await dialog.confirm(t.conduct.startConfirm)) && void run(`/tournaments/${d.tournament.id}/start`, { order: order.map((e) => e.entryId) })}
+          onClick={async () => (await dialog.confirm(`${shape}\n${t.conduct.startConfirm}`)) && void run(`/tournaments/${d.tournament.id}/start`, { order: order.map((e) => e.entryId) })}
         >
           {t.conduct.start} · {order.length}
         </button>
       </div>
+      {shape && <p className="small">{shape}</p>}
+      {under && (
+        <div className="note note--error row row--between">
+          <span>{d.tournament.underfillAckAt ? t.conduct.underfillAcked(d.tournament.minParticipants) : t.conduct.underfill(d.tournament.minParticipants)}</span>
+          {!d.tournament.underfillAckAt && (
+            <button className="button button--sm" onClick={() => void run(`/tournaments/${d.tournament.id}/underfill-ack`)}>
+              {t.conduct.underfillAck}
+            </button>
+          )}
+        </div>
+      )}
       <p className="small muted">{t.conduct.seedingHint}</p>
       <ol className="seedlist">
         {order.map((e, i) => (
@@ -107,7 +121,10 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
                   )}
                 </td>
                 <td className="num mono">{e.rating}</td>
-                <td>{e.status === 'checked_in' ? <span className="chip chip--ok">{t.conduct.checkedIn}</span> : <span className="chip">{t.t.entryStatus[e.status] ?? e.status}</span>}</td>
+                <td>
+                  {e.status === 'checked_in' ? <span className="chip chip--ok">{t.conduct.checkedIn}</span> : <span className="chip">{t.t.entryStatus[e.status] ?? e.status}</span>}
+                  {d.busyElsewhere[e.entryId] && <span className="chip chip--warn">{t.conduct.busyElsewhere(d.busyElsewhere[e.entryId]!)}</span>}
+                </td>
                 <td>
                   {e.status === 'paid' && (
                     <button className="button button--sm" onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`)}>
@@ -124,12 +141,61 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
   )
 }
 
+/** F-7: tables and match rules of unplayed matches while the tournament runs. */
+function RunningChanges({ d, onDone, onError }: { d: ConductState; onDone: () => void; onError: (text: string) => void }) {
+  const [tables, setTables] = useState(d.tournament.tableIds)
+  const [wins, setWins] = useState(d.format.match.winsNeeded)
+  const put = async (path: string, json: unknown) => {
+    try {
+      await api(`/tournaments/${d.tournament.id}/${path}`, { method: 'PUT', json })
+      onDone()
+    } catch (e) {
+      onError(errorText(e))
+    }
+  }
+  return (
+    <section className="panel">
+      <h2>{t.conduct.changes}</h2>
+      <h3>{t.conduct.tables}</h3>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        {d.hallTables.map((x) => (
+          <label key={x.id} className="chip">
+            <input type="checkbox" checked={tables.includes(x.id)} onChange={(e) => setTables(e.target.checked ? [...tables, x.id] : tables.filter((id) => id !== x.id))} /> № {x.number}
+          </label>
+        ))}
+        <button className="button button--sm" disabled={!tables.length} onClick={() => void put('tables', { tableIds: tables })}>
+          {t.conduct.saveTables}
+        </button>
+      </div>
+      <h3>{t.conduct.matchRules}</h3>
+      <p className="small muted">{t.conduct.matchRulesHint}</p>
+      <div className="row">
+        <select value={wins} onChange={(e) => setWins(Number(e.target.value))} aria-label={t.conduct.matchRules}>
+          {[2, 3, 4].map((n) => (
+            <option key={n} value={n}>
+              {t.conduct.bestOf(n)}
+            </option>
+          ))}
+        </select>
+        <button
+          className="button button--sm"
+          disabled={wins === d.format.match.winsNeeded}
+          onClick={async () => (await dialog.confirm(t.conduct.matchRulesConfirm)) && void put('format', { ...d.format, match: { ...d.format.match, winsNeeded: wins } })}
+        >
+          {t.conduct.saveRules}
+        </button>
+      </div>
+    </section>
+  )
+}
+
 export function ConductPage() {
   const { id } = useParams()
   const state = useApi<ConductState>(`/tournaments/${id}/conduct`)
   useRoom(`tournament:${id}`, state.reload)
-  const { pending, enqueue } = useScoreQueue(state.reload)
+  const { pending, enqueue, conflicts, resolve } = useScoreQueue(state.reload)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [replacing, setReplacing] = useState<number | null>(null)
   const [scoring, setScoring] = useState<{ match: ConductMatch; mode: 'result' | 'correct' } | null>(null)
 
   const run = async (path: string, json?: unknown, ok?: string) => {
@@ -218,6 +284,35 @@ export function ConductPage() {
                 )}
               </div>
               {pending > 0 && <p className="note note--error">{t.conduct.offline(pending)}</p>}
+              {conflicts.map((c) => {
+                const mine = c.body as { setsHome: number; setsAway: number }
+                const m = [...d.recent, ...d.queue, ...d.attention].find((x) => c.path.endsWith(`/matches/${x.id}/result`))
+                return (
+                  <div className="note note--error row row--between" key={c.path}>
+                    <span>
+                      {t.conduct.conflictBoth(m ? `№ ${m.number}` : '')}: {t.conduct.conflictMine} {mine.setsHome}:{mine.setsAway} · {t.conduct.conflictServer}{' '}
+                      {c.server ? `${c.server.setsHome}:${c.server.setsAway}` : '—'}
+                    </span>
+                    <span className="row">
+                      <button className="button button--sm" onClick={() => void resolve(c, null)}>
+                        {t.conduct.keepServer}
+                      </button>
+                      <button
+                        className="button button--sm button--primary"
+                        onClick={async () => {
+                          try {
+                            await resolve(c, { reason: t.conduct.offlineReason })
+                          } catch (e) {
+                            setMessage({ ok: false, text: errorText(e) })
+                          }
+                        }}
+                      >
+                        {t.conduct.keepMine}
+                      </button>
+                    </span>
+                  </div>
+                )
+              })}
               {message && <p className={`note ${message.ok ? 'note--ok' : 'note--error'}`}>{message.text}</p>}
             </section>
 
@@ -326,22 +421,43 @@ export function ConductPage() {
                   {d.entries
                     .filter((e) => e.status === 'playing')
                     .map((e) => (
-                      <div className="row row--between" key={e.entryId}>
-                        <span>
-                          {e.seed}. {e.name}
-                        </span>
-                        <button
-                          className="button button--sm button--danger"
-                          onClick={async () => {
-                            const reason = await ask(t.conduct.withdrawReason)
-                            if (reason) void run(`${base}/entries/${e.entryId}/withdraw`, { reason })
-                          }}
-                        >
-                          {t.conduct.withdraw}
-                        </button>
+                      <div key={e.entryId}>
+                        <div className="row row--between">
+                          <span>
+                            {e.seed}. {e.name}
+                          </span>
+                          <span className="row">
+                            <button className="button button--sm" onClick={() => setReplacing(replacing === e.entryId ? null : e.entryId)}>
+                              {t.conduct.replace}
+                            </button>
+                            <button
+                              className="button button--sm button--danger"
+                              onClick={async () => {
+                                const mode = await dialog.prompt(t.conduct.withdrawMode, '1')
+                                if (mode !== '1' && mode !== '2') return
+                                const reason = await ask(t.conduct.withdrawReason)
+                                if (reason) void run(`${base}/entries/${e.entryId}/withdraw`, { reason, mode: mode === '1' ? 'annul' : 'walkover' })
+                              }}
+                            >
+                              {t.conduct.withdraw}
+                            </button>
+                          </span>
+                        </div>
+                        {replacing === e.entryId && (
+                          <div className="stack" style={{ maxWidth: 420 }}>
+                            <span className="small muted">{t.conduct.replaceHint}</span>
+                            <PlayerSearch
+                              onPick={async (p) => {
+                                const reason = await ask(t.conduct.replaceReason)
+                                if (reason && (await run(`${base}/entries/${e.entryId}/replace`, { playerId: p.id, reason }))) setReplacing(null)
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                 </section>
+                <RunningChanges d={d} onDone={state.reload} onError={(text) => setMessage({ ok: false, text })} />
               </>
             )}
             {scoring && (

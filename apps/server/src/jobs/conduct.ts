@@ -1,13 +1,17 @@
 // Worker tick for running tournaments: repeat unanswered calls after 3 minutes (spec 3.3),
-// auto-cancel tournaments that did not gather the minimum by the start (M-8).
+// warn about and auto-cancel tournaments under the minimum (spec 4.4).
 
+import { sql } from 'kysely'
+import type { Expression, SqlBool } from 'kysely'
 import { ENTRY_OCCUPYING } from '@nomad/shared'
 import { db, json } from '../db/index.ts'
 import type { CallResponses } from '../db/types.ts'
 import { audit } from '../audit.ts'
 import { cancelTournament } from '../modules/tournament-admin.ts'
+import { notify } from '../notify/index.ts'
 import { sendCall } from '../notify/match.ts'
 import { bus } from '../realtime/bus.ts'
+import { organiserUserIds } from '../tournaments/busy.ts'
 
 const MAX_CALLS = 3
 
@@ -40,19 +44,37 @@ export async function recallUnanswered(now = new Date()): Promise<number> {
   return sent
 }
 
-export async function autoCancelUnderfilled(now = new Date()): Promise<number> {
-  const due = await db
+const HOUR = 3600000
+
+/** Not started tournaments under the minimum, selected by `where` (spec 4.4 «Мало участников»). */
+async function underfilled(where: (now: Date) => Expression<SqlBool>, now: Date) {
+  const rows = await db
     .selectFrom('tournaments as t')
-    .select(['t.id', 't.min_participants', (eb) => eb.selectFrom('entries as e').whereRef('e.tournament_id', '=', 't.id').where('e.status', 'in', [...ENTRY_OCCUPYING]).select((x) => x.fn.countAll<number>().as('n')).as('taken')])
+    .select(['t.id', 't.club_id', 't.created_by', 't.slug', 't.title', 't.min_participants', 't.underfill_warned_at', 't.underfill_ack_at', (eb) => eb.selectFrom('entries as e').whereRef('e.tournament_id', '=', 't.id').where('e.status', 'in', [...ENTRY_OCCUPYING]).select((x) => x.fn.countAll<number>().as('n')).as('taken')])
     .where('t.status', 'in', ['published', 'registration_closed'])
-    .where('t.starts_at', '<=', now)
+    .where(where(now))
     .execute()
-  let cancelled = 0
+  return rows.filter((t) => Number(t.taken ?? 0) < t.min_participants)
+}
+
+/** The organiser is warned at registration close (3 hours before the start at the latest). */
+export async function warnUnderfilled(now = new Date()): Promise<number> {
+  const due = await underfilled((n) => sql<SqlBool>`t.underfill_warned_at IS NULL AND t.underfill_ack_at IS NULL AND (t.registration_closes_at <= ${n} OR t.starts_at <= ${new Date(n.getTime() + 3 * HOUR)})`, now)
   for (const t of due) {
-    if (Number(t.taken ?? 0) >= t.min_participants) continue
+    await db.updateTable('tournaments').set({ underfill_warned_at: now }).where('id', '=', t.id).execute()
+    for (const userId of await organiserUserIds(t)) {
+      await notify({ userId, type: 'tournament_underfilled', urgent: true, data: { tournamentId: t.id, slug: t.slug, title: t.title, taken: Number(t.taken ?? 0), min: t.min_participants } })
+    }
+  }
+  return due.length
+}
+
+/** Cancelled 2 hours before the start if still under the minimum and the organiser did not confirm; players are notified. */
+export async function autoCancelUnderfilled(now = new Date()): Promise<number> {
+  const due = await underfilled((n) => sql<SqlBool>`t.underfill_ack_at IS NULL AND t.starts_at <= ${new Date(n.getTime() + 2 * HOUR)}`, now)
+  for (const t of due) {
     await cancelTournament(t.id, null, 'too_few_participants')
     await audit({ actorUserId: null, entity: 'tournament', entityId: t.id, action: 'auto_cancel', after: { taken: Number(t.taken ?? 0), min: t.min_participants } })
-    cancelled++
   }
-  return cancelled
+  return due.length
 }

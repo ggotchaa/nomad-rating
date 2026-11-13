@@ -4,7 +4,8 @@
 import { Router } from 'express'
 import type { Request } from 'express'
 import { z } from 'zod'
-import { matchRulesFor, validateMatchScore } from '@nomad/engine'
+import { matchRulesFor, validateFormat, validateMatchScore } from '@nomad/engine'
+import type { TournamentFormat } from '@nomad/engine'
 import { db, json } from '../db/index.ts'
 import type { CallAnswer, CallResponses, Match, Tournament } from '../db/types.ts'
 import { audit } from '../audit.ts'
@@ -14,9 +15,11 @@ import { intParam, parseBody } from '../http/validate.ts'
 import { notify } from '../notify/index.ts'
 import { notifyNext, refreshCallAnswer, sendCall, sendCallCancelled, sendTableChanged, telegramDelivery } from '../notify/match.ts'
 import { bus } from '../realtime/bus.ts'
+import { busyElsewhere, structurePreview } from '../tournaments/busy.ts'
 import { conductState } from '../tournaments/queue.ts'
-import { correctResult, finishTournament, recordResult, rulesOfMatch, withdrawEntry } from '../tournaments/structure.ts'
+import { correctResult, finishTournament, recordResult, replaceEntryPlayer, rulesOfMatch, withdrawEntry } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
+import { formatSchema } from './tournaments.ts'
 
 export const conductRouter = Router()
 export const myCallsRouter = Router()
@@ -43,16 +46,35 @@ const scoreSchema = z.object({
   games: z.array(z.object({ home: z.number().int().min(0), away: z.number().int().min(0) })).max(7).default([]),
   resultType: z.enum(['normal', 'walkover', 'retired']).default('normal'),
   winner: z.enum(['home', 'away']).optional(),
+  note: z.string().trim().max(200).optional(),
 })
 
 conductRouter.get(
   '/:id/conduct',
   handler(async (req, res) => {
     const { t } = await staffTournament(req)
+    const notStarted = ['published', 'registration_closed'].includes(t.status)
     res.json({
-      tournament: { id: t.id, slug: t.slug, title: t.title, status: t.status, startsAt: t.starts_at, settings: t.settings, match: t.format.match, restMinutes: t.settings.restMinutes ?? t.format.restMinutes, minParticipants: t.min_participants },
+      tournament: {
+        id: t.id,
+        slug: t.slug,
+        title: t.title,
+        status: t.status,
+        startsAt: t.starts_at,
+        settings: t.settings,
+        match: t.format.match,
+        restMinutes: t.settings.restMinutes ?? t.format.restMinutes,
+        minParticipants: t.min_participants,
+        tableIds: t.table_ids,
+        underfillWarnedAt: t.underfill_warned_at,
+        underfillAckAt: t.underfill_ack_at,
+      },
       ...(await conductState(t)),
       telegram: await telegramDelivery(t.id),
+      format: t.format,
+      hallTables: await db.selectFrom('hall_tables').select(['id', 'number']).where('hall_id', '=', t.hall_id).where('status', '=', 'active').orderBy('number').execute(),
+      structure: notStarted ? await structurePreview(t) : null,
+      busyElsewhere: notStarted || t.status === 'running' ? await busyElsewhere(t.id) : {},
     })
   }),
 )
@@ -190,23 +212,124 @@ conductRouter.post(
   handler(async (req, res) => {
     const { t, user } = await staffTournament(req)
     const body = parseBody(scoreSchema.extend({ reason: z.string().trim().min(3).max(500) }), req)
-    await db.transaction().execute((trx) => correctResult(trx, intParam(req, 'matchId'), body, body.reason, user.id))
+    const impact = await db.transaction().execute((trx) => correctResult(trx, intParam(req, 'matchId'), body, body.reason, user.id))
     changed(t.id)
-    res.json({ ok: true })
+    res.json({ ok: true, ...impact })
   }),
 )
+
+/** Matches a correction would rebuild or keep — shown to the organiser before confirming (spec 4.4). */
+conductRouter.post(
+  '/:id/matches/:matchId/correct/preview',
+  handler(async (req, res) => {
+    const { t, user } = await staffTournament(req)
+    await matchOf(t, intParam(req, 'matchId'))
+    const body = parseBody(scoreSchema, req)
+    res.json(await db.transaction().execute((trx) => correctResult(trx, intParam(req, 'matchId'), body, '', user.id, new Date(), { dryRun: true })))
+  }),
+)
+
+async function entryOf(t: Tournament, entryId: number) {
+  const entry = await db.selectFrom('entries').select('tournament_id').where('id', '=', entryId).executeTakeFirst()
+  if (entry?.tournament_id !== t.id) throw notFound('entry.not_found')
+}
 
 conductRouter.post(
   '/:id/entries/:entryId/withdraw',
   handler(async (req, res) => {
     const { t, user } = await staffTournament(req)
-    const { reason } = parseBody(z.object({ reason: z.string().trim().min(3).max(500) }), req)
+    const { reason, mode } = parseBody(z.object({ reason: z.string().trim().min(3).max(500), mode: z.enum(['annul', 'walkover']).default('annul') }), req)
     const entryId = intParam(req, 'entryId')
-    const entry = await db.selectFrom('entries').select('tournament_id').where('id', '=', entryId).executeTakeFirst()
-    if (entry?.tournament_id !== t.id) throw notFound('entry.not_found')
-    await db.transaction().execute((trx) => withdrawEntry(trx, entryId, user.id, reason))
+    await entryOf(t, entryId)
+    await db.transaction().execute((trx) => withdrawEntry(trx, entryId, user.id, reason, new Date(), mode))
     changed(t.id)
     bus.publish(`tournament:${t.id}`, 'tournament.entries_changed', { tournamentId: t.id })
+    res.json({ ok: true })
+  }),
+)
+
+/** «Мало участников»: the organiser confirms the tournament takes place anyway (no auto-cancel). */
+conductRouter.post(
+  '/:id/underfill-ack',
+  handler(async (req, res) => {
+    const { t, user } = await staffTournament(req)
+    if (!['published', 'registration_closed'].includes(t.status)) throw conflict('tournament.not_editable')
+    await db.updateTable('tournaments').set({ underfill_ack_at: new Date() }).where('id', '=', t.id).execute()
+    await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'tournament', entityId: t.id, action: 'underfill_ack' })
+    res.json({ ok: true })
+  }),
+)
+
+/** Replace a player who has not played yet (F-7), audited. */
+conductRouter.post(
+  '/:id/entries/:entryId/replace',
+  handler(async (req, res) => {
+    const { t, user } = await staffTournament(req)
+    const { playerId, reason } = parseBody(z.object({ playerId: z.number().int().positive(), reason: z.string().trim().min(3).max(500) }), req)
+    const entryId = intParam(req, 'entryId')
+    await entryOf(t, entryId)
+    await db.transaction().execute((trx) => replaceEntryPlayer(trx, entryId, playerId, reason, user.id))
+    changed(t.id)
+    bus.publish(`tournament:${t.id}`, 'tournament.entries_changed', { tournamentId: t.id })
+    res.json({ ok: true })
+  }),
+)
+
+/** Tables of a running tournament (F-7): a removed table must not have a match in play; a called match goes back to the queue. */
+conductRouter.put(
+  '/:id/tables',
+  handler(async (req, res) => {
+    const { t, user } = await staffTournament(req)
+    const { tableIds } = parseBody(z.object({ tableIds: z.array(z.number().int().positive()).min(1).max(100) }), req)
+    await db.transaction().execute(async (trx) => {
+      const valid = (await trx.selectFrom('hall_tables').select('id').where('hall_id', '=', t.hall_id).where('id', 'in', tableIds).execute()).map((x) => x.id)
+      if (!valid.length) throw unprocessable('tournament.no_tables')
+      const removed = t.table_ids.filter((id) => !valid.includes(id))
+      if (removed.length) {
+        const playing = await trx.selectFrom('matches').select('id').where('tournament_id', '=', t.id).where('status', '=', 'playing').where('table_id', 'in', removed).executeTakeFirst()
+        if (playing) throw conflict('tournament.table_in_play')
+        await trx
+          .updateTable('matches')
+          .set({ status: 'scheduled', table_id: null, called_at: null, call_count: 0, call_responses: json({}) })
+          .where('tournament_id', '=', t.id)
+          .where('status', '=', 'called')
+          .where('table_id', 'in', removed)
+          .execute()
+      }
+      await trx.updateTable('tournaments').set({ table_ids: valid }).where('id', '=', t.id).execute()
+      await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'tournament', entityId: t.id, action: 'tables', before: { tableIds: t.table_ids }, after: { tableIds: valid } }, trx)
+    })
+    changed(t.id)
+    res.json({ ok: true })
+  }),
+)
+
+/**
+ * Format change while running (F-7): stages already built stay exactly as they are (with their incoming transitions);
+ * the change applies to stages not built yet and to match rules of unplayed matches.
+ */
+conductRouter.put(
+  '/:id/format',
+  handler(async (req, res) => {
+    const { t, user } = await staffTournament(req)
+    if (t.status !== 'running') throw conflict('tournament.not_running')
+    const format = parseBody(formatSchema, req) as TournamentFormat
+    const errors = validateFormat(format)
+    if (errors.length) throw unprocessable('format.invalid', errors)
+    const stored = formatSchema.parse(t.format) as TournamentFormat
+    const built = (await db.selectFrom('stages').select('stage_key').where('tournament_id', '=', t.id).where('status', '<>', 'pending').execute()).map((s) => s.stage_key)
+    const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canon(x)])) : v)
+    const same = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b))
+    for (const key of built) {
+      const was = stored.stages.find((s) => s.id === key)
+      const now = format.stages.find((s) => s.id === key)
+      const inWas = stored.transitions.filter((x) => x.to === key)
+      const inNow = format.transitions.filter((x) => x.to === key)
+      if (!now || !same(was, now) || !same(inWas, inNow)) throw conflict('format.stage_started', { stage: key })
+    }
+    await db.updateTable('tournaments').set({ format: json(format) }).where('id', '=', t.id).execute()
+    await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'tournament', entityId: t.id, action: 'format_running', before: t.format, after: format })
+    changed(t.id)
     res.json({ ok: true })
   }),
 )

@@ -250,6 +250,8 @@ export interface TournamentsTable {
   finished_at: Timestamp | null
   league_tour_id: Generated<number | null>
   league_division_id: Generated<number | null>
+  underfill_warned_at: Timestamp | null
+  underfill_ack_at: Timestamp | null
 }
 
 export interface PaymentsTable {
@@ -349,6 +351,8 @@ export interface MatchesTable {
   reported_score: Json<ReportedScore> | null
   reported_by: number | null
   disputed: Generated<boolean>
+  result_note: string | null
+  excluded: Generated<boolean>
 }
 
 export interface RatingEventsTable {
