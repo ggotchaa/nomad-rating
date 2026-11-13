@@ -1,12 +1,14 @@
-import { expect, test } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { loginAs } from '../support/api.ts'
+import type { AccountKey } from '../support/api.ts'
 
-const switchTo = async (page: Page, label: string) => {
-  await page.getByRole('combobox', { name: 'Войти как…' }).selectOption({ label })
-  await expect(page.getByRole('combobox', { name: 'Войти как…' }).locator('option:checked')).toHaveText(label)
+const switchTo = async (page: Page, key: AccountKey) => {
+  await loginAs(page.request, key)
+  await page.reload()
 }
 
-test('presentation script: guest, player, organiser', async ({ page }) => {
+test('main flow: guest, player, organiser', async ({ page }) => {
   let booked = ''
   await test.step('guest browses a finished tournament and a player profile', async () => {
     await page.goto('/tournaments')
@@ -25,7 +27,7 @@ test('presentation script: guest, player, organiser', async ({ page }) => {
   })
 
   await test.step('player books a table and registers for a tournament', async () => {
-    await switchTo(page, 'Игрок')
+    await switchTo(page, 'player')
     await page.goto('/club/smash-arena/booking')
     await page.getByRole('group', { name: 'Дата' }).getByRole('button').nth(4).click()
     await page.getByRole('button', { name: /^\d+$/ }).first().click()
@@ -47,7 +49,7 @@ test('presentation script: guest, player, organiser', async ({ page }) => {
 
   const title = `E2E турнир ${Date.now() % 100000}`
   await test.step('organiser creates a tournament and sees the booking grid', async () => {
-    await switchTo(page, 'Организатор клуба')
+    await switchTo(page, 'organizer')
     await page.goto('/manage/tournaments')
     await page.getByRole('link', { name: '+ Создать турнир' }).click()
     await page.getByLabel('Название').fill(title)
