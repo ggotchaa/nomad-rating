@@ -19,7 +19,7 @@ import { consumeToken, issueToken } from '../auth/tokens.ts'
 import { badRequest, conflict, forbidden, handler, notFound, unauthorized } from '../http/errors.ts'
 import { parseBody } from '../http/validate.ts'
 import { mails, sendMail, siteLink } from '../mail/index.ts'
-import { IMAGE_MAX_BYTES, IMAGE_TYPES, saveFile } from '../storage/index.ts'
+import { IMAGE_MAX_BYTES, IMAGE_TYPES, removeFile, saveFile } from '../storage/index.ts'
 import { currentUserView, limiter } from './auth.ts'
 
 export const accountRouter = Router()
@@ -442,5 +442,55 @@ myAccountRouter.put(
     await db.updateTable('users').set({ locale }).where('id', '=', user.id).execute()
     await audit({ actorUserId: user.id, entity: 'user', entityId: user.id, action: 'locale', after: { locale } })
     res.json({ locale })
+  }),
+)
+
+// --- Account deletion: personal data is erased, sports history stays under an anonymous profile ---
+
+accountRouter.post(
+  '/account/delete',
+  limiter,
+  handler(async (req, res) => {
+    const user = requireUser(req)
+    const body = parseBody(z.object({ password: z.string().max(200), code: z.string().max(6).optional() }), req)
+    const row = await db.selectFrom('users').select(['password_hash', 'platform_role', 'totp_enabled_at']).where('id', '=', user.id).executeTakeFirstOrThrow()
+    if (!row.password_hash) throw conflict('auth.delete_needs_password')
+    if (!(await verifyPassword(body.password, row.password_hash))) throw unauthorized('auth.invalid_credentials')
+    if (row.totp_enabled_at) await checkTotp(user.id, body.code ?? '')
+    if (row.platform_role === 'admin') throw conflict('auth.delete_admin')
+    const organizer = await db.selectFrom('club_members').select('club_id').where('user_id', '=', user.id).where('role', '=', 'organizer').executeTakeFirst()
+    if (organizer) throw conflict('auth.delete_organizer')
+
+    const photo = await db.transaction().execute(async (trx) => {
+      const player = await trx.selectFrom('players').select(['id', 'photo_url']).where('user_id', '=', user.id).executeTakeFirst()
+      if (player) {
+        await trx.deleteFrom('telegram_accounts').where('player_id', '=', player.id).execute()
+        await trx.deleteFrom('telegram_bind_tokens').where('player_id', '=', player.id).execute()
+        await trx.deleteFrom('team_invitations').where('player_id', '=', player.id).where('status', '=', 'sent').execute()
+        await trx.updateTable('rttf_profiles').set({ player_id: null }).where('player_id', '=', player.id).execute()
+        await trx
+          .updateTable('players')
+          .set({ user_id: null, first_name: 'Удалённый', last_name: 'игрок', middle_name: null, hand: null, photo_url: null, claim_code: null, contact_email: null, search_name: 'удаленный игрок', updated_at: new Date() })
+          .where('id', '=', player.id)
+          .execute()
+      }
+      await trx.deleteFrom('sessions').where('user_id', '=', user.id).execute()
+      await trx.deleteFrom('auth_tokens').where('user_id', '=', user.id).execute()
+      await trx.deleteFrom('push_subscriptions').where('user_id', '=', user.id).execute()
+      await trx.deleteFrom('notifications').where('user_id', '=', user.id).execute()
+      await trx.deleteFrom('notification_prefs').where('user_id', '=', user.id).execute()
+      await trx.deleteFrom('subscriptions').where('user_id', '=', user.id).execute()
+      await trx.deleteFrom('club_members').where('user_id', '=', user.id).execute()
+      await trx
+        .updateTable('users')
+        .set({ email: `deleted-${user.id}@deleted.invalid`, email_verified_at: null, password_hash: null, google_sub: null, totp_secret: null, totp_enabled_at: null, blocked_at: new Date() })
+        .where('id', '=', user.id)
+        .execute()
+      await audit({ actorUserId: user.id, entity: 'user', entityId: user.id, action: 'account_deleted', after: { playerId: player?.id ?? null } }, trx)
+      return player?.photo_url ?? null
+    })
+    if (photo) await removeFile(photo)
+    res.clearCookie(SESSION_COOKIE, { path: '/' })
+    res.status(204).end()
   }),
 )

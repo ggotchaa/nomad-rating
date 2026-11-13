@@ -7,6 +7,7 @@ import type { Me } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
 import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
+import { ask } from '../../ui/dialogs.tsx'
 import { Async, Field } from '../../ui/kit.tsx'
 import { afterLogin, safePath } from './Auth.tsx'
 
@@ -253,6 +254,8 @@ export function Security() {
   const pw = useAction()
   const methods = useAction()
   const mfa = useAction()
+  const del = useAction()
+  const navigate = useNavigate()
   const [setup, setSetup] = useState<{ secret: string; uri: string } | null>(null)
   if (ready && !me.user) return <Navigate to="/login" state={{ from: '/me/security' }} replace />
   const user = me.user
@@ -364,6 +367,39 @@ export function Security() {
           {mfa.notes}
         </section>
       )}
+      <section className="panel stack">
+        <h2>{t.acc.deleteTitle}</h2>
+        <p className="small muted">{t.acc.deleteLead}</p>
+        {user.hasPassword ? (
+          <form
+            className="form"
+            onSubmit={(e) => {
+              const f = formValues(e)
+              void del.run(async () => {
+                if (!(await ask.confirm(t.acc.deleteConfirm))) return
+                await api('/auth/account/delete', { method: 'POST', json: { password: f.get('password'), code: f.get('code') || undefined } })
+                setMe({ user: null, player: null, clubs: [], activeClubId: null })
+                navigate('/', { replace: true })
+              })
+            }}
+          >
+            <Field label={t.acc.currentPassword}>
+              <input name="password" type="password" autoComplete="current-password" required />
+            </Field>
+            {user.totpEnabled && (
+              <Field label={t.acc.code}>
+                <input name="code" inputMode="numeric" pattern="\d{6}" required />
+              </Field>
+            )}
+            {del.notes}
+            <button className="button button--danger" disabled={del.busy}>
+              {t.acc.deleteButton}
+            </button>
+          </form>
+        ) : (
+          <p className="small">{t.acc.deleteNeedsPassword}</p>
+        )}
+      </section>
     </main>
   )
 }
