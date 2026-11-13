@@ -80,20 +80,91 @@ export function mergeSmallDivisions(sizes: readonly number[], minSize: number): 
 /** Tour points by place; places beyond the table get `participation`. */
 export const tourPoints = (place: number, table: readonly number[], participation = 0): number => table[place - 1] ?? participation
 
-export type SeasonRow = { id: string; total: number; tours: number; counted: number[]; dropped: number[] }
+/** L-14: places numbered through all divisions (top division 1…n, next one continues). Each division is in tour order. */
+export function overallPlaces(divisions: readonly (readonly string[])[]): Map<string, number> {
+  const out = new Map<string, number>()
+  let place = 0
+  for (const d of divisions) for (const id of d) out.set(id, ++place)
+  return out
+}
 
-/** Season table: sum of the best N tours (all when bestN is null); ties by tours played, then best single tour. */
-export function seasonStandings(results: readonly { id: string; points: number }[], bestN: number | null = null): SeasonRow[] {
-  const byId = new Map<string, number[]>()
-  for (const r of results) byId.set(r.id, [...(byId.get(r.id) ?? []), r.points])
-  const rows = [...byId].map(([id, pts]) => {
-    const sorted = [...pts].sort((a, b) => b - a)
+/** Default tour points: 1st overall gets as many points as players in the tour, each next place one less. */
+export const defaultTourPoints = (overall: number, players: number): number => Math.max(players - overall + 1, 0)
+
+export type SeasonRow = { id: string; total: number; tours: number; counted: number[]; dropped: number[]; bestPlace: number | null; firsts: number; lastTour: number }
+export type TourResult = { id: string; points: number; place?: number | null; tour?: number }
+
+/**
+ * Season table: sum of the best N tours (all when bestN is null). Ties (4.12): best place in a tour,
+ * number of first places, result of the last tour, then tours played.
+ */
+export function seasonStandings(results: readonly TourResult[], bestN: number | null = null): SeasonRow[] {
+  const byId = new Map<string, TourResult[]>()
+  for (const r of results) byId.set(r.id, [...(byId.get(r.id) ?? []), r])
+  const last = Math.max(0, ...results.map((r) => r.tour ?? 0))
+  const rows = [...byId].map(([id, rs]) => {
+    const sorted = rs.map((r) => r.points).sort((a, b) => b - a)
     const n = bestN ?? sorted.length
     const counted = sorted.slice(0, n)
-    return { id, total: counted.reduce((a, b) => a + b, 0), tours: pts.length, counted, dropped: sorted.slice(n) }
+    const places = rs.map((r) => r.place).filter((p): p is number => p != null)
+    return {
+      id,
+      total: counted.reduce((a, b) => a + b, 0),
+      tours: rs.length,
+      counted,
+      dropped: sorted.slice(n),
+      bestPlace: places.length ? Math.min(...places) : null,
+      firsts: places.filter((p) => p === 1).length,
+      lastTour: last ? (rs.find((r) => r.tour === last)?.points ?? 0) : 0,
+    }
   })
-  return rows.sort((a, b) => b.total - a.total || b.tours - a.tours || (b.counted[0] ?? 0) - (a.counted[0] ?? 0) || a.id.localeCompare(b.id))
+  return rows.sort(
+    (a, b) =>
+      b.total - a.total ||
+      (a.bestPlace ?? 1e9) - (b.bestPlace ?? 1e9) ||
+      b.firsts - a.firsts ||
+      b.lastTour - a.lastTour ||
+      b.tours - a.tours ||
+      (b.counted[0] ?? 0) - (a.counted[0] ?? 0) ||
+      a.id.localeCompare(b.id),
+  )
+}
+
+export type PlayoffPair = { boundary: number; upper: string; lower: string }
+
+/** L-4 стыковые матчи: the place just above the relegation zone vs the place just below the promotion zone. */
+export function playoffPairs(divisions: readonly (readonly string[])[], boundaries: readonly Boundary[]): PlayoffPair[] {
+  const out: PlayoffPair[] = []
+  for (let i = 0; i < divisions.length - 1; i++) {
+    const b = boundaries[i] ?? { promote: 0, relegate: 0 }
+    const upper = divisions[i]![divisions[i]!.length - b.relegate - 1]
+    const lower = divisions[i + 1]![b.promote]
+    if (upper && lower && b.relegate < divisions[i]!.length) out.push({ boundary: i, upper, lower })
+  }
+  return out
+}
+
+/** Swaps the pair across the boundary when the lower-division player won the play-off match. */
+export function applyPlayoffs(divisions: readonly (readonly string[])[], results: readonly (PlayoffPair & { lowerWon: boolean })[]): { divisions: string[][]; moves: Move[] } {
+  const out = divisions.map((d) => [...d])
+  const moves: Move[] = []
+  for (const r of results) {
+    if (!r.lowerWon) continue
+    const up = out[r.boundary]!
+    const down = out[r.boundary + 1]!
+    if (!up.includes(r.upper) || !down.includes(r.lower)) continue
+    up.splice(up.indexOf(r.upper), 1, r.lower)
+    down.splice(down.indexOf(r.lower), 1, r.upper)
+    moves.push({ id: r.lower, from: r.boundary + 1, to: r.boundary, reason: 'promotion' }, { id: r.upper, from: r.boundary, to: r.boundary + 1, reason: 'relegation' })
+  }
+  return { divisions: out, moves }
+}
+
+/** Mid-season newcomer «by rating»: the highest division whose weakest player is not stronger than him; else the bottom one. */
+export function divisionByRating(divisionRatings: readonly (readonly number[])[], rating: number): number {
+  for (const [i, rs] of divisionRatings.entries()) if (rs.length && rating >= Math.min(...rs)) return i
+  return divisionRatings.length - 1
 }
 
 /** Play-offs (L-11): the top `count` of the season table, seeded in table order. */
-export const playoffSeeds = (table: readonly SeasonRow[], count: number): string[] => table.slice(0, count).map((r) => r.id)
+export const playoffSeeds = (table: readonly { id: string }[], count: number): string[] => table.slice(0, count).map((r) => r.id)

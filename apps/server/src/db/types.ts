@@ -500,6 +500,7 @@ export interface Database {
   league_results: LeagueResultsTable
   league_moves: LeagueMovesTable
   league_fixtures: LeagueFixturesTable
+  league_tour_skips: LeagueTourSkipsTable
 }
 
 export type Tournament = Selectable<TournamentsTable>
@@ -818,6 +819,13 @@ export type SeasonRules = {
   transferWindow?: { from: string; to: string } | null
   confirmBy?: string | null
   reminderHours?: number
+  noShowWarn?: number
+  freezeEnabled?: boolean
+  newcomerPlacement?: 'bottom' | 'rating'
+  divisionSize?: number | null
+  matchPoints?: { win: number; loss: number; noShow: number }
+  playoffMatches?: boolean
+  capacities?: number[]
 }
 
 export type SeasonPayment = { mode?: 'season' | 'per_tour' | 'combined'; seasonPrice?: number; tourPrice?: number; topUp?: number }
@@ -843,6 +851,7 @@ export interface LeagueSeasonsTable {
   rules: JsonDefault<SeasonRules>
   payment: JsonDefault<SeasonPayment>
   previous_season_id: number | null
+  draft_pending: Generated<boolean>
   created_at: DefaultTimestamp
 }
 
@@ -859,9 +868,13 @@ export interface LeagueParticipantsTable {
   season_id: number
   player_id: number
   division_id: number | null
-  status: Generated<'invited' | 'active' | 'frozen' | 'left' | 'declined'>
+  status: Generated<'invited' | 'active' | 'frozen' | 'left' | 'declined' | 'waiting'>
   joined_tour: Generated<number>
   missed_tours: Generated<number>
+  draft_division_id: number | null
+  draft_reason: string | null
+  no_shows: Generated<number>
+  freezes_used: Generated<number>
   created_at: DefaultTimestamp
 }
 
@@ -883,6 +896,14 @@ export interface LeagueResultsTable {
   place: number | null
   points: Generated<number>
   missed: Generated<boolean>
+  overall_place: number | null
+  no_show: Generated<boolean>
+}
+
+export interface LeagueTourSkipsTable {
+  tour_id: number
+  participant_id: number
+  created_at: DefaultTimestamp
 }
 
 export interface LeagueMovesTable {
@@ -912,5 +933,9 @@ export interface LeagueFixturesTable {
   sets_home: number | null
   sets_away: number | null
   reported_by: number | null
+  kind: Generated<'regular' | 'playoff'>
+  technical: 'home' | 'away' | 'both' | null
+  rating_home: number | null
+  rating_away: number | null
   created_at: DefaultTimestamp
 }

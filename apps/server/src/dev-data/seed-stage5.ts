@@ -11,7 +11,7 @@ import { createTournament, publishTournament } from '../modules/tournaments.ts'
 import { finishTournament, recordResult, startTournament } from '../tournaments/structure.ts'
 import { addMember, createTeam, invite, registerTeam } from '../teams/service.ts'
 import { recordGame, submitLineup } from '../teams/meeting.ts'
-import { addParticipants, applyTour, createLeague, createSeason, createTour, setSeasonStatus } from '../leagues/service.ts'
+import { addParticipants, applyTour, createLeague, createSeason, createTour, publishDraft, setSeasonStatus } from '../leagues/service.ts'
 
 type Trx = Transaction<Database>
 const TZ = 'Asia/Almaty'
@@ -150,6 +150,7 @@ export async function seedStage5(log: (s: string) => void): Promise<void> {
         await playAll(trx, x.id, organizer, startsAt, rng)
       }
       await applyTour(trx, tour.id, organizer)
+      await publishDraft(trx, season.id, organizer)
     }
     await createTour(trx, season.id, organizer, { startsAt: day(7, 18).toISOString(), deadlineAt: day(7, 23).toISOString(), hallId: hall.id })
   })

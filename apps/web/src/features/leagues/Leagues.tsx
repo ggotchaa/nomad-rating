@@ -10,8 +10,25 @@ import { Async, StatusChip } from '../../ui/kit.tsx'
 import { ShareBox } from '../tournaments/ShareBox.tsx'
 
 export type LeagueRow = { id: number; slug: string; name: string; format: string; description: string; club: string; club_slug: string; season_id: number | null }
-export type TableRow = { participantId: number; playerId: number; name: string; rating: number | null; divisionId: number | null; status: string; missedTours: number; total: number; tours: number; dropped: number[] }
-type Fixture = { id: number; divisionId: number | null; round: number; status: string; home: { id: number; name?: string }; away: { id: number; name?: string }; startsAt: string | null; setsHome: number | null; setsAway: number | null; proposedBy: number | null; reportedBy: number | null }
+export type TableRow = {
+  participantId: number
+  playerId: number
+  name: string
+  rating: number | null
+  divisionId: number | null
+  draftDivisionId: number | null
+  draftReason: string | null
+  status: string
+  missedTours: number
+  noShows: number
+  freezesUsed: number
+  total: number
+  tours: number
+  dropped: number[]
+  divisionPlace: number
+  zone: 'up' | 'down' | null
+}
+export type Fixture = { id: number; kind: string; technical: 'home' | 'away' | 'both' | null; ratingHome: number | null; ratingAway: number | null; deadlineAt: string | null; divisionId: number | null; round: number; status: string; home: { id: number; name?: string }; away: { id: number; name?: string }; startsAt: string | null; setsHome: number | null; setsAway: number | null; proposedBy: number | null; reportedBy: number | null }
 export type SeasonView = {
   id: number
   name: string
@@ -19,11 +36,23 @@ export type SeasonView = {
   startsOn: string
   endsOn: string
   format: string
-  rules: { bestTours: number | null; boundaries: { promote: number; relegate: number }[]; pointsTable?: number[]; participationPoints?: number; toursPlanned?: number; missedRule?: 'relegate' | 'last' | 'stay'; minDivisionSize?: number; transferWindow?: { from: string; to: string } | null; confirmBy?: string | null }
+  rules: { bestTours: number | null; boundaries: { promote: number; relegate: number }[]; pointsTable?: number[]; participationPoints?: number; toursPlanned?: number; missedRule?: 'relegate' | 'last' | 'stay'; minDivisionSize?: number; transferWindow?: { from: string; to: string } | null; confirmBy?: string | null; noShowWarn?: number; freezeEnabled?: boolean; newcomerPlacement?: 'bottom' | 'rating'; divisionSize?: number | null; matchPoints?: { win: number; loss: number; noShow: number }; playoffMatches?: boolean }
   payment: { mode?: string; seasonPrice?: number; tourPrice?: number; topUp?: number }
   divisions: { id: number; name: string; level: number; rows: TableRow[] }[]
+  draftPending: boolean
   table: TableRow[]
-  tours: { id: number; number: number; kind: string; startsAt: string; status: string; tournaments: { id: number; slug: string; title: string; status: string; league_division_id: number | null }[] }[]
+  best: { participantId: number; playerId: number; name: string; total: number; firsts: number; wins: number }[]
+  tours: {
+    id: number
+    number: number
+    kind: string
+    startsAt: string
+    deadlineAt: string | null
+    status: string
+    skips: number[]
+    tournaments: { id: number; slug: string; title: string; status: string; league_division_id: number | null }[]
+    results: { participantId: number; name?: string; divisionId: number | null; place: number | null; overallPlace: number | null; points: number; missed: boolean; noShow: boolean }[]
+  }[]
   moves: { participantId: number; name?: string; from: number | null; to: number | null; reason: string }[]
   fixtures: Fixture[]
 }
@@ -70,13 +99,19 @@ export function SeasonTables({ s }: { s: SeasonView }) {
             <table className="table">
               <tbody>
                 {d.rows.map((r, i) => (
-                  <tr key={r.participantId}>
-                    <td>{i + 1}</td>
+                  <tr key={r.participantId} className={r.zone ? `zone zone--${r.zone}` : undefined} title={r.zone ? t.leagues.zones[r.zone] : undefined}>
+                    <td>
+                      {i + 1}
+                      {r.zone && <span aria-hidden> {r.zone === 'up' ? '▲' : '▼'}</span>}
+                    </td>
                     <td>
                       <Link to={`/players/${r.playerId}`}>{r.name}</Link> {r.status === 'frozen' && <span className="chip">{t.leagues.frozen}</span>}
                     </td>
                     <td className="muted small">{r.rating ?? '—'}</td>
-                    <td className="muted small">{r.missedTours ? `${r.missedTours} ${t.leagues.missed}` : ''}</td>
+                    <td className="muted small">
+                      {r.missedTours ? `${r.missedTours} ${t.leagues.missed}` : ''}
+                      {r.noShows ? ` · ${t.leagues.noShows(r.noShows)}` : ''}
+                    </td>
                     <td>
                       <b>{r.total}</b>
                     </td>
@@ -104,7 +139,16 @@ function FixtureRow({ f, me, reload }: { f: Fixture; me: number | null; reload: 
     <li className="stack">
       <div className="row row--between">
         <span>
-          {f.round}. {f.home.name} — {f.away.name} {f.setsHome != null && <b>{f.setsHome}:{f.setsAway}</b>} {f.startsAt && <span className="muted small">{new Date(f.startsAt).toLocaleString(intlTag)}</span>}
+          {f.kind === 'playoff' ? t.leagues.playoffMatch : f.round}. {f.home.name} — {f.away.name} {f.setsHome != null && <b>{f.setsHome}:{f.setsAway}</b>}
+          {f.technical && <span className="chip">{t.leagues.technical[f.technical]}</span>}
+          {f.ratingHome != null && (
+            <span className="muted small">
+              {' '}
+              Elo {f.ratingHome > 0 ? '+' : ''}
+              {f.ratingHome} / {(f.ratingAway ?? 0) > 0 ? '+' : ''}
+              {f.ratingAway}
+            </span>
+          )} {f.startsAt && <span className="muted small">{new Date(f.startsAt).toLocaleString(intlTag)}</span>}
         </span>
         <span className="chip">{t.leagues.fixtureStatus[f.status]}</span>
       </div>
@@ -147,6 +191,31 @@ function FixtureRow({ f, me, reload }: { f: Fixture; me: number | null; reload: 
       )}
       {error && <p className="note note--error">{error}</p>}
     </li>
+  )
+}
+
+/** League results in the player profile (final place, division, promotion or relegation). */
+export function PlayerLeagues({ playerId }: { playerId: number }) {
+  const data = useApi<{ seasonId: number; season: string; status: string; league: string; slug: string; division: string | null; place: number; total: number; move: string | null }[]>(`/leagues/player/${playerId}`)
+  return (
+    <Async state={data}>
+      {(rows) =>
+        rows.length ? (
+          <section className="panel">
+            <h2>{t.leagues.title}</h2>
+            <ul className="stack small">
+              {rows.map((r) => (
+                <li key={r.seasonId}>
+                  <Link to={`/leagues/${r.slug}`}>{r.league}</Link> · {r.season}
+                  {r.division ? ` · ${r.division}` : ''} · {t.leagues.placeN(r.place)} · {r.total} {t.leagues.points.toLowerCase()}
+                  {r.move ? ` · ${t.leagues.reasons[r.move] ?? r.move}` : ''}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null
+      }
+    </Async>
   )
 }
 
@@ -208,8 +277,22 @@ export function LeaguePage() {
                         </button>
                       </div>
                     )}
+                    {mine?.status === 'waiting' && <p className="note">{t.leagues.waiting}</p>}
                     {error && <p className="note note--error">{error}</p>}
                   </section>
+                  {s.best.length > 0 && (
+                    <section className="panel">
+                      <h2>{t.leagues.best}</h2>
+                      <ol className="stack">
+                        {s.best.map((b) => (
+                          <li key={b.participantId}>
+                            <Link to={`/players/${b.playerId}`}>{b.name}</Link> · <b>{b.total}</b> {t.leagues.points.toLowerCase()}
+                            {b.firsts ? ` · ${t.leagues.firsts(b.firsts)}` : ''}
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  )}
                   <SeasonTables s={s} />
                   {s.tours.length > 0 && (
                     <section className="panel">
@@ -230,6 +313,47 @@ export function LeaguePage() {
                                 </Link>
                               ))}
                             </div>
+                            {mine && tour.status === 'planned' && ['active', 'frozen'].includes(mine.status) && new Date(tour.deadlineAt ?? tour.startsAt) > new Date() && (
+                              <div className="row">
+                                {tour.skips.includes(mine.participantId) ? (
+                                  <button className="button button--sm" onClick={() => void post(`/leagues/tours/${tour.id}/skip`, { skip: false })}>
+                                    {t.leagues.unskip}
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button className="button button--sm" onClick={() => void post(`/leagues/tours/${tour.id}/skip`, { skip: true })}>
+                                      {t.leagues.skipTour}
+                                    </button>
+                                    {s.rules.freezeEnabled !== false && mine.freezesUsed === 0 && (
+                                      <button className="button button--sm" onClick={() => void post(`/leagues/tours/${tour.id}/skip`, { skip: true, freeze: true })}>
+                                        {t.leagues.skipFreeze}
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                <span className="muted small">{t.leagues.skipHint}</span>
+                              </div>
+                            )}
+                            {tour.results.length > 0 && (
+                              <details>
+                                <summary>{t.leagues.results}</summary>
+                                <table className="table small">
+                                  <tbody>
+                                    {tour.results.map((r) => (
+                                      <tr key={r.participantId}>
+                                        <td>{r.overallPlace ?? '—'}</td>
+                                        <td>{r.name}</td>
+                                        <td className="muted">{name(r.divisionId)}</td>
+                                        <td className="muted">{r.noShow ? t.leagues.noShow : r.missed ? t.leagues.skipped : ''}</td>
+                                        <td>
+                                          <b>{r.points}</b>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </details>
+                            )}
                           </li>
                         ))}
                       </ul>

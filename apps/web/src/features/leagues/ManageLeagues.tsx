@@ -45,9 +45,16 @@ function SeasonForm({ format, initial, locked, submitLabel, onSubmit }: { format
   const [mode, setMode] = useState(initial?.payment.mode ?? 'season')
   const [seasonPrice, setSeasonPrice] = useState(initial?.payment.seasonPrice != null ? String(initial.payment.seasonPrice) : '')
   const [tourPrice, setTourPrice] = useState(initial?.payment.tourPrice != null ? String(initial.payment.tourPrice) : '')
+  const [noShowWarn, setNoShowWarn] = useState(String(r?.noShowWarn ?? 2))
+  const [freezeEnabled, setFreezeEnabled] = useState(r?.freezeEnabled ?? true)
+  const [newcomer, setNewcomer] = useState(r?.newcomerPlacement ?? 'bottom')
+  const [divisionSize, setDivisionSize] = useState(r?.divisionSize ? String(r.divisionSize) : '')
+  const [matchPoints, setMatchPoints] = useState(r?.matchPoints ?? { win: 2, loss: 1, noShow: 0 })
+  const [playoffMatches, setPlayoffMatches] = useState(r?.playoffMatches ?? false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
-  const multi = format === 'divisions'
+  const multi = format !== 'common_tour'
+  const fixtures = format === 'season_rr' || format === 'free_dates'
   const names = (multi ? divisions : divisions.slice(0, 1)).map((x) => x.trim())
   const borders = names.slice(1).map((_, i) => boundaries[i] ?? { promote: 2, relegate: 2 })
   const setBorder = (i: number, key: 'promote' | 'relegate', v: string) => setBoundaries(borders.map((b, j) => (j === i ? { ...b, [key]: Number(v) } : b)))
@@ -66,8 +73,17 @@ function SeasonForm({ format, initial, locked, submitLabel, onSubmit }: { format
     setError(problem)
     setSaved(false)
     if (problem) return
-    const rules: Partial<Rules> = { toursPlanned: Number(toursPlanned), transferWindow: windowFrom ? { from: windowFrom, to: windowTo } : null, confirmBy: confirmBy || null }
-    if (!locked) Object.assign(rules, { boundaries: borders, pointsTable: pointsList, participationPoints: Number(participation), bestTours: bestTours ? Number(bestTours) : null, missedRule, minDivisionSize: Number(minSize) })
+    const rules: Partial<Rules> = {
+      toursPlanned: Number(toursPlanned),
+      transferWindow: windowFrom ? { from: windowFrom, to: windowTo } : null,
+      confirmBy: confirmBy || null,
+      noShowWarn: Number(noShowWarn) || 2,
+      freezeEnabled,
+      newcomerPlacement: newcomer,
+      divisionSize: divisionSize ? Number(divisionSize) : null,
+    }
+    if (!locked)
+      Object.assign(rules, { boundaries: borders, pointsTable: pointsList, participationPoints: Number(participation), bestTours: bestTours ? Number(bestTours) : null, missedRule, minDivisionSize: Number(minSize), matchPoints, playoffMatches })
     const payment = { mode, ...(seasonPrice ? { seasonPrice: Number(seasonPrice) } : {}), ...(tourPrice ? { tourPrice: Number(tourPrice) } : {}) }
     onSubmit({ name: name.trim(), startsOn, endsOn, divisions: names, rules, payment })
       .then(() => setSaved(true))
@@ -149,6 +165,35 @@ function SeasonForm({ format, initial, locked, submitLabel, onSubmit }: { format
       <Field label={t.leagues.minDivisionSize}>
         <input type="number" min={2} value={minSize} disabled={locked} onChange={(e) => setMinSize(e.target.value)} />
       </Field>
+      {fixtures && (
+        <fieldset className="field--wide row" disabled={locked} style={{ border: 0, padding: 0, margin: 0 }}>
+          <b>{t.leagues.matchPoints}</b>
+          {(['win', 'loss', 'noShow'] as const).map((k) => (
+            <label key={k} className="small">
+              {t.leagues.matchPointKeys[k]}{' '}
+              <input type="number" min={0} max={10} style={{ width: 64 }} value={matchPoints[k]} onChange={(e) => setMatchPoints({ ...matchPoints, [k]: Number(e.target.value) })} />
+            </label>
+          ))}
+          <label className="small">
+            <input type="checkbox" checked={playoffMatches} onChange={(e) => setPlayoffMatches(e.target.checked)} /> {t.leagues.playoffMatches}
+          </label>
+        </fieldset>
+      )}
+      <Field label={t.leagues.newcomerPlacement}>
+        <select value={newcomer} onChange={(e) => setNewcomer(e.target.value as 'bottom' | 'rating')}>
+          <option value="bottom">{t.leagues.newcomerBottom}</option>
+          <option value="rating">{t.leagues.newcomerRating}</option>
+        </select>
+      </Field>
+      <Field label={t.leagues.divisionSize}>
+        <input type="number" min={2} value={divisionSize} placeholder="—" onChange={(e) => setDivisionSize(e.target.value)} />
+      </Field>
+      <Field label={t.leagues.noShowWarn}>
+        <input type="number" min={1} max={20} value={noShowWarn} onChange={(e) => setNoShowWarn(e.target.value)} />
+      </Field>
+      <label className="small">
+        <input type="checkbox" checked={freezeEnabled} onChange={(e) => setFreezeEnabled(e.target.checked)} /> {t.leagues.freezeEnabled}
+      </label>
       <Field label={t.leagues.transferFrom}>
         <input type="date" value={windowFrom} onChange={(e) => setWindowFrom(e.target.value)} />
       </Field>
@@ -186,14 +231,23 @@ function SeasonForm({ format, initial, locked, submitLabel, onSubmit }: { format
   )
 }
 
-/** Manual draft (L-3): drag players between division columns, then save. */
-function Draft({ s, onSave }: { s: SeasonView; onSave: (manual: { participantId: number; divisionId: number }[]) => void }) {
+/** Division draft (L-13/L-15): drag players between division columns, save, then publish. */
+function Draft({ s, onSave, onPublish }: { s: SeasonView; onSave: (manual: { participantId: number; divisionId: number }[]) => void; onPublish: () => void }) {
   const [moved, setMoved] = useState<Record<number, number>>({})
   const [drag, setDrag] = useState<number | null>(null)
-  const divisionOf = (r: TableRow) => moved[r.participantId] ?? r.divisionId
+  const divisionOf = (r: TableRow) => moved[r.participantId] ?? r.draftDivisionId ?? r.divisionId
+  const changed = (r: TableRow) => divisionOf(r) !== r.divisionId
   return (
     <div className="stack">
       <p className="small muted">{t.leagues.dragHint}</p>
+      {s.draftPending && (
+        <div className="row">
+          <span className="note">{t.leagues.draftPending}</span>
+          <button className="button button--sm button--primary" onClick={onPublish}>
+            {t.leagues.publishDraft}
+          </button>
+        </div>
+      )}
       <div className="grid grid--2">
         {s.divisions.map((d) => (
           <div
@@ -204,10 +258,11 @@ function Draft({ s, onSave }: { s: SeasonView; onSave: (manual: { participantId:
           >
             <b>{d.name}</b>
             {s.table
-              .filter((r) => divisionOf(r) === d.id)
+              .filter((r) => divisionOf(r) === d.id && r.status !== 'waiting')
               .map((r) => (
-                <span key={r.participantId} className="chip" draggable onDragStart={() => setDrag(r.participantId)} style={{ cursor: 'grab' }}>
+                <span key={r.participantId} className="chip" draggable onDragStart={() => setDrag(r.participantId)} style={{ cursor: 'grab', outline: changed(r) ? '1px solid var(--holo)' : undefined }}>
                   {r.name} · {r.rating ?? '—'}
+                  {changed(r) && r.draftReason ? ` · ${t.leagues.reasons[r.draftReason] ?? r.draftReason}` : ''}
                 </span>
               ))}
           </div>
@@ -239,6 +294,7 @@ function SeasonAdmin({ s, hallId, reload }: { s: SeasonView; hallId: number; rel
   }
   const base = `/leagues/seasons/${s.id}`
   const tourBased = s.format === 'divisions' || s.format === 'common_tour'
+  const overdue = s.fixtures.filter((f) => f.status !== 'confirmed' && f.deadlineAt && new Date(f.deadlineAt) < new Date())
   return (
     <section className="panel stack">
       <h2>
@@ -262,8 +318,13 @@ function SeasonAdmin({ s, hallId, reload }: { s: SeasonView; hallId: number; rel
           </button>
         )}
         {s.status === 'active' && (
-          <button className="button button--sm" onClick={() => void post(`${base}/status`, { status: 'finished' })}>
+          <button className="button button--sm" onClick={() => void (tourBased ? post(`${base}/status`, { status: 'finished' }) : post(`${base}/finish`))}>
             {t.leagues.finish}
+          </button>
+        )}
+        {s.status === 'registration' && (
+          <button className="button button--sm" onClick={() => void post(`${base}/expire`)}>
+            {t.leagues.expire}
           </button>
         )}
         <button className="button button--sm" onClick={() => void post(`${base}/merge`)}>
@@ -278,7 +339,7 @@ function SeasonAdmin({ s, hallId, reload }: { s: SeasonView; hallId: number; rel
           className="button button--sm"
           onClick={async () => {
             const name = await ask.prompt(t.leagues.newSeason)
-            if (name) void post(`${base}/next`, { name, startsOn: localDate(), endsOn: localDate(new Date(Date.now() + 120 * 86400000)) })
+            if (name) void post(`${base}/next`, { name, startsOn: localDate(), endsOn: localDate(new Date(Date.now() + 120 * 86400000)), confirmBy: new Date(Date.now() + 7 * 86400000).toISOString() })
           }}
         >
           {t.leagues.next}
@@ -327,11 +388,32 @@ function SeasonAdmin({ s, hallId, reload }: { s: SeasonView; hallId: number; rel
           onSubmit={(p) => api(base, { method: 'PATCH', json: s.tours.length > 0 ? { ...p, divisions: undefined } : p }).then(reload)}
         />
       )}
-      {s.divisions.length > 1 && <Draft s={s} onSave={(manual) => void post(`${base}/distribute`, { manual })} />}
+      {overdue.length > 0 && (
+        <div className="stack">
+          <b>{t.leagues.overdue}</b>
+          {overdue.map((f) => (
+            <div key={f.id} className="row small">
+              <span>
+                {f.home.name} — {f.away.name}
+              </span>
+              {(['home', 'away', 'both'] as const).map((loser) => (
+                <button key={loser} className="button button--sm" onClick={() => void post(`/leagues/fixtures/${f.id}/technical`, { loser })}>
+                  {t.leagues.technical[loser]}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      {(s.divisions.length > 1 || s.draftPending) && <Draft s={s} onSave={(manual) => void post(`${base}/distribute`, { manual })} onPublish={() => void post(`${base}/publish`)} />}
       <ul className="stack small">
         {s.table.map((r) => (
           <li key={r.participantId} className="row row--between">
-            <span>{r.name}</span>
+            <span>
+              {r.name}
+              {r.status === 'waiting' && <span className="chip">{t.leagues.status.waiting}</span>}
+              {r.noShows > 0 && <span className={`chip${r.noShows >= (s.rules.noShowWarn ?? 2) ? ' chip--warn' : ''}`}>{t.leagues.noShows(r.noShows)}</span>}
+            </span>
             {['active', 'frozen'].includes(r.status) && (
               <button className="button button--sm" onClick={() => void post(`/leagues/participants/${r.participantId}/freeze`, { frozen: r.status !== 'frozen' })}>
                 {r.status === 'frozen' ? t.leagues.unfreeze : t.leagues.freeze}

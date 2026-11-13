@@ -12,6 +12,7 @@ import * as m0100 from './migrations/0100_conduct_member_checkin.ts'
 import * as m0140 from './migrations/0140_notify_lang.ts'
 import * as m0200 from './migrations/0200_format_templates.ts'
 import * as m0210 from './migrations/0210_conduct_ops.ts'
+import * as m0230 from './migrations/0230_league_draft.ts'
 import * as m0240 from './migrations/0240_club_documents.ts'
 import * as m0250 from './migrations/0250_team_start_level.ts'
 
@@ -28,6 +29,7 @@ const migrations: Record<string, Migration> = {
   '0140_notify_lang': m0140,
   '0200_format_templates': m0200,
   '0210_conduct_ops': m0210,
+  '0230_league_draft': m0230,
   '0240_club_documents': m0240,
   '0250_team_start_level': m0250,
 }
