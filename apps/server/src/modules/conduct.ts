@@ -9,7 +9,7 @@ import type { TournamentFormat } from '@nomad/engine'
 import { db, json } from '../db/index.ts'
 import type { CallAnswer, CallResponses, Match, Tournament } from '../db/types.ts'
 import { audit } from '../audit.ts'
-import { requireClubRight, requireUser } from '../auth/access.ts'
+import { requireClubRight, requirePlatformAdmin, requireUser } from '../auth/access.ts'
 import { badRequest, conflict, forbidden, handler, notFound, unprocessable } from '../http/errors.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { notify } from '../notify/index.ts'
@@ -28,7 +28,8 @@ async function staffTournament(req: Request) {
   const id = intParam(req, 'id')
   const t = await db.selectFrom('tournaments').selectAll().where('id', '=', id).executeTakeFirst()
   if (!t) throw notFound('tournament.not_found')
-  const user = await requireClubRight(req, t.club_id, 'conduct', { tournamentId: id, hallId: t.hall_id })
+  // A platform admin runs any tournament from the admin panel.
+  const user = req.user?.platformRole === 'admin' ? requirePlatformAdmin(req) : await requireClubRight(req, t.club_id, 'conduct', { tournamentId: id, hallId: t.hall_id })
   return { t, user }
 }
 

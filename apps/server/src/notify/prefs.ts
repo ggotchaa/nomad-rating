@@ -7,6 +7,7 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   match_call: { channels: ['push', 'telegram'], mandatoryInTournament: true },
   waitlist_invited: { channels: ['push', 'telegram', 'email'] },
   tournament_cancelled: { channels: ['push', 'telegram', 'email'] },
+  tournament_changed: { channels: ['push', 'telegram', 'email'] },
   tournament_reminder: { channels: ['push', 'telegram'] },
   tournament_results: { channels: ['push', 'telegram', 'email'] },
   calibration_done: { channels: ['push', 'telegram', 'email'] },

@@ -252,6 +252,10 @@ export interface TournamentsTable {
   league_division_id: Generated<number | null>
   underfill_warned_at: Timestamp | null
   underfill_ack_at: Timestamp | null
+  is_test: Generated<boolean>
+  archived_at: Timestamp | null
+  postponed_at: Timestamp | null
+  postponed_reason: string | null
 }
 
 export interface PaymentsTable {
@@ -353,6 +357,7 @@ export interface MatchesTable {
   disputed: Generated<boolean>
   result_note: string | null
   excluded: Generated<boolean>
+  scheduled_at: Timestamp | null
 }
 
 export interface RatingEventsTable {

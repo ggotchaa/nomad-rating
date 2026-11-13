@@ -346,7 +346,7 @@ async function entryRatings(trx: Trx, tournamentId: number): Promise<Record<stri
   return Object.fromEntries(rows.map((r) => [String(r.id), r.rating_at_start ?? r.start_level]))
 }
 
-async function completeStage(trx: Trx, tournamentId: number, stageId: number): Promise<void> {
+export async function completeStage(trx: Trx, tournamentId: number, stageId: number): Promise<void> {
   const t = await trx.selectFrom('tournaments').select(['format']).where('id', '=', tournamentId).executeTakeFirstOrThrow()
   const stage = await trx.selectFrom('stages').selectAll().where('id', '=', stageId).executeTakeFirstOrThrow()
   const ratings = await entryRatings(trx, tournamentId)

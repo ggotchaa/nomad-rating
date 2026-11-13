@@ -347,7 +347,7 @@ export async function applyTournamentRatings(trx: Trx, tournamentId: number): Pr
  * Replays every finished tournament from `tournamentId` forward (by finish time, then id): restores each
  * affected player's state per kind from his first snapshot in that range, deletes the events and snapshots, rates again.
  */
-export async function recalculateFrom(trx: Trx, tournamentId: number): Promise<{ tournaments: number; players: number }> {
+export async function recalculateFrom(trx: Trx, tournamentId: number, options: { skip?: number } = {}): Promise<{ tournaments: number; players: number }> {
   const start = await trx.selectFrom('tournaments').select(['id', 'finished_at', 'starts_at']).where('id', '=', tournamentId).executeTakeFirstOrThrow()
   const startAt = start.finished_at ?? start.starts_at
   const order = sql<Date>`coalesce(finished_at, starts_at)`
@@ -385,6 +385,8 @@ export async function recalculateFrom(trx: Trx, tournamentId: number): Promise<{
   await trx.deleteFrom('rating_snapshots').where('tournament_id', 'in', ids).execute()
   const params = await eloParams(trx)
   for (const id of ids) {
+    // `skip`: a tournament leaving the finished state (admin «return to running») loses its rating effect.
+    if (id === options.skip) continue
     await rateInto(trx, id, all, params)
     const kinds = await trx.selectFrom('rating_snapshots').select('kind').distinct().where('tournament_id', '=', id).execute()
     for (const k of kinds) touched.add(k.kind)

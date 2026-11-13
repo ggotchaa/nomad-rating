@@ -38,7 +38,7 @@ export function AdminDashboard() {
             <section className="panel stack">
               <h2>{t.admin.activity}</h2>
               <p className="row row--between">
-                {t.admin.tournaments} <b>{total(d.tournaments)}</b>
+                <Link to="tournaments">{t.admin.tournaments}</Link> <b>{total(d.tournaments)}</b>
               </p>
               <p className="small muted">{Object.entries(d.tournaments).map(([s, n]) => `${t.t.status[s] ?? s}: ${n}`).join(' · ') || '—'}</p>
               <p className="row row--between">

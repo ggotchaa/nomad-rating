@@ -62,6 +62,7 @@ type Phrases = {
   tgLinked: (d: D) => Msg
   tgMoved: (d: D) => Msg
   venue: string
+  changed: string
   playerBusy: (d: D) => Msg
   underfilled: (d: D) => Msg
 }
@@ -134,6 +135,7 @@ const P: Record<Lang, Phrases> = {
     tgMoved: (d) => ({ title: 'Telegram отвязан от профиля', body: `Аккаунт${d.username ? ` @${s(d.username)}` : ''} теперь привязан к профилю ${s(d.to)}.` }),
     scoreConfirm: (d) => ({ title: 'Подтвердите счёт', body: `Соперник внёс счёт матча${sets(d) ? ` ${sets(d)}` : ''} — подтвердите или оспорьте` }),
     venue: 'Изменилось место турнира',
+    changed: 'Изменения в турнире',
     playerBusy: (d) => ({ title: 'Игрок ещё в другом турнире', body: `${s(d.player)} не может отметиться: идёт «${s(d.other)}». Подождите или снимите с полным возвратом` }),
     underfilled: (d) => ({ title: 'Мало участников', body: `Записалось ${s(d.taken)} при минимуме ${s(d.min)}. Подтвердите проведение, иначе за 2 часа до старта турнир отменится` }),
   },
@@ -187,6 +189,7 @@ const P: Record<Lang, Phrases> = {
     tgMoved: (d) => ({ title: 'Telegram профильден ажыратылды', body: `${d.username ? `@${s(d.username)} ` : ''}аккаунты енді ${s(d.to)} профиліне байланған.` }),
     scoreConfirm: (d) => ({ title: 'Есепті растаңыз', body: `Қарсылас матч есебін енгізді${sets(d) ? ` ${sets(d)}` : ''} — растаңыз немесе дауласыңыз` }),
     venue: 'Турнир өтетін орын өзгерді',
+    changed: 'Турнирдегі өзгерістер',
     playerBusy: (d) => ({ title: 'Ойыншы әлі басқа турнирде', body: `${s(d.player)} белгілене алмайды: «${s(d.other)}» жүріп жатыр. Күтіңіз немесе толық қайтарыммен шығарыңыз` }),
     underfilled: (d) => ({ title: 'Қатысушылар аз', body: `${s(d.taken)} жазылды, ең азы ${s(d.min)}. Өткізуді растаңыз, әйтпесе басталуға 2 сағат қалғанда турнир тоқтатылады` }),
   },
@@ -240,6 +243,7 @@ const P: Record<Lang, Phrases> = {
     tgMoved: (d) => ({ title: 'Telegram unlinked from your profile', body: `The account${d.username ? ` @${s(d.username)}` : ''} is now linked to the profile ${s(d.to)}.` }),
     scoreConfirm: (d) => ({ title: 'Confirm the score', body: `Your opponent entered the match score${sets(d)? ` ${sets(d)}` : ''} — confirm or dispute it` }),
     venue: 'Tournament venue changed',
+    changed: 'Tournament update',
     playerBusy: (d) => ({ title: 'Player still in another tournament', body: `${s(d.player)} cannot check in: «${s(d.other)}» is still running. Wait or remove them with a full refund` }),
     underfilled: (d) => ({ title: 'Too few participants', body: `${s(d.taken)} registered, minimum ${s(d.min)}. Confirm the tournament, or it is cancelled 2 hours before the start` }),
   },
@@ -293,6 +297,8 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
       const m = p.waitlist(d)
       return out({ title: m.title, body: lines(title, m.body) }, tUrl)
     }
+    case 'tournament_changed':
+      return out({ title: p.changed, body: lines(title, ruText, d.reason) }, tUrl)
     case 'tournament_cancelled':
       return out({ title: p.cancelled, body: lines(title, d.reason) }, tUrl)
     case 'tournament_reminder': {
