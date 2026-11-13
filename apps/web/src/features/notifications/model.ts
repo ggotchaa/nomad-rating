@@ -39,6 +39,6 @@ export function describe(n: NotificationItem): { title: string; text: string; li
     case 'dispute_update':
       return { title: t.notif.types.dispute_update ?? '', text: s(d.resolution) || s(d.status), link: null }
     default:
-      return { title: t.notif.types[n.type] ?? n.type, text: [title, s(d.club), s(d.startsAtText)].filter(Boolean).join(' · '), link }
+      return { title: t.notif.types[n.type] ?? n.type, text: [title, s(d.division), s(d.club), s(d.startsAtText)].filter(Boolean).join(' · '), link }
   }
 }

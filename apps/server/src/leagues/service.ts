@@ -320,7 +320,7 @@ export async function applyTour(trx: Trx, tourId: number, userId: number | null)
       const p = participants.find((x) => x.id === Number(m.id))!
       const user = await trx.selectFrom('players').select('user_id').where('id', '=', p.player_id).executeTakeFirst()
       if (user?.user_id)
-        await notify({ userId: user.user_id, type: 'league_move', data: { leagueSlug: league.slug, title: league.name, text: `${league.name}: ${m.reason === 'promotion' ? 'повышение' : 'понижение'} — ${divisions[m.to]!.name}` } }, trx)
+        await notify({ userId: user.user_id, type: 'league_move', data: { leagueSlug: league.slug, title: league.name, reason: m.reason, division: divisions[m.to]!.name } }, trx)
     }
   }
   await trx.updateTable('league_tours').set({ status: 'applied' }).where('id', '=', tourId).execute()
@@ -448,7 +448,7 @@ export async function proposeFixture(trx: Trx, fixtureId: number, playerId: numb
     }
   }
   await trx.updateTable('league_fixtures').set({ status: 'proposed', proposed_by: mine, starts_at: new Date(input.startsAt), table_id: input.tableId, booking_id: null }).where('id', '=', f.id).execute()
-  await tell(trx, other.player_id, { fixtureId: f.id, text: `Соперник предлагает время матча: ${new Date(input.startsAt).toISOString().slice(0, 16).replace('T', ' ')} UTC` })
+  await tell(trx, other.player_id, { fixtureId: f.id, event: 'proposed', startsAt: input.startsAt })
   return { status: 'proposed' }
 }
 
@@ -460,7 +460,7 @@ export async function confirmFixture(trx: Trx, fixtureId: number, playerId: numb
   const table = await trx.selectFrom('hall_tables').select(['hall_id']).where('id', '=', f.table_id).executeTakeFirstOrThrow()
   const booking = await createBooking(trx, { hallId: table.hall_id, tableId: f.table_id, start: f.starts_at, minutes: 60, playerId, note: `Лига: матч #${f.id}`, source: 'online', actorUserId: userId })
   await trx.updateTable('league_fixtures').set({ status: 'scheduled', booking_id: booking.id }).where('id', '=', f.id).execute()
-  await tell(trx, other.player_id, { fixtureId: f.id, text: `Матч подтверждён, стол ${booking.tableNumber} забронирован` })
+  await tell(trx, other.player_id, { fixtureId: f.id, event: 'confirmed', table: booking.tableNumber })
   return { status: 'scheduled', bookingId: booking.id }
 }
 
@@ -475,7 +475,7 @@ export async function reportFixture(trx: Trx, fixtureId: number, playerId: numbe
     .set({ status: 'reported', reported_by: mine, sets_home: home ? score.setsMine : score.setsOpponent, sets_away: home ? score.setsOpponent : score.setsMine })
     .where('id', '=', f.id)
     .execute()
-  await tell(trx, other.player_id, { fixtureId: f.id, text: 'Соперник внёс счёт матча — подтвердите' })
+  await tell(trx, other.player_id, { fixtureId: f.id, event: 'score' })
   return { status: 'reported' }
 }
 
