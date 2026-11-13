@@ -33,6 +33,20 @@ Notes:
 
 ## P1: first weeks of real use
 
+**Status 2026-11-13: all P1 items below are implemented on `main`.** They pass typecheck, lint, 84 unit/DB tests and the 12 e2e tests. New screens were opened in a browser on dev data. Payments stay disabled. Known limits:
+- League fixture Elo changes are not included when ratings are replayed from history.
+- Season-end ties fall back to the current rating.
+- After a group result correction, unstarted matches in an already started later stage are not reseeded.
+- Telegram delivery is untested with a real bot token.
+
+**Added beyond the spec:** an admin «Турниры» panel with full lifecycle control, modelled on the older NJL admin:
+- all tournaments in one list, with CSV export;
+- a status stepper with forward and backward moves (backward moves require a reason);
+- postpone/resume, cancel, archive, test flag, and delete for drafts or test tournaments;
+- tabs for participants, draw, matches, settings, rating and history;
+- every action audited, and participants notified.
+
+
 **Tournament conduct and format (4.4, 4.6)**
 - Setting the match format per stage or round, e.g. a final to 4 wins (M).
 - Correcting a finished match is refused once a dependent match has been played. The spec says to keep played matches and rebuild only the unplayed ones (M).
