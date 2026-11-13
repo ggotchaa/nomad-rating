@@ -8,6 +8,7 @@ import * as m0004 from './migrations/0004_rating_notify.ts'
 import * as m0005 from './migrations/0005_teams_leagues.ts'
 import * as m0006 from './migrations/0006_booking_admin.ts'
 import * as m0007 from './migrations/0007_cities_locale.ts'
+import * as m0140 from './migrations/0140_notify_lang.ts'
 
 // Migrations are listed explicitly (works the same from sources and from a bundle).
 const migrations: Record<string, Migration> = {
@@ -18,6 +19,7 @@ const migrations: Record<string, Migration> = {
   '0005_teams_leagues': m0005,
   '0006_booking_admin': m0006,
   '0007_cities_locale': m0007,
+  '0140_notify_lang': m0140,
 }
 
 const provider: MigrationProvider = { getMigrations: async () => migrations }

@@ -25,13 +25,14 @@ export async function chatsOfUser(userId: number) {
 const isBlocked = (err: unknown) => err instanceof GrammyError && (err.error_code === 403 || /chat not found/i.test(err.description))
 
 /** `ref` groups messages that are edited instead of re-sent (e.g. `match:42`). Returns how many chats got it. */
-export async function sendTelegram(userId: number, message: Rendered, ref?: string): Promise<number> {
+export async function sendTelegram(userId: number, renderFor: (lang: string | null) => Rendered, ref?: string): Promise<number> {
   const chats = await chatsOfUser(userId)
-  const keyboard = new InlineKeyboard().url('Открыть на сайте', message.url)
-  const text = `<b>${escape(message.title)}</b>\n${escape(message.body)}`
   let sent = 0
   let lastError: unknown = null
   for (const c of chats) {
+    const message = renderFor(c.lang)
+    const keyboard = new InlineKeyboard().url(message.open, message.url)
+    const text = `<b>${escape(message.title)}</b>\n${escape(message.body)}`
     try {
       const previous = ref
         ? await db.selectFrom('telegram_messages').select('message_id').where('ref', '=', ref).where('chat_id', '=', c.chat_id).executeTakeFirst()
