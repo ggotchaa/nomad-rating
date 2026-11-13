@@ -34,6 +34,7 @@ npm run dev
 - Acceptance tests (Playwright, own DB `nomad_e2e`, ports 3030/5190): `npm run e2e` (first time: `npx playwright install chromium`)
 - API reference: `/api/docs` (`apps/server/openapi.yaml`) · user guides per role: [docs/guides](docs/guides)
 - Production setup: `ops/` (Dockerfiles, `compose.prod.yaml`, nginx, `backup.sh`)
+- First platform admin (production has no demo accounts): `docker compose -f ops/compose.prod.yaml exec -e ADMIN_PASSWORD='...' app npm run admin:create -w @nomad/server -- you@example.kz`. An existing user is promoted instead. `/admin` then requires setting up 2FA (`ADMIN_2FA_REQUIRED=true`).
 
 `npm run demo:reset` wipes the database and creates demo data through the real services: 5 clubs, ~180 players,
 ~57 finished tournaments played match by match and rated by Elo, one tournament running now, upcoming tournaments
