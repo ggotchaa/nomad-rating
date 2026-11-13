@@ -60,6 +60,11 @@ export function CheckinQrScreen() {
   )
 }
 
+type CheckinResult =
+  | { status: 'checked_in' | 'partial'; present: number; needed: number }
+  | { status: 'waitlist' }
+  | { status: 'needs_registration'; full: boolean; fee: number }
+
 /** Player «Я в зале» page opened from the scanned QR. */
 export function CheckinPage() {
   const { slug } = useParams()
@@ -67,9 +72,16 @@ export function CheckinPage() {
   const location = useLocation()
   const { me } = useSession()
   const state = useApi<TournamentDetail>(`/tournaments/${slug}`)
-  const [done, setDone] = useState(false)
+  const [result, setResult] = useState<CheckinResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const token = params.get('k')
+  const send = (id: number, register = false) =>
+    void api<CheckinResult>(`/tournaments/${id}/checkin`, { method: 'POST', json: { token, register } })
+      .then((r) => {
+        setError(null)
+        setResult(r)
+      })
+      .catch((e: unknown) => setError(errorText(e)))
   return (
     <main className="page">
       <Async state={state}>
@@ -85,17 +97,21 @@ export function CheckinPage() {
               <Link className="button button--primary button--block" to="/login" state={{ from: location.pathname + location.search }}>
                 {t.checkin.login}
               </Link>
-            ) : done || d.myEntry?.status === 'checked_in' ? (
+            ) : result?.status === 'checked_in' || (!result && d.myEntry?.status === 'checked_in') ? (
               <p className="note note--ok">{t.checkin.done}</p>
+            ) : result?.status === 'partial' ? (
+              <p className="note note--ok">{t.checkin.partial(result.present, result.needed)}</p>
+            ) : result?.status === 'waitlist' ? (
+              <p className="note">{t.checkin.waitlist}</p>
+            ) : result?.status === 'needs_registration' ? (
+              <>
+                <p className="note">{result.full ? t.checkin.full : t.checkin.sameDay}</p>
+                <button className="button button--primary button--block button--huge" onClick={() => send(d.id, true)}>
+                  {result.full ? t.checkin.joinWaitlist : t.checkin.register}
+                </button>
+              </>
             ) : (
-              <button
-                className="button button--primary button--block button--huge"
-                onClick={() =>
-                  void api(`/tournaments/${d.id}/checkin`, { method: 'POST', json: { token } })
-                    .then(() => setDone(true))
-                    .catch((e: unknown) => setError(errorText(e)))
-                }
-              >
+              <button className="button button--primary button--block button--huge" onClick={() => send(d.id)}>
                 {t.checkin.imHere}
               </button>
             )}

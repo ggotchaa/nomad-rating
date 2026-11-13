@@ -271,6 +271,7 @@ export interface EntriesTable {
   checked_in_at: Timestamp | null
   team_id: Generated<number | null>
   roster: ColumnType<number[] | null, number[] | null | undefined, number[] | null>
+  checked_in_players: ColumnType<number[], number[] | undefined, number[]>
   created_at: DefaultTimestamp
   updated_at: DefaultTimestamp
 }

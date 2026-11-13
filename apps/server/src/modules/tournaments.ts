@@ -705,11 +705,11 @@ async function overlapping(trx: Trx, t: Tournament, playerId: number) {
 export type RegisterResult = { entryId: number; status: EntryStatus; paymentMethod: 'online' | 'at_club' | null; redirectUrl: string | null }
 
 /** Registers a player (self or by the club). Used by the API and by the dev seed. */
-export async function registerPlayer(trx: Trx, tournamentId: number, playerId: number, actorUserId: number | null, options: { byClub?: boolean } = {}): Promise<RegisterResult> {
+export async function registerPlayer(trx: Trx, tournamentId: number, playerId: number, actorUserId: number | null, options: { byClub?: boolean; sameDay?: boolean } = {}): Promise<RegisterResult> {
   const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', tournamentId).forUpdate().executeTakeFirstOrThrow()
   if (t.type !== 'singles') throw badRequest('entry.team_required')
-  if (t.status !== 'published' && !(options.byClub && t.status === 'registration_closed')) throw conflict('entry.registration_closed')
-  if (!options.byClub && t.registration_closes_at && t.registration_closes_at < new Date()) throw conflict('entry.registration_closed')
+  if (t.status !== 'published' && !((options.byClub || options.sameDay) && t.status === 'registration_closed')) throw conflict('entry.registration_closed')
+  if (!options.byClub && !options.sameDay && t.registration_closes_at && t.registration_closes_at < new Date()) throw conflict('entry.registration_closed')
   const errors = await eligibility(trx, t, playerId)
   if (errors.length) throw unprocessable('entry.not_eligible', errors)
   const clash = await overlapping(trx, t, playerId)
