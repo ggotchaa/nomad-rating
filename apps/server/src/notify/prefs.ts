@@ -23,6 +23,9 @@ export const NOTIFY_TYPES: Record<string, { channels: NotifyChannel[]; mandatory
   league_confirm: { channels: ['push', 'telegram', 'email'] },
   league_fixture: { channels: ['push', 'telegram'] },
   league_reminder: { channels: ['push', 'telegram'] },
+  league_lineup: { channels: ['push', 'telegram'] },
+  league_tour_results: { channels: ['push', 'telegram'] },
+  league_no_shows: { channels: ['push', 'telegram'] },
   lineup_overdue: { channels: ['push', 'telegram'] },
   score_confirm: { channels: ['push', 'telegram'] },
 }

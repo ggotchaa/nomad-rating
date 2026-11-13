@@ -3,8 +3,25 @@
 // promotion/relegation, missed-tour rules. Season round robin and «свободные даты» use fixtures that
 // players schedule themselves (the table is booked through the booking service). Payments: stored only.
 
-import { applyMovements, distributeByRating, divisionSizes, mergeSmallDivisions, playoffSeeds, roundRobinTours, seasonStandings, tourPoints } from '@nomad/engine'
-import { assertTransition, bookingStatus, slugify } from '@nomad/shared'
+import {
+  applyMovements,
+  applyPlayoffs,
+  defaultTourPoints,
+  distributeByRating,
+  divisionByRating,
+  divisionSizes,
+  groupStandings,
+  mergeSmallDivisions,
+  overallPlaces,
+  playoffPairs,
+  playoffSeeds,
+  roundRobinTours,
+  seasonStandings,
+  tourPoints,
+} from '@nomad/engine'
+import type { GroupMatchResult } from '@nomad/engine'
+import { applyLeagueFixtureRating } from '../rating/service.ts'
+import { assertTransition, bookingStatus, entryStatus, slugify } from '@nomad/shared'
 import { sql } from 'kysely'
 import type { Transaction } from '../db/index.ts'
 import { db, json } from '../db/index.ts'
@@ -30,6 +47,13 @@ export const DEFAULT_RULES: Required<Omit<SeasonRules, 'transferWindow' | 'confi
   transferWindow: null,
   confirmBy: null,
   reminderHours: 24,
+  noShowWarn: 2,
+  freezeEnabled: true,
+  newcomerPlacement: 'bottom',
+  divisionSize: null,
+  matchPoints: { win: 2, loss: 1, noShow: 0 },
+  playoffMatches: false,
+  capacities: [],
 }
 
 export const rulesOf = (r: SeasonRules) => ({ ...DEFAULT_RULES, ...r })
@@ -59,7 +83,7 @@ export async function createSeason(
   input: { name: string; startsOn: string; endsOn: string; divisions: string[]; rules?: SeasonRules; payment?: SeasonPayment; previousSeasonId?: number | null; status?: 'draft' | 'registration' },
 ) {
   const league = await trx.selectFrom('leagues').selectAll().where('id', '=', leagueId).executeTakeFirstOrThrow()
-  const divisions = league.format === 'divisions' ? input.divisions : input.divisions.slice(0, 1)
+  const divisions = league.format !== 'common_tour' ? input.divisions : input.divisions.slice(0, 1)
   if (!divisions.length) throw badRequest('league.divisions_required')
   const boundaries = input.rules?.boundaries ?? divisions.slice(1).map(() => ({ promote: 2, relegate: 2 }))
   const season = await trx
@@ -100,7 +124,7 @@ export async function updateSeason(
     const current = await divisionsOf(trx, seasonId)
     if (changed || (input.divisions && JSON.stringify(input.divisions) !== JSON.stringify(current.map((d) => d.name)))) throw conflict('league.format_locked')
   } else if (input.divisions) {
-    const names = league.format === 'divisions' ? input.divisions : input.divisions.slice(0, 1)
+    const names = league.format !== 'common_tour' ? input.divisions : input.divisions.slice(0, 1)
     const current = await trx.selectFrom('league_divisions').selectAll().where('season_id', '=', seasonId).orderBy('level').execute()
     for (const [i, name] of names.entries()) {
       const d = current[i]
@@ -150,34 +174,60 @@ export async function seasonConflicts(trx: Trx, seasonId: number, playerIds: num
   return rows.map((r) => ({ playerId: r.player_id, seasonId: r.season_id, season: r.season, league: r.league }))
 }
 
-/** Adds players (club or self-join). Mid-season newcomers go to the bottom division unless one is given. */
-export async function addParticipants(trx: Trx, seasonId: number, playerIds: number[], userId: number | null, options: { divisionId?: number | null } = {}) {
+const singlesRating = (trx: Trx, playerIds: number[]) =>
+  playerIds.length
+    ? trx
+        .selectFrom('players as p')
+        .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
+        .select(['p.id', 'r.rating', 'p.start_level'])
+        .where('p.id', 'in', playerIds)
+        .execute()
+        .then((rows) => new Map(rows.map((r) => [r.id, r.rating ?? r.start_level])))
+    : Promise.resolve(new Map<number, number>())
+
+/**
+ * Adds players (club or self-join). Mid-season newcomers go to the bottom division or, with
+ * `newcomerPlacement: 'rating'`, to the division their rating reaches. `waiting` puts self-joiners
+ * of a next-season draft on the waiting list.
+ */
+export async function addParticipants(trx: Trx, seasonId: number, playerIds: number[], userId: number | null, options: { divisionId?: number | null; waiting?: boolean } = {}) {
   const { season, league } = await seasonContext(trx, seasonId)
   if (season.status === 'finished') throw conflict('league.season_finished')
   const divisions = await divisionsOf(trx, seasonId)
   const played = await trx.selectFrom('league_tours').select((eb) => eb.fn.max<number>('number').as('n')).where('season_id', '=', seasonId).where('status', '=', 'applied').executeTakeFirst()
   const midSeason = season.status === 'active'
-  const divisionId = options.divisionId ?? (midSeason || league.format !== 'divisions' ? divisions.at(league.format === 'divisions' ? -1 : 0)!.id : null)
+  const byRating = midSeason && league.format !== 'common_tour' && rulesOf(season.rules).newcomerPlacement === 'rating' && options.divisionId == null
+  const fallback = options.divisionId ?? (midSeason || league.format === 'common_tour' ? divisions.at(league.format === 'common_tour' ? 0 : -1)!.id : null)
+  let ratingOf = new Map<number, number>()
+  let divisionRatings: number[][] = []
+  if (byRating) {
+    ratingOf = await singlesRating(trx, playerIds)
+    const members = await trx.selectFrom('league_participants').select(['player_id', 'division_id']).where('season_id', '=', seasonId).where('status', 'in', ['active', 'frozen']).execute()
+    const ratings = await singlesRating(trx, members.map((m) => m.player_id))
+    divisionRatings = divisions.map((d) => members.filter((m) => m.division_id === d.id).map((m) => ratings.get(m.player_id) ?? 0))
+  }
   const warnings = await seasonConflicts(trx, seasonId, playerIds)
+  const status = options.waiting ? 'waiting' : 'active'
   for (const playerId of playerIds) {
+    const divisionId = byRating ? divisions[divisionByRating(divisionRatings, ratingOf.get(playerId) ?? 0)]!.id : options.waiting ? null : fallback
     await trx
       .insertInto('league_participants')
-      .values({ season_id: seasonId, player_id: playerId, division_id: divisionId, status: 'active', joined_tour: (played?.n ?? 0) + 1 })
-      .onConflict((oc) => oc.columns(['season_id', 'player_id']).doUpdateSet({ status: 'active' }))
+      .values({ season_id: seasonId, player_id: playerId, division_id: divisionId, status, joined_tour: (played?.n ?? 0) + 1 })
+      .onConflict((oc) => oc.columns(['season_id', 'player_id']).doUpdateSet({ status }))
       .execute()
   }
-  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'add_participants', after: { playerIds, divisionId } }, trx)
+  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'add_participants', after: { playerIds, divisionId: fallback, byRating, status } }, trx)
   return { added: playerIds.length, warnings }
 }
 
-/** L-3: by rating (current singles rating, start level while calibrating) or a manual draft. */
+/** L-3/L-15: into the draft — by rating (current singles rating, start level while calibrating) or manually. Players see it after publishDraft. */
 export async function distribute(trx: Trx, seasonId: number, userId: number | null, manual?: { participantId: number; divisionId: number }[]) {
   const { league } = await seasonContext(trx, seasonId)
   const divisions = await divisionsOf(trx, seasonId)
   if (manual?.length) {
     for (const m of manual) {
       if (!divisions.some((d) => d.id === m.divisionId)) throw badRequest('league.division_not_in_season')
-      await trx.updateTable('league_participants').set({ division_id: m.divisionId }).where('id', '=', m.participantId).where('season_id', '=', seasonId).execute()
+      await trx.updateTable('league_participants').set({ draft_division_id: m.divisionId, draft_reason: 'manual' }).where('id', '=', m.participantId).where('season_id', '=', seasonId).execute()
     }
   } else {
     const rows = await trx
@@ -189,9 +239,53 @@ export async function distribute(trx: Trx, seasonId: number, userId: number | nu
       .where('lp.status', 'in', ['active', 'frozen'])
       .execute()
     const groups = distributeByRating(rows.map((r) => ({ id: String(r.id), rating: r.rating ?? r.start_level })), divisionSizes(rows.length, divisions.length))
-    for (const [i, ids] of groups.entries()) if (ids.length) await trx.updateTable('league_participants').set({ division_id: divisions[i]!.id }).where('id', 'in', ids.map(Number)).execute()
+    for (const [i, ids] of groups.entries()) if (ids.length) await trx.updateTable('league_participants').set({ draft_division_id: divisions[i]!.id, draft_reason: 'distribution' }).where('id', 'in', ids.map(Number)).execute()
   }
+  await trx.updateTable('league_seasons').set({ draft_pending: true }).where('id', '=', seasonId).execute()
   await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'distribute', after: { manual: manual ?? 'rating' } }, trx)
+}
+
+/** Organiser edits one player's division in the draft (before publication). */
+export async function editDraft(trx: Trx, seasonId: number, participantId: number, divisionId: number, userId: number | null) {
+  const divisions = await divisionsOf(trx, seasonId)
+  if (!divisions.some((d) => d.id === divisionId)) throw badRequest('league.division_not_in_season')
+  const p = await trx.selectFrom('league_participants').select(['id', 'division_id']).where('id', '=', participantId).where('season_id', '=', seasonId).executeTakeFirst()
+  if (!p) throw notFound('league.participant_not_found')
+  await trx.updateTable('league_participants').set({ draft_division_id: divisionId, draft_reason: 'manual' }).where('id', '=', participantId).execute()
+  await trx.updateTable('league_seasons').set({ draft_pending: true }).where('id', '=', seasonId).execute()
+  await audit({ actorUserId: userId, entity: 'league_participant', entityId: participantId, action: 'draft', before: { divisionId: p.division_id }, after: { divisionId } }, trx)
+}
+
+/** L-13/L-15: publishes the draft — divisions are applied, players get their division and the next tour (invitees get the confirmation request). */
+export async function publishDraft(trx: Trx, seasonId: number, userId: number | null) {
+  const { season, league } = await seasonContext(trx, seasonId)
+  const divisions = await divisionsOf(trx, seasonId)
+  const participants = await trx
+    .selectFrom('league_participants as lp')
+    .innerJoin('players as p', 'p.id', 'lp.player_id')
+    .select(['lp.id', 'lp.status', 'lp.division_id', 'lp.draft_division_id', 'lp.draft_reason', 'p.user_id'])
+    .where('lp.season_id', '=', seasonId)
+    .where('lp.status', 'in', ['active', 'frozen', 'invited'])
+    .execute()
+  const lastTour = await trx.selectFrom('league_tours').select('id').where('season_id', '=', seasonId).where('status', '=', 'applied').orderBy('number', 'desc').executeTakeFirst()
+  const next = await trx.selectFrom('league_tours').select('starts_at').where('season_id', '=', seasonId).where('status', '=', 'planned').orderBy('starts_at').executeTakeFirst()
+  let moved = 0
+  for (const p of participants) {
+    const to = p.draft_division_id ?? p.division_id
+    if (p.draft_division_id != null && p.draft_division_id !== p.division_id) {
+      moved++
+      await trx.updateTable('league_participants').set({ division_id: to }).where('id', '=', p.id).execute()
+      if (p.division_id != null)
+        await trx.insertInto('league_moves').values({ season_id: seasonId, tour_id: lastTour?.id ?? null, participant_id: p.id, from_division: p.division_id, to_division: to, reason: p.draft_reason ?? 'manual' }).execute()
+    }
+    if (!p.user_id) continue
+    if (p.status === 'invited') await notify({ userId: p.user_id, type: 'league_confirm', data: { leagueSlug: league.slug, seasonId, title: league.name, confirmBy: rulesOf(season.rules).confirmBy } }, trx)
+    else await notify({ userId: p.user_id, type: 'league_lineup', data: { leagueSlug: league.slug, title: league.name, division: divisions.find((d) => d.id === to)?.name ?? '', startsAt: next?.starts_at ?? null } }, trx)
+  }
+  await trx.updateTable('league_participants').set({ draft_division_id: null, draft_reason: null }).where('season_id', '=', seasonId).execute()
+  await trx.updateTable('league_seasons').set({ draft_pending: false }).where('id', '=', seasonId).execute()
+  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'publish_draft', after: { moved } }, trx)
+  return { moved, notified: participants.filter((p) => p.user_id).length }
 }
 
 export async function setSeasonStatus(trx: Trx, seasonId: number, status: 'registration' | 'active' | 'finished', userId: number | null) {
@@ -199,9 +293,12 @@ export async function setSeasonStatus(trx: Trx, seasonId: number, status: 'regis
   const order = ['draft', 'registration', 'active', 'finished']
   if (order.indexOf(status) <= order.indexOf(season.status)) throw conflict('league.bad_status', { from: season.status, to: status })
   if (status === 'active') {
-    const missing = await trx.selectFrom('league_participants').select('id').where('season_id', '=', seasonId).where('status', '=', 'active').where('division_id', 'is', null).executeTakeFirst()
-    if (missing) await distribute(trx, seasonId, userId)
     await trx.updateTable('league_participants').set({ status: 'declined' }).where('season_id', '=', seasonId).where('status', '=', 'invited').execute()
+    const bottom = (await divisionsOf(trx, seasonId)).at(league.format === 'common_tour' ? 0 : -1)!
+    await trx.updateTable('league_participants').set({ status: 'active', division_id: bottom.id }).where('season_id', '=', seasonId).where('status', '=', 'waiting').execute()
+    const missing = await trx.selectFrom('league_participants').select('id').where('season_id', '=', seasonId).where('status', '=', 'active').where('division_id', 'is', null).where('draft_division_id', 'is', null).executeTakeFirst()
+    if (missing) await distribute(trx, seasonId, userId)
+    if (missing || (await seasonContext(trx, seasonId)).season.draft_pending) await publishDraft(trx, seasonId, userId)
   }
   await trx.updateTable('league_seasons').set({ status }).where('id', '=', seasonId).execute()
   await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'status', before: { status: season.status }, after: { status } }, trx)
@@ -212,6 +309,7 @@ export async function createTour(trx: Trx, seasonId: number, userId: number | nu
   const { season, league } = await seasonContext(trx, seasonId)
   if (season.status !== 'active') throw conflict('league.season_not_active')
   if (league.format === 'season_rr' || league.format === 'free_dates') throw conflict('league.format_uses_fixtures')
+  if (season.draft_pending) throw conflict('league.draft_unpublished')
   const last = await trx.selectFrom('league_tours').select((eb) => eb.fn.max<number>('number').as('n')).where('season_id', '=', seasonId).executeTakeFirst()
   const number = (last?.n ?? 0) + 1
   const tour = await trx
@@ -266,7 +364,7 @@ export async function createTour(trx: Trx, seasonId: number, userId: number | nu
 async function playoffPlayers(trx: Trx, seasonId: number): Promise<number[]> {
   const { season } = await seasonContext(trx, seasonId)
   const table = await seasonTable(trx, seasonId)
-  const ids = playoffSeeds(table.rows.map((r) => ({ id: String(r.participantId), total: r.total, tours: r.tours, counted: [], dropped: [] })), rulesOf(season.rules).playoffSize)
+  const ids = playoffSeeds(table.rows.map((r) => ({ id: String(r.participantId) })), rulesOf(season.rules).playoffSize)
   const rows = ids.length ? await trx.selectFrom('league_participants').select(['id', 'player_id']).where('id', 'in', ids.map(Number)).execute() : []
   return ids.map((id) => rows.find((r) => r.id === Number(id))!.player_id)
 }
@@ -286,54 +384,126 @@ export async function applyTour(trx: Trx, tourId: number, userId: number | null)
     .where('tournament_id', 'in', tournaments.length ? tournaments.map((t) => t.id) : [0])
     .where('final_place', 'is not', null)
     .execute()
-  const participants = await trx.selectFrom('league_participants').selectAll().where('season_id', '=', season.id).where('status', 'in', ['active', 'frozen']).execute()
+  const participants = await trx
+    .selectFrom('league_participants as lp')
+    .innerJoin('players as pl', 'pl.id', 'lp.player_id')
+    .selectAll('lp')
+    .select(['pl.user_id', 'pl.first_name', 'pl.last_name'])
+    .where('lp.season_id', '=', season.id)
+    .where('lp.status', 'in', ['active', 'frozen'])
+    .execute()
   const divisions = await divisionsOf(trx, season.id)
   const placeOf = new Map(places.map((p) => [p.player_id, p.final_place!]))
+  const skipped = new Set((await trx.selectFrom('league_tour_skips').select('participant_id').where('tour_id', '=', tourId).execute()).map((s) => s.participant_id))
+  const previous = await trx
+    .selectFrom('league_results as r')
+    .innerJoin('league_tours as t', 't.id', 'r.tour_id')
+    .select(['r.participant_id', 'r.overall_place'])
+    .where('t.season_id', '=', season.id)
+    .where('t.number', '=', tour.number - 1)
+    .execute()
+  const prevPlace = new Map(previous.map((r) => [r.participant_id, r.overall_place ?? 1e6]))
   const missed = new Set<string>()
-  const playedCount = participants.filter((p) => placeOf.has(p.player_id)).length
+  for (const p of participants) if (!placeOf.has(p.player_id) && p.status === 'active') missed.add(String(p.id))
+  // Tour order per division: players by place, then missed ones by their place in the previous tour, frozen last.
+  const rank = (p: (typeof participants)[number]) => placeOf.get(p.player_id) ?? (p.status === 'frozen' ? 2e6 : 1e6 + (prevPlace.get(p.id) ?? 1e6) / 1e7)
+  const groups = league.format === 'divisions' ? divisions.map((d) => participants.filter((p) => p.division_id === d.id)) : [participants]
+  const ordered = groups.map((g) => [...g].sort((a, b) => rank(a) - rank(b)).map((p) => String(p.id)))
+  const overall = overallPlaces(ordered)
+  const inTour = overall.size
+  let noShows = 0
   for (const p of participants) {
-    const place = placeOf.get(p.player_id) ?? null
-    const isMissed = place == null && p.status === 'active'
-    if (isMissed) missed.add(String(p.id))
+    const played = placeOf.has(p.player_id)
+    const divisionPlace = ordered.find((d) => d.includes(String(p.id)))!.indexOf(String(p.id)) + 1
+    const overallPlace = overall.get(String(p.id))!
+    const isMissed = missed.has(String(p.id))
+    const noShow = isMissed && !skipped.has(p.id)
+    const points = !played ? 0 : rules.pointsTable.length ? tourPoints(overallPlace, rules.pointsTable, rules.participationPoints) : Math.max(defaultTourPoints(overallPlace, inTour), rules.participationPoints)
     await trx
       .insertInto('league_results')
-      .values({ tour_id: tourId, participant_id: p.id, division_id: p.division_id, place, points: place == null ? 0 : rules.pointsTable.length ? tourPoints(place, rules.pointsTable, rules.participationPoints) : Math.max(playedCount - place + 1, rules.participationPoints), missed: isMissed })
+      .values({ tour_id: tourId, participant_id: p.id, division_id: p.division_id, place: played || league.format === 'divisions' ? divisionPlace : null, overall_place: played ? overallPlace : null, points, missed: isMissed, no_show: noShow })
       .execute()
-    if (isMissed) await trx.updateTable('league_participants').set({ missed_tours: p.missed_tours + 1 }).where('id', '=', p.id).execute()
+    if (isMissed) await trx.updateTable('league_participants').set({ missed_tours: p.missed_tours + 1, no_shows: p.no_shows + (noShow ? 1 : 0) }).where('id', '=', p.id).execute()
+    if (noShow) {
+      noShows++
+      if (p.no_shows + 1 === rules.noShowWarn && league.created_by)
+        await notify({ userId: league.created_by, type: 'league_no_shows', data: { leagueSlug: league.slug, title: league.name, player: playerName(p), count: p.no_shows + 1 } }, trx)
+    }
+    if (p.user_id && tour.kind === 'regular')
+      await notify({ userId: p.user_id, type: 'league_tour_results', data: { leagueSlug: league.slug, title: league.name, tour: tour.number, place: played ? overallPlace : null, points } }, trx)
   }
   const moves: { participantId: number; from: number; to: number; reason: string }[] = []
   if (league.format === 'divisions' && tour.kind === 'regular' && divisions.length > 1) {
-    const ordered = divisions.map((d) =>
-      participants
-        .filter((p) => p.division_id === d.id)
-        .sort((a, b) => (placeOf.get(a.player_id) ?? 1e6) - (placeOf.get(b.player_id) ?? 1e6))
-        .map((p) => String(p.id)),
-    )
     const frozen = new Set(participants.filter((p) => p.status === 'frozen').map((p) => String(p.id)))
-    const result = applyMovements(ordered, rules.boundaries, { missed, missedRule: rules.missedRule, frozen })
+    // A division over its size (newcomers placed by rating) sends one more player down per extra place.
+    const boundaries = rules.boundaries.map((b, i) => ({ ...b, relegate: b.relegate + (rules.divisionSize ? Math.max(0, ordered[i]!.length - rules.divisionSize) : 0) }))
+    const result = applyMovements(ordered, boundaries, { missed, missedRule: rules.missedRule, frozen })
     for (const m of result.moves) {
       const from = divisions[m.from]!.id
       const to = divisions[m.to]!.id
-      await trx.updateTable('league_participants').set({ division_id: to }).where('id', '=', Number(m.id)).execute()
-      await trx.insertInto('league_moves').values({ season_id: season.id, tour_id: tourId, participant_id: Number(m.id), from_division: from, to_division: to, reason: m.reason }).execute()
+      await trx.updateTable('league_participants').set({ draft_division_id: to, draft_reason: m.reason }).where('id', '=', Number(m.id)).execute()
       moves.push({ participantId: Number(m.id), from, to, reason: m.reason })
-      const p = participants.find((x) => x.id === Number(m.id))!
-      const user = await trx.selectFrom('players').select('user_id').where('id', '=', p.player_id).executeTakeFirst()
-      if (user?.user_id)
-        await notify({ userId: user.user_id, type: 'league_move', data: { leagueSlug: league.slug, title: league.name, reason: m.reason, division: divisions[m.to]!.name } }, trx)
     }
+    await trx.updateTable('league_seasons').set({ draft_pending: true }).where('id', '=', season.id).execute()
   }
+  // A freeze covers one tour.
+  await trx.updateTable('league_participants').set({ status: 'active' }).where('season_id', '=', season.id).where('status', '=', 'frozen').execute()
   await trx.updateTable('league_tours').set({ status: 'applied' }).where('id', '=', tourId).execute()
-  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_tour', entityId: tourId, action: 'apply', after: { moves: moves.length, missed: missed.size } }, trx)
-  return { moves, missed: missed.size }
+  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_tour', entityId: tourId, action: 'apply', after: { moves: moves.length, missed: missed.size, noShows } }, trx)
+  return { moves, missed: missed.size, noShows, draft: moves.length > 0 }
 }
 
+/** «Заморозка»: one warned skip per season without relegation (the club can switch it off). */
 export async function setFrozen(trx: Trx, participantId: number, frozen: boolean, userId: number | null) {
   const p = await trx.selectFrom('league_participants').selectAll().where('id', '=', participantId).executeTakeFirst()
   if (!p) throw notFound('league.participant_not_found')
   if (!['active', 'frozen'].includes(p.status)) throw conflict('league.participant_inactive')
-  await trx.updateTable('league_participants').set({ status: frozen ? 'frozen' : 'active' }).where('id', '=', participantId).execute()
+  if (frozen && p.status !== 'frozen') {
+    const { season } = await seasonContext(trx, p.season_id)
+    const rules = rulesOf(season.rules)
+    if (!rules.freezeEnabled) throw conflict('league.freeze_disabled')
+    if (p.freezes_used >= 1) throw conflict('league.freeze_used')
+  }
+  await trx
+    .updateTable('league_participants')
+    .set({ status: frozen ? 'frozen' : 'active', freezes_used: frozen && p.status !== 'frozen' ? p.freezes_used + 1 : p.freezes_used })
+    .where('id', '=', participantId)
+    .execute()
   await audit({ actorUserId: userId, entity: 'league_participant', entityId: participantId, action: frozen ? 'freeze' : 'unfreeze' }, trx)
+}
+
+/** «Пропущу тур»: a warned skip before the tour deadline (no «неявка» mark); optionally uses the season freeze. */
+export async function skipTour(trx: Trx, tourId: number, playerId: number, input: { skip: boolean; freeze?: boolean }) {
+  const tour = await trx.selectFrom('league_tours').selectAll().where('id', '=', tourId).executeTakeFirst()
+  if (!tour) throw notFound('league.tour_not_found')
+  if (tour.status !== 'planned' || new Date() >= (tour.deadline_at ?? tour.starts_at)) throw conflict('league.skip_deadline_passed')
+  const p = await trx.selectFrom('league_participants').selectAll().where('season_id', '=', tour.season_id).where('player_id', '=', playerId).executeTakeFirst()
+  if (!p || !['active', 'frozen'].includes(p.status)) throw forbidden('league.not_participant')
+  if (!input.skip) {
+    await trx.deleteFrom('league_tour_skips').where('tour_id', '=', tourId).where('participant_id', '=', p.id).execute()
+    if (p.status === 'frozen') await trx.updateTable('league_participants').set({ status: 'active', freezes_used: Math.max(0, p.freezes_used - 1) }).where('id', '=', p.id).execute()
+    return { skipped: false, frozen: false }
+  }
+  await trx.insertInto('league_tour_skips').values({ tour_id: tourId, participant_id: p.id }).onConflict((oc) => oc.doNothing()).execute()
+  if (input.freeze) await setFrozen(trx, p.id, true, null)
+  const entries = await trx
+    .selectFrom('entries as e')
+    .innerJoin('tournaments as t', 't.id', 'e.tournament_id')
+    .select(['e.id', 'e.status'])
+    .where('t.league_tour_id', '=', tourId)
+    .where('t.status', 'in', ['published', 'registration_closed'])
+    .where('e.player_id', '=', playerId)
+    .execute()
+  for (const e of entries) {
+    try {
+      assertTransition('entry', entryStatus, e.status, 'cancelled_by_player')
+      await trx.updateTable('entries').set({ status: 'cancelled_by_player', updated_at: new Date() }).where('id', '=', e.id).execute()
+    } catch {
+      // Already out of the tournament.
+    }
+  }
+  await audit({ actorUserId: null, entity: 'league_participant', entityId: p.id, action: 'skip_tour', after: { tourId, freeze: Boolean(input.freeze) } }, trx)
+  return { skipped: true, frozen: Boolean(input.freeze) }
 }
 
 /** L-8: moving a player between divisions only inside the transfer window (the organiser can override with force). */
@@ -370,20 +540,69 @@ export async function mergeDivisions(trx: Trx, seasonId: number, userId: number 
   return plan
 }
 
-/** L-5: next season draft — divisions copied, participants invited into their final division; they confirm. */
-export async function nextSeason(trx: Trx, seasonId: number, userId: number | null, input: { name: string; startsOn: string; endsOn: string }) {
+/**
+ * L-5: next season draft — divisions copied, participants (in the order of the final table) go into the
+ * division the season-end movements gave them. The organiser edits the draft; publishing sends the
+ * «confirm participation» invitations with the deadline.
+ */
+export async function nextSeason(trx: Trx, seasonId: number, userId: number | null, input: { name: string; startsOn: string; endsOn: string; confirmBy?: string | null }) {
   const { season, league } = await seasonContext(trx, seasonId)
   const divisions = await divisionsOf(trx, seasonId)
-  const next = await createSeason(trx, league.id, userId, { ...input, divisions: divisions.map((d) => d.name), rules: season.rules, payment: season.payment, previousSeasonId: seasonId, status: 'registration' })
+  const confirmBy = input.confirmBy ?? new Date(Date.now() + 7 * 86400000).toISOString()
+  const table = await seasonTable(trx, seasonId)
+  const participants = table.rows.filter((r) => r.status === 'active' || r.status === 'frozen')
+  const levelOf = (r: (typeof participants)[number]) => divisions.find((d) => d.id === (r.draftDivisionId ?? r.divisionId))?.level ?? divisions.length
+  const capacities = divisions.map((d) => participants.filter((r) => levelOf(r) === d.level).length)
+  const next = await createSeason(trx, league.id, userId, {
+    ...input,
+    divisions: divisions.map((d) => d.name),
+    rules: { ...season.rules, confirmBy, capacities },
+    payment: season.payment,
+    previousSeasonId: seasonId,
+    status: 'registration',
+  })
   const nextDivisions = await divisionsOf(trx, next.id)
-  const participants = await trx.selectFrom('league_participants').selectAll().where('season_id', '=', seasonId).where('status', 'in', ['active', 'frozen']).execute()
-  for (const p of participants) {
-    const level = divisions.find((d) => d.id === p.division_id)?.level ?? divisions.length
-    await trx.insertInto('league_participants').values({ season_id: next.id, player_id: p.player_id, division_id: nextDivisions.find((d) => d.level === level)?.id ?? null, status: 'invited' }).execute()
-    const user = await trx.selectFrom('players').select('user_id').where('id', '=', p.player_id).executeTakeFirst()
-    if (user?.user_id) await notify({ userId: user.user_id, type: 'league_confirm', data: { leagueSlug: league.slug, seasonId: next.id, title: league.name, text: `${league.name}: подтвердите участие в сезоне «${input.name}»` } }, trx)
-  }
+  for (const r of participants)
+    await trx.insertInto('league_participants').values({ season_id: next.id, player_id: r.playerId, division_id: null, draft_division_id: nextDivisions.find((d) => d.level === levelOf(r))?.id ?? null, draft_reason: 'season', status: 'invited' }).execute()
+  await trx.updateTable('league_seasons').set({ draft_pending: true }).where('id', '=', next.id).execute()
   return next
+}
+
+/**
+ * L-5: invitations not confirmed by the deadline expire; freed places are taken by the best of the
+ * division below (by the previous season table) and, at the bottom, from the waiting list.
+ */
+export async function expireInvitations(trx: Trx, seasonId: number, now = new Date()) {
+  const { season, league } = await seasonContext(trx, seasonId)
+  const rules = rulesOf(season.rules)
+  if (season.status !== 'registration' || season.draft_pending || !rules.confirmBy || new Date(rules.confirmBy) > now) return { expired: 0, filled: 0 }
+  const expired = await trx.updateTable('league_participants').set({ status: 'declined' }).where('season_id', '=', seasonId).where('status', '=', 'invited').returning('id').execute()
+  const divisions = await divisionsOf(trx, seasonId)
+  const prevOrder = season.previous_season_id ? (await seasonTable(trx, season.previous_season_id)).rows.map((r) => r.playerId) : []
+  const rankOf = (playerId: number) => (prevOrder.includes(playerId) ? prevOrder.indexOf(playerId) : 1e6)
+  let filled = 0
+  for (const [i, d] of divisions.entries()) {
+    const capacity = rules.capacities[i] ?? rules.divisionSize ?? 0
+    const members = await trx.selectFrom('league_participants').select('id').where('division_id', '=', d.id).where('status', 'in', ['active', 'invited']).execute()
+    let deficit = capacity - members.length
+    while (deficit > 0) {
+      const below = divisions[i + 1]
+      let pick: { id: number; player_id: number } | undefined
+      if (below) {
+        const candidates = await trx.selectFrom('league_participants').select(['id', 'player_id']).where('division_id', '=', below.id).where('status', '=', 'active').execute()
+        pick = candidates.sort((a, b) => rankOf(a.player_id) - rankOf(b.player_id))[0]
+      } else pick = await trx.selectFrom('league_participants').select(['id', 'player_id']).where('season_id', '=', seasonId).where('status', '=', 'waiting').orderBy('created_at').orderBy('id').executeTakeFirst()
+      if (!pick) break
+      await trx.updateTable('league_participants').set({ division_id: d.id, status: 'active' }).where('id', '=', pick.id).execute()
+      await trx.insertInto('league_moves').values({ season_id: seasonId, participant_id: pick.id, from_division: below?.id ?? null, to_division: d.id, reason: below ? 'fill' : 'waitlist' }).execute()
+      const u = await trx.selectFrom('players').select('user_id').where('id', '=', pick.player_id).executeTakeFirst()
+      if (u?.user_id) await notify({ userId: u.user_id, type: 'league_lineup', data: { leagueSlug: league.slug, title: league.name, division: d.name } }, trx)
+      filled++
+      deficit--
+    }
+  }
+  if (expired.length || filled) await audit({ actorUserId: null, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'expire_invitations', after: { expired: expired.length, filled } }, trx)
+  return { expired: expired.length, filled }
 }
 
 export async function confirmParticipation(trx: Trx, seasonId: number, playerId: number, accept: boolean) {
@@ -404,7 +623,7 @@ export async function confirmParticipation(trx: Trx, seasonId: number, playerId:
 export async function generateFixtures(trx: Trx, seasonId: number, userId: number | null, deadlineDays = 14) {
   const { season, league } = await seasonContext(trx, seasonId)
   if (!['season_rr', 'free_dates'].includes(league.format)) throw conflict('league.format_uses_tours')
-  await trx.deleteFrom('league_fixtures').where('season_id', '=', seasonId).where('status', '=', 'pending').execute()
+  await trx.deleteFrom('league_fixtures').where('season_id', '=', seasonId).where('kind', '=', 'regular').where('status', '=', 'pending').execute()
   let count = 0
   for (const d of await divisionsOf(trx, seasonId)) {
     const ps = await trx.selectFrom('league_participants').select('id').where('division_id', '=', d.id).where('status', '=', 'active').orderBy('id').execute()
@@ -483,71 +702,223 @@ export async function confirmFixtureResult(trx: Trx, fixtureId: number, playerId
   const { f, mine } = await fixtureForPlayer(trx, fixtureId, playerId)
   if (f.status !== 'reported') throw conflict('league.fixture_not_reported')
   if (f.reported_by === mine) throw conflict('league.confirm_by_opponent')
+  if (!accept) {
+    await trx.updateTable('league_fixtures').set({ status: f.booking_id ? 'scheduled' : 'pending', sets_home: null, sets_away: null, reported_by: null }).where('id', '=', f.id).execute()
+    return { status: 'disputed' }
+  }
+  await trx.updateTable('league_fixtures').set({ status: 'confirmed' }).where('id', '=', f.id).execute()
+  await rateFixture(trx, f.id)
+  return { status: 'confirmed' }
+}
+
+/** Played league fixtures change Elo like tournament matches (verified club only); technical results never do. */
+async function rateFixture(trx: Trx, fixtureId: number) {
+  const f = await trx.selectFrom('league_fixtures').selectAll().where('id', '=', fixtureId).executeTakeFirstOrThrow()
+  if (f.technical || f.rating_home != null || f.sets_home == null || f.sets_away == null) return
+  const club = await trx
+    .selectFrom('league_seasons as s')
+    .innerJoin('leagues as l', 'l.id', 's.league_id')
+    .innerJoin('clubs as c', 'c.id', 'l.club_id')
+    .select('c.status')
+    .where('s.id', '=', f.season_id)
+    .executeTakeFirstOrThrow()
+  if (club.status !== 'active') return
+  const ps = await trx.selectFrom('league_participants').select(['id', 'player_id']).where('id', 'in', [f.home_participant, f.away_participant]).execute()
+  const home = ps.find((p) => p.id === f.home_participant)!.player_id
+  const away = ps.find((p) => p.id === f.away_participant)!.player_id
+  const delta = await applyLeagueFixtureRating(trx, home, away, f.sets_home > f.sets_away)
+  await trx.updateTable('league_fixtures').set({ rating_home: delta.home, rating_away: delta.away }).where('id', '=', f.id).execute()
+}
+
+/** L-7: a fixture not played by the end of its window — the organiser gives a technical defeat to one side or both. */
+export async function technicalResult(trx: Trx, fixtureId: number, loser: 'home' | 'away' | 'both', userId: number | null) {
+  const f = await trx.selectFrom('league_fixtures').selectAll().where('id', '=', fixtureId).forUpdate().executeTakeFirst()
+  if (!f) throw notFound('league.fixture_not_found')
+  if (f.status === 'confirmed') throw conflict('league.fixture_played')
+  if (f.deadline_at && f.deadline_at > new Date()) throw conflict('league.fixture_window_open')
   await trx
     .updateTable('league_fixtures')
-    .set(accept ? { status: 'confirmed' } : { status: f.booking_id ? 'scheduled' : 'pending', sets_home: null, sets_away: null, reported_by: null })
+    .set({ status: 'confirmed', technical: loser, sets_home: loser === 'home' || loser === 'both' ? 0 : 3, sets_away: loser === 'away' || loser === 'both' ? 0 : 3 })
     .where('id', '=', f.id)
     .execute()
-  return { status: accept ? 'confirmed' : 'disputed' }
+  await audit({ actorUserId: userId, entity: 'league_fixture', entityId: f.id, action: 'technical', after: { loser } }, trx)
+  return { status: 'confirmed', technical: loser }
+}
+
+/**
+ * Season end for round robin / free dates (L-4): movements by the final division tables, with optional
+ * play-off fixtures between neighbouring divisions first. The result is the draft for the next season.
+ */
+export async function finishSeason(trx: Trx, seasonId: number, userId: number | null) {
+  const { season, league } = await seasonContext(trx, seasonId)
+  if (season.status !== 'active') throw conflict('league.season_not_active')
+  const rules = rulesOf(season.rules)
+  const divisions = await divisionsOf(trx, seasonId)
+  const moves: { participantId: number; from: number; to: number; reason: string }[] = []
+  if ((league.format === 'season_rr' || league.format === 'free_dates') && divisions.length > 1) {
+    const table = await seasonTable(trx, seasonId)
+    const orders = divisions.map((d) => table.rows.filter((r) => r.divisionId === d.id && r.status !== 'invited').map((r) => String(r.participantId)))
+    const pairs = rules.playoffMatches ? playoffPairs(orders, rules.boundaries) : []
+    const fixtures = await trx.selectFrom('league_fixtures').selectAll().where('season_id', '=', seasonId).where('kind', '=', 'playoff').execute()
+    if (pairs.length && !fixtures.length) {
+      for (const p of pairs)
+        await trx
+          .insertInto('league_fixtures')
+          .values({ season_id: seasonId, division_id: null, kind: 'playoff', round: 0, home_participant: Number(p.upper), away_participant: Number(p.lower), deadline_at: new Date(Date.now() + 14 * 86400000) })
+          .execute()
+      await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'playoff_fixtures', after: pairs }, trx)
+      return { finished: false, playoffs: pairs.length, moves }
+    }
+    if (fixtures.some((f) => f.status !== 'confirmed')) throw conflict('league.playoffs_pending')
+    const base = applyMovements(orders, rules.boundaries)
+    const played = fixtures.map((f) => ({
+      boundary: orders.findIndex((ids) => ids.includes(String(f.home_participant))),
+      upper: String(f.home_participant),
+      lower: String(f.away_participant),
+      lowerWon: (f.sets_away ?? 0) > (f.sets_home ?? 0),
+    }))
+    const after = applyPlayoffs(base.divisions, played)
+    const target = new Map<string, number>()
+    after.divisions.forEach((ids, i) => ids.forEach((id) => target.set(id, i)))
+    orders.forEach((ids, from) =>
+      ids.forEach((id) => {
+        const to = target.get(id)!
+        if (to !== from) moves.push({ participantId: Number(id), from: divisions[from]!.id, to: divisions[to]!.id, reason: to < from ? 'promotion' : 'relegation' })
+      }),
+    )
+    for (const m of moves) {
+      await trx.updateTable('league_participants').set({ draft_division_id: m.to, draft_reason: m.reason }).where('id', '=', m.participantId).execute()
+      await trx.insertInto('league_moves').values({ season_id: seasonId, participant_id: m.participantId, from_division: m.from, to_division: m.to, reason: m.reason }).execute()
+    }
+  }
+  await trx.updateTable('league_seasons').set({ status: 'finished' }).where('id', '=', seasonId).execute()
+  await audit({ actorUserId: userId, clubId: league.club_id, entity: 'league_season', entityId: seasonId, action: 'finish', after: { moves: moves.length } }, trx)
+  return { finished: true, playoffs: 0, moves }
 }
 
 // ---------------------------------------------------------------------------
 // Tables and the public page
 
-/** Season table: tour points with N best tours, or fixture points (win 2 / loss 1) for round robin formats. */
+type Zone = 'up' | 'down' | null
+
+/**
+ * Season table. Round robin / free dates: per division, match points (configurable win / loss / no-show)
+ * and the 4.6 tie-breaks. Tour formats: points for overall places, N best tours, ties by best place,
+ * first places, last tour. Each row carries its division place and promotion/relegation zone.
+ */
 export async function seasonTable(trx: Trx, seasonId: number) {
   const { season, league } = await seasonContext(trx, seasonId)
+  const rules = rulesOf(season.rules)
+  const divisions = await divisionsOf(trx, seasonId)
   const participants = await trx
     .selectFrom('league_participants as lp')
     .innerJoin('players as p', 'p.id', 'lp.player_id')
     .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-    .select(['lp.id', 'lp.player_id', 'lp.division_id', 'lp.status', 'lp.missed_tours', 'p.first_name', 'p.last_name', 'r.rating'])
+    .select(['lp.id', 'lp.player_id', 'lp.division_id', 'lp.draft_division_id', 'lp.draft_reason', 'lp.status', 'lp.missed_tours', 'lp.no_shows', 'lp.freezes_used', 'p.first_name', 'p.last_name', 'r.rating'])
     .where('lp.season_id', '=', seasonId)
-    .where('lp.status', 'in', ['active', 'frozen', 'invited'])
+    .where('lp.status', 'in', ['active', 'frozen', 'invited', 'waiting'])
     .execute()
-  let scored: { id: string; total: number; tours: number; counted: number[]; dropped: number[] }[]
+  const stats = new Map<number, { total: number; tours: number; dropped: number[]; firsts: number; bestPlace: number | null; played: number; wins: number }>()
+  let order: number[]
   if (league.format === 'season_rr' || league.format === 'free_dates') {
-    const fixtures = await trx.selectFrom('league_fixtures').selectAll().where('season_id', '=', seasonId).where('status', '=', 'confirmed').execute()
-    const results = fixtures.flatMap((f) => {
-      const homeWon = (f.sets_home ?? 0) > (f.sets_away ?? 0)
-      return [
-        { id: String(f.home_participant), points: homeWon ? 2 : 1 },
-        { id: String(f.away_participant), points: homeWon ? 1 : 2 },
-      ]
-    })
-    scored = seasonStandings(results)
+    const fixtures = await trx.selectFrom('league_fixtures').selectAll().where('season_id', '=', seasonId).where('kind', '=', 'regular').where('status', '=', 'confirmed').execute()
+    const ratings = Object.fromEntries(participants.map((p) => [String(p.id), p.rating ?? 0]))
+    order = []
+    const groups = [...divisions.map((d) => d.id as number | null), null]
+    for (const divisionId of groups) {
+      const ids = participants.filter((p) => p.division_id === divisionId && p.status !== 'waiting').map((p) => String(p.id))
+      if (!ids.length) continue
+      const matches: GroupMatchResult[] = fixtures
+        .filter((f) => f.division_id === divisionId && f.technical !== 'both')
+        .map((f) => {
+          const homeWon = f.technical ? f.technical === 'away' : (f.sets_home ?? 0) > (f.sets_away ?? 0)
+          return { home: String(f.home_participant), away: String(f.away_participant), winner: homeWon ? 'home' : 'away', setsHome: f.sets_home ?? 0, setsAway: f.sets_away ?? 0, games: [], type: f.technical ? 'walkover' : 'normal' }
+        })
+      const standing = groupStandings(ids, matches, { points: { win: rules.matchPoints.win, loss: rules.matchPoints.loss, walkover: rules.matchPoints.noShow }, ratings, lotsSeed: seasonId })
+      for (const r of standing.rows) {
+        const both = fixtures.filter((f) => f.technical === 'both' && (f.home_participant === Number(r.id) || f.away_participant === Number(r.id))).length
+        stats.set(Number(r.id), { total: r.points + both * rules.matchPoints.noShow, tours: r.played, dropped: [], firsts: 0, bestPlace: null, played: r.played, wins: r.wins })
+        order.push(Number(r.id))
+      }
+    }
   } else {
     const results = await trx
       .selectFrom('league_results as r')
       .innerJoin('league_tours as t', 't.id', 'r.tour_id')
-      .select(['r.participant_id', 'r.points'])
+      .select(['r.participant_id', 'r.points', 'r.overall_place', 't.number'])
       .where('t.season_id', '=', seasonId)
       .where('t.kind', '=', 'regular')
       .execute()
-    scored = seasonStandings(results.map((r) => ({ id: String(r.participant_id), points: r.points })), rulesOf(season.rules).bestTours ?? null)
+    const scored = seasonStandings(
+      results.map((r) => ({ id: String(r.participant_id), points: r.points, place: r.overall_place, tour: r.number })),
+      rules.bestTours ?? null,
+    )
+    for (const s of scored) stats.set(Number(s.id), { total: s.total, tours: s.tours, dropped: s.dropped, firsts: s.firsts, bestPlace: s.bestPlace, played: s.tours, wins: 0 })
+    order = scored.map((s) => Number(s.id))
   }
-  const byId = new Map(scored.map((s) => [Number(s.id), s]))
+  const pos = (id: number) => (order.includes(id) ? order.indexOf(id) : 1e6)
   const rows = participants
     .map((p) => {
-      const s = byId.get(p.id)
-      return { participantId: p.id, playerId: p.player_id, name: playerName(p), rating: p.rating, divisionId: p.division_id, status: p.status, missedTours: p.missed_tours, total: s?.total ?? 0, tours: s?.tours ?? 0, dropped: s?.dropped ?? [] }
+      const s = stats.get(p.id)
+      return {
+        participantId: p.id,
+        playerId: p.player_id,
+        name: playerName(p),
+        rating: p.rating,
+        divisionId: p.division_id,
+        draftDivisionId: p.draft_division_id,
+        draftReason: p.draft_reason,
+        status: p.status,
+        missedTours: p.missed_tours,
+        noShows: p.no_shows,
+        freezesUsed: p.freezes_used,
+        total: s?.total ?? 0,
+        tours: s?.tours ?? 0,
+        dropped: s?.dropped ?? [],
+        firsts: s?.firsts ?? 0,
+        bestPlace: s?.bestPlace ?? null,
+        wins: s?.wins ?? 0,
+        divisionPlace: 0,
+        zone: null as Zone,
+      }
     })
-    .sort((a, b) => b.total - a.total || b.tours - a.tours || (b.rating ?? 0) - (a.rating ?? 0))
+    .sort((a, b) => pos(a.participantId) - pos(b.participantId) || (b.rating ?? 0) - (a.rating ?? 0))
+  if (league.format !== 'common_tour')
+    divisions.forEach((d, i) => {
+      const list = rows.filter((r) => r.divisionId === d.id && r.status !== 'invited' && r.status !== 'waiting')
+      const b = rules.boundaries[i]
+      const above = rules.boundaries[i - 1]
+      list.forEach((r, j) => {
+        r.divisionPlace = j + 1
+        if (above && j < above.promote) r.zone = 'up'
+        else if (b && j >= list.length - b.relegate) r.zone = 'down'
+      })
+    })
   return { rows }
 }
 
-export async function seasonView(seasonId: number) {
+export async function seasonView(seasonId: number, options: { staff?: boolean } = {}) {
   return db.transaction().execute(async (trx) => {
     const { season, league } = await seasonContext(trx, seasonId)
     const divisions = await divisionsOf(trx, seasonId)
     const table = await seasonTable(trx, seasonId)
     const tours = await trx.selectFrom('league_tours').selectAll().where('season_id', '=', seasonId).orderBy('number').execute()
+    const tourIds = tours.length ? tours.map((t) => t.id) : [0]
     const tournaments = tours.length
-      ? await trx.selectFrom('tournaments').select(['id', 'slug', 'title', 'status', 'league_tour_id', 'league_division_id', 'starts_at']).where('league_tour_id', 'in', tours.map((t) => t.id)).execute()
+      ? await trx.selectFrom('tournaments').select(['id', 'slug', 'title', 'status', 'league_tour_id', 'league_division_id', 'starts_at']).where('league_tour_id', 'in', tourIds).execute()
       : []
+    const results = await trx.selectFrom('league_results').selectAll().where('tour_id', 'in', tourIds).execute()
+    const skips = await trx.selectFrom('league_tour_skips').select(['tour_id', 'participant_id']).where('tour_id', 'in', tourIds).execute()
     const moves = await trx.selectFrom('league_moves').selectAll().where('season_id', '=', seasonId).orderBy('id', 'desc').limit(200).execute()
     const fixtures = await trx.selectFrom('league_fixtures').selectAll().where('season_id', '=', seasonId).orderBy('round').orderBy('id').execute()
     const name = new Map(table.rows.map((r) => [r.participantId, r.name]))
+    const rows = options.staff ? table.rows : table.rows.filter((r) => r.status !== 'waiting').map((r) => ({ ...r, draftDivisionId: null, draftReason: null }))
+    const tourFormat = league.format === 'divisions' || league.format === 'common_tour'
+    const best = [...table.rows]
+      .filter((r) => r.tours > 0)
+      .sort((a, b) => (tourFormat ? b.total - a.total || (a.bestPlace ?? 1e6) - (b.bestPlace ?? 1e6) : b.wins - a.wins || b.total - a.total))
+      .slice(0, 3)
+      .map((r) => ({ participantId: r.participantId, playerId: r.playerId, name: r.name, total: r.total, firsts: r.firsts, wins: r.wins }))
     return {
       id: season.id,
       name: season.name,
@@ -557,12 +928,71 @@ export async function seasonView(seasonId: number) {
       rules: rulesOf(season.rules),
       payment: season.payment,
       format: league.format,
-      divisions: divisions.map((d) => ({ id: d.id, name: d.name, level: d.level, rows: table.rows.filter((r) => r.divisionId === d.id) })),
-      table: table.rows,
-      tours: tours.map((t) => ({ id: t.id, number: t.number, kind: t.kind, startsAt: t.starts_at, deadlineAt: t.deadline_at, status: t.status, tournaments: tournaments.filter((x) => x.league_tour_id === t.id) })),
+      draftPending: season.draft_pending,
+      divisions: divisions.map((d) => ({ id: d.id, name: d.name, level: d.level, rows: rows.filter((r) => r.divisionId === d.id) })),
+      table: rows,
+      best,
+      tours: tours.map((t) => ({
+        id: t.id,
+        number: t.number,
+        kind: t.kind,
+        startsAt: t.starts_at,
+        deadlineAt: t.deadline_at,
+        status: t.status,
+        tournaments: tournaments.filter((x) => x.league_tour_id === t.id),
+        skips: skips.filter((s) => s.tour_id === t.id).map((s) => s.participant_id),
+        results: results
+          .filter((r) => r.tour_id === t.id)
+          .sort((a, b) => (a.overall_place ?? 1e6) - (b.overall_place ?? 1e6))
+          .map((r) => ({ participantId: r.participant_id, name: name.get(r.participant_id), divisionId: r.division_id, place: r.place, overallPlace: r.overall_place, points: r.points, missed: r.missed, noShow: r.no_show })),
+      })),
       moves: moves.map((m) => ({ participantId: m.participant_id, name: name.get(m.participant_id), from: m.from_division, to: m.to_division, reason: m.reason, tourId: m.tour_id })),
-      fixtures: fixtures.map((f) => ({ id: f.id, divisionId: f.division_id, round: f.round, status: f.status, home: { id: f.home_participant, name: name.get(f.home_participant) }, away: { id: f.away_participant, name: name.get(f.away_participant) }, startsAt: f.starts_at, tableId: f.table_id, setsHome: f.sets_home, setsAway: f.sets_away, deadlineAt: f.deadline_at, proposedBy: f.proposed_by, reportedBy: f.reported_by })),
+      fixtures: fixtures.map((f) => ({
+        id: f.id,
+        kind: f.kind,
+        divisionId: f.division_id,
+        round: f.round,
+        status: f.status,
+        home: { id: f.home_participant, name: name.get(f.home_participant) },
+        away: { id: f.away_participant, name: name.get(f.away_participant) },
+        startsAt: f.starts_at,
+        tableId: f.table_id,
+        setsHome: f.sets_home,
+        setsAway: f.sets_away,
+        deadlineAt: f.deadline_at,
+        proposedBy: f.proposed_by,
+        reportedBy: f.reported_by,
+        technical: f.technical,
+        ratingHome: f.rating_home,
+        ratingAway: f.rating_away,
+      })),
     }
+  })
+}
+
+/** League results in the player profile: final division place and table total per season. */
+export async function playerLeagueResults(playerId: number) {
+  const seasons = await db
+    .selectFrom('league_participants as lp')
+    .innerJoin('league_seasons as s', 's.id', 'lp.season_id')
+    .innerJoin('leagues as l', 'l.id', 's.league_id')
+    .select(['lp.season_id', 's.name as season', 's.status', 'l.name as league', 'l.slug'])
+    .where('lp.player_id', '=', playerId)
+    .where('lp.status', 'in', ['active', 'frozen'])
+    .orderBy('s.starts_on', 'desc')
+    .limit(20)
+    .execute()
+  return db.transaction().execute(async (trx) => {
+    const out = []
+    for (const s of seasons) {
+      const { rows } = await seasonTable(trx, s.season_id)
+      const row = rows.find((r) => r.playerId === playerId)
+      if (!row) continue
+      const division = row.divisionId ? await trx.selectFrom('league_divisions').select('name').where('id', '=', row.divisionId).executeTakeFirst() : undefined
+      const move = await trx.selectFrom('league_moves').select('reason').where('season_id', '=', s.season_id).where('participant_id', '=', row.participantId).where('tour_id', 'is', null).where('reason', 'in', ['promotion', 'relegation']).executeTakeFirst()
+      out.push({ seasonId: s.season_id, season: s.season, status: s.status, league: s.league, slug: s.slug, division: division?.name ?? null, place: row.divisionPlace || rows.indexOf(row) + 1, total: row.total, tours: row.tours, move: move?.reason ?? null })
+    }
+    return out
   })
 }
 
@@ -609,6 +1039,8 @@ export async function leagueReminders(now = new Date()): Promise<number> {
     for (const p of ps) if (p.user_id) await notify({ userId: p.user_id, type: 'league_reminder', data: { fixtureId: f.id, text: 'Завтра дедлайн матча лиги — договоритесь о времени' } })
     sent += ps.length
   }
+  const drafts = await db.selectFrom('league_seasons').select('id').where('status', '=', 'registration').where('previous_season_id', 'is not', null).execute()
+  for (const s of drafts) await db.transaction().execute((trx) => expireInvitations(trx, s.id, now))
   // Tours that started become running.
   await db.updateTable('league_tours').set({ status: 'running' }).where('status', '=', 'planned').where('starts_at', '<=', now).execute()
   return sent

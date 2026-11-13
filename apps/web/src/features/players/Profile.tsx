@@ -8,6 +8,7 @@ import { formatDateShort } from '../../i18n/format.ts'
 import { Async, Delta, Seg } from '../../ui/kit.tsx'
 import { RatingChart } from './RatingChart.tsx'
 import { CalibratingMark, DisputeButton, RecalcBanner } from '../rating/widgets.tsx'
+import { PlayerLeagues } from '../leagues/Leagues.tsx'
 
 type Period = '3m' | '1y' | 'all'
 
@@ -214,6 +215,7 @@ export function Profile() {
                     <h2>{t.p.best}</h2>
                     <Async state={best}>{(rows) => (rows.length ? <Matches rows={rows} withTournament /> : <p className="empty">—</p>)}</Async>
                   </section>
+                  <PlayerLeagues playerId={id} />
                 </div>
               </div>
             </>

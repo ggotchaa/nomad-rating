@@ -286,6 +286,41 @@ async function rateInto(trx: Trx, tournamentId: number, all: KindStates, params:
 
 const emptyKinds = (): KindStates => ({ singles: new Map(), doubles: new Map() })
 
+/**
+ * League fixture (season round robin / free dates) rated like a one-match tournament on the stored singles
+ * states. Walkovers and technical results are never passed here. Returns the deltas.
+ */
+export async function applyLeagueFixtureRating(trx: Trx, homePlayerId: number, awayPlayerId: number, homeWon: boolean): Promise<{ home: number; away: number }> {
+  const all = emptyKinds()
+  await loadStates(trx, 'singles', [homePlayerId, awayPlayerId], all)
+  const levels = new Map((await trx.selectFrom('players').select(['id', 'start_level']).where('id', 'in', [homePlayerId, awayPlayerId]).execute()).map((p) => [p.id, p.start_level]))
+  const engine = new Map<string, PlayerRatingState>()
+  for (const id of [homePlayerId, awayPlayerId]) {
+    const s = all.singles.get(id)!
+    engine.set(String(id), { rating: s.rating, source: s.source, ratedMatches: s.rated_matches, startLevel: levels.get(id) ?? 1000, calibration: { ...emptyCalibration(), ...s.calibration } })
+  }
+  const results = rateTournament(engine, [{ id: 'f', a: String(homePlayerId), b: String(awayPlayerId), winner: homeWon ? 'a' : 'b', rated: true }], { params: await eloParams(trx) })
+  const now = new Date().toISOString()
+  for (const [id, won] of [[homePlayerId, homeWon], [awayPlayerId, !homeWon]] as const) {
+    const s = all.singles.get(id)!
+    const after = results.get(String(id))?.after
+    const rating = after ? after.rating : s.rating
+    all.singles.set(id, {
+      ...s,
+      rating,
+      source: after ? after.source : s.source,
+      rated_matches: after ? after.ratedMatches : s.rated_matches,
+      calibration: after ? after.calibration : s.calibration,
+      matches: s.matches + 1,
+      wins: s.wins + (won ? 1 : 0),
+      max_rating: Math.max(s.max_rating ?? 0, rating ?? 0) || null,
+      last_rated_at: now,
+    })
+  }
+  await saveStates(trx, 'singles', all.singles)
+  return { home: results.get(String(homePlayerId))?.delta ?? 0, away: results.get(String(awayPlayerId))?.delta ?? 0 }
+}
+
 export async function applyTournamentRatings(trx: Trx, tournamentId: number): Promise<void> {
   const all = emptyKinds()
   const calibrated = await rateInto(trx, tournamentId, all, await eloParams(trx))

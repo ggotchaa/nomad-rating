@@ -21,7 +21,14 @@ import {
   updateSeason,
   createTour,
   distribute,
+  editDraft,
+  expireInvitations,
+  finishSeason,
   generateFixtures,
+  playerLeagueResults,
+  publishDraft,
+  skipTour,
+  technicalResult,
   leagueListQuery,
   mergeDivisions,
   nextSeason,
@@ -50,6 +57,12 @@ const rulesSchema = z
     transferWindow: z.object({ from: z.string(), to: z.string() }).nullable().optional(),
     confirmBy: z.string().nullable().optional(),
     reminderHours: z.number().int().min(1).max(168).optional(),
+    noShowWarn: z.number().int().min(1).max(20).optional(),
+    freezeEnabled: z.boolean().optional(),
+    newcomerPlacement: z.enum(['bottom', 'rating']).optional(),
+    divisionSize: z.number().int().min(2).max(64).nullable().optional(),
+    matchPoints: z.object({ win: z.number().int().min(0).max(10), loss: z.number().int().min(0).max(10), noShow: z.number().int().min(0).max(10) }).optional(),
+    playoffMatches: z.boolean().optional(),
   })
   .default({})
 
@@ -129,10 +142,22 @@ leaguesRouter.get(
   }),
 )
 
+const isClubStaff = async (req: Request, clubId: number) =>
+  req.user ? Boolean(await db.selectFrom('club_members').select('user_id').where('club_id', '=', clubId).where('user_id', '=', req.user.id).executeTakeFirst()) : false
+
 leaguesRouter.get(
   '/seasons/:seasonId',
   handler(async (req, res) => {
-    res.json(await seasonView(intParam(req, 'seasonId')))
+    const seasonId = intParam(req, 'seasonId')
+    const { league } = await tx((trx) => seasonContext(trx, seasonId))
+    res.json(await seasonView(seasonId, { staff: await isClubStaff(req, league.club_id) }))
+  }),
+)
+
+leaguesRouter.get(
+  '/player/:playerId',
+  handler(async (req, res) => {
+    res.json(await playerLeagueResults(intParam(req, 'playerId')))
   }),
 )
 
@@ -146,8 +171,8 @@ leaguesRouter.get(
     if (!league) throw notFound('league.not_found')
     const seasons = await db.selectFrom('league_seasons').select(['id', 'name', 'status', 'starts_on', 'ends_on']).where('league_id', '=', league.id).orderBy('starts_on', 'desc').execute()
     const club = await db.selectFrom('leagues').select('club_id').where('id', '=', league.id).executeTakeFirstOrThrow()
-    const isStaff = req.user ? Boolean(await db.selectFrom('club_members').select('user_id').where('club_id', '=', club.club_id).where('user_id', '=', req.user.id).executeTakeFirst()) : false
-    res.json({ ...league, clubId: club.club_id, isStaff, seasons, current: league.season_id ? await seasonView(league.season_id) : null })
+    const isStaff = await isClubStaff(req, club.club_id)
+    res.json({ ...league, clubId: club.club_id, isStaff, seasons, current: league.season_id ? await seasonView(league.season_id, { staff: isStaff }) : null })
   }),
 )
 
@@ -203,9 +228,36 @@ seasonAction('tours', (req, seasonId, userId) => {
 seasonAction('merge', (_req, seasonId, userId) => tx((trx) => mergeDivisions(trx, seasonId, userId)))
 seasonAction('fixtures', (_req, seasonId, userId) => tx((trx) => generateFixtures(trx, seasonId, userId)))
 seasonAction('next', (req, seasonId, userId) => {
-  const body = parseBody(z.object({ name: z.string().trim().min(2).max(100), startsOn: isoDate, endsOn: isoDate }), req)
+  const body = parseBody(z.object({ name: z.string().trim().min(2).max(100), startsOn: isoDate, endsOn: isoDate, confirmBy: z.iso.datetime({ offset: true }).nullable().optional() }), req)
   return tx((trx) => nextSeason(trx, seasonId, userId, body))
 })
+seasonAction('draft', (req, seasonId, userId) => {
+  const body = parseBody(z.object({ participantId: z.number().int().positive(), divisionId: z.number().int().positive() }), req)
+  return tx((trx) => editDraft(trx, seasonId, body.participantId, body.divisionId, userId))
+})
+seasonAction('publish', (_req, seasonId, userId) => tx((trx) => publishDraft(trx, seasonId, userId)))
+seasonAction('finish', (_req, seasonId, userId) => tx((trx) => finishSeason(trx, seasonId, userId)))
+seasonAction('expire', (_req, seasonId) => tx((trx) => expireInvitations(trx, seasonId)))
+
+leaguesRouter.post(
+  '/fixtures/:fixtureId/technical',
+  handler(async (req, res) => {
+    const f = await db.selectFrom('league_fixtures').select('season_id').where('id', '=', intParam(req, 'fixtureId')).executeTakeFirst()
+    if (!f) throw notFound('league.fixture_not_found')
+    const user = await staffOfSeason(req, f.season_id)
+    const { loser } = parseBody(z.object({ loser: z.enum(['home', 'away', 'both']) }), req)
+    res.json(await tx((trx) => technicalResult(trx, intParam(req, 'fixtureId'), loser, user.id)))
+  }),
+)
+
+leaguesRouter.post(
+  '/tours/:tourId/skip',
+  handler(async (req, res) => {
+    const { playerId } = playerOf(req)
+    const body = parseBody(z.object({ skip: z.boolean().default(true), freeze: z.boolean().optional() }), req)
+    res.json(await tx((trx) => skipTour(trx, intParam(req, 'tourId'), playerId, body)))
+  }),
+)
 
 leaguesRouter.post(
   '/tours/:tourId/apply',
@@ -252,7 +304,8 @@ leaguesRouter.post(
     const seasonId = intParam(req, 'seasonId')
     const { season } = await tx((trx) => seasonContext(trx, seasonId))
     if (!['registration', 'active'].includes(season.status)) throw forbidden('league.registration_closed')
-    res.json(await tx((trx) => addParticipants(trx, seasonId, [playerId], user.id)))
+    const waiting = season.status === 'registration' && season.previous_season_id != null
+    res.json(await tx((trx) => addParticipants(trx, seasonId, [playerId], user.id, { waiting })))
   }),
 )
 

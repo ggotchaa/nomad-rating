@@ -357,6 +357,18 @@
 .down {
   color: #ff8fa5;
 }
+.zone--up td {
+  background: rgba(61, 255, 168, 0.07);
+}
+.zone--up td:first-child {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+.zone--down td {
+  background: rgba(255, 61, 98, 0.07);
+}
+.zone--down td:first-child {
+  box-shadow: inset 3px 0 0 var(--rubber);
+}
 
 .seg {
   display: inline-flex;

@@ -44,6 +44,9 @@ type Phrases = {
   leagueFixture: string
   leagueFixtureBody: (d: D) => string
   leagueReminder: (d: D) => Msg
+  leagueLineup: (d: D) => Msg
+  leagueTourResults: (d: D) => Msg
+  leagueNoShows: (d: D) => Msg
   lineupOverdue: (d: D) => Msg
   scoreConfirm: (d: D) => Msg
 }
@@ -94,6 +97,9 @@ const P: Record<Lang, Phrases> = {
     leagueFixtureBody: (d) =>
       d.event === 'proposed' ? `Соперник предлагает время матча: ${when(d.startsAt)}` : d.event === 'confirmed' ? `Матч подтверждён, стол ${s(d.table)} забронирован` : 'Соперник внёс счёт матча — подтвердите',
     leagueReminder: (d) => ({ title: 'Напоминание лиги', body: d.fixtureId ? 'Завтра дедлайн матча лиги — договоритесь о времени' : `${s(d.title)}: скоро тур` }),
+    leagueLineup: (d) => ({ title: 'Составы дивизионов опубликованы', body: `${s(d.title)}: ваш дивизион — ${s(d.division)}${d.startsAt ? `, следующий тур ${when(d.startsAt)}` : ''}` }),
+    leagueTourResults: (d) => ({ title: `Итоги тура ${s(d.tour)}`, body: d.place ? `${s(d.title)}: место ${s(d.place)}, очков +${s(d.points)}` : `${s(d.title)}: тур пропущен, 0 очков` }),
+    leagueNoShows: (d) => ({ title: 'Неявки в лиге', body: `${s(d.title)}: ${s(d.player)} — неявок ${s(d.count)}, можно снять с сезона` }),
     lineupOverdue: (d) => ({ title: 'Расстановка не подана', body: `${s(d.title)}: расстановка не подана вовремя, решает организатор` }),
     scoreConfirm: (d) => ({ title: 'Подтвердите счёт', body: `Соперник внёс счёт матча${sets(d) ? ` ${sets(d)}` : ''} — подтвердите или оспорьте` }),
   },
@@ -129,6 +135,9 @@ const P: Record<Lang, Phrases> = {
     leagueFixtureBody: (d) =>
       d.event === 'proposed' ? `Қарсылас матч уақытын ұсынады: ${when(d.startsAt)}` : d.event === 'confirmed' ? `Матч расталды, ${s(d.table)}-үстел брондалды` : 'Қарсылас матч есебін енгізді — растаңыз',
     leagueReminder: (d) => ({ title: 'Лига туралы еске салу', body: d.fixtureId ? 'Ертең лига матчының соңғы мерзімі — уақытты келісіңіз' : `${s(d.title)}: тур жақында` }),
+    leagueLineup: (d) => ({ title: 'Дивизион құрамдары жарияланды', body: `${s(d.title)}: сіздің дивизион — ${s(d.division)}${d.startsAt ? `, келесі тур ${when(d.startsAt)}` : ''}` }),
+    leagueTourResults: (d) => ({ title: `${s(d.tour)}-тур қорытындысы`, body: d.place ? `${s(d.title)}: орын ${s(d.place)}, ұпай +${s(d.points)}` : `${s(d.title)}: тур өткізілді, 0 ұпай` }),
+    leagueNoShows: (d) => ({ title: 'Лигаға келмеу', body: `${s(d.title)}: ${s(d.player)} — ${s(d.count)} рет келмеді, маусымнан шығаруға болады` }),
     lineupOverdue: (d) => ({ title: 'Құрам берілмеді', body: `${s(d.title)}: құрам уақытында берілмеді, шешімді ұйымдастырушы қабылдайды` }),
     scoreConfirm: (d) => ({ title: 'Есепті растаңыз', body: `Қарсылас матч есебін енгізді${sets(d) ? ` ${sets(d)}` : ''} — растаңыз немесе дауласыңыз` }),
   },
@@ -164,6 +173,9 @@ const P: Record<Lang, Phrases> = {
     leagueFixtureBody: (d) =>
       d.event === 'proposed' ? `Your opponent proposes a match time: ${when(d.startsAt)}` : d.event === 'confirmed' ? `Match confirmed, table ${s(d.table)} is booked` : 'Your opponent entered the match score — please confirm',
     leagueReminder: (d) => ({ title: 'League reminder', body: d.fixtureId ? 'The league match deadline is tomorrow — agree on a time' : `${s(d.title)}: a round is coming up` }),
+    leagueLineup: (d) => ({ title: 'Division line-ups published', body: `${s(d.title)}: your division is ${s(d.division)}${d.startsAt ? `, next round ${when(d.startsAt)}` : ''}` }),
+    leagueTourResults: (d) => ({ title: `Round ${s(d.tour)} results`, body: d.place ? `${s(d.title)}: place ${s(d.place)}, +${s(d.points)} points` : `${s(d.title)}: round skipped, 0 points` }),
+    leagueNoShows: (d) => ({ title: 'League no-shows', body: `${s(d.title)}: ${s(d.player)} has ${s(d.count)} no-shows and can be removed from the season` }),
     lineupOverdue: (d) => ({ title: 'Lineup not submitted', body: `${s(d.title)}: the lineup was not submitted in time, the organizer decides` }),
     scoreConfirm: (d) => ({ title: 'Confirm the score', body: `Your opponent entered the match score${sets(d)? ` ${sets(d)}` : ''} — confirm or dispute it` }),
   },
@@ -237,6 +249,12 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
       return out({ title: p.leagueFixture, body: d.event ? p.leagueFixtureBody(d) : ruText || title }, lUrl)
     case 'league_reminder':
       return out(p.leagueReminder(d), lUrl)
+    case 'league_lineup':
+      return out(p.leagueLineup(d), lUrl)
+    case 'league_tour_results':
+      return out(p.leagueTourResults(d), lUrl)
+    case 'league_no_shows':
+      return out(p.leagueNoShows(d), lUrl)
     case 'lineup_overdue':
       return out(p.lineupOverdue(d), tUrl)
     case 'score_confirm':
