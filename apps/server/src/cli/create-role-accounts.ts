@@ -1,5 +1,6 @@
 // `ROLE_PASSWORD=... npm run roles:create -w @nomad/server`: role test accounts on a real database.
-// Idempotent: existing users, clubs and memberships are kept; the password is (re)set for every account.
+// Idempotent: existing users, clubs and memberships are kept. Every account gets a player profile and recorded consent.
+// ROLE_PASSWORD (re)sets every password; without it existing passwords are kept and only missing accounts fail.
 // No tournaments or ratings are invented: players start without history.
 
 import { DEFAULT_BOOKING_SETTINGS, emptyCalibration } from '@nomad/engine'
@@ -11,19 +12,28 @@ import type { Transaction } from '../db/index.ts'
 import type { Database } from '../db/types.ts'
 
 type Trx = Transaction<Database>
+type Profile = { first: string; last: string; gender: 'm' | 'f'; year: number; level: number }
+
 const DOMAIN = process.env.ROLE_DOMAIN ?? 'demo.nomad.kz'
 const password = process.env.ROLE_PASSWORD
-if (!password || password.length < 8) {
-  console.error('Set ROLE_PASSWORD (8+ characters)')
+if (password !== undefined && password.length < 8) {
+  console.error('ROLE_PASSWORD must be at least 8 characters')
   process.exit(1)
 }
 const mail = (local: string) => `${local}@${DOMAIN}`
 
-const PLAYERS = [
-  { local: 'player', first: 'Арман', last: 'Сейтов', gender: 'm', year: 1991, level: START_LEVELS.amateur },
-  { local: 'newbie', first: 'Дана', last: 'Ермекова', gender: 'f', year: 2001, level: START_LEVELS.novice },
-  { local: 'rttf', first: 'Руслан', last: 'Ахметов', gender: 'm', year: 1987, level: START_LEVELS.amateur },
-] as const
+const PROFILES: Record<string, Profile> = {
+  player: { first: 'Арман', last: 'Сейтов', gender: 'm', year: 1991, level: START_LEVELS.amateur },
+  newbie: { first: 'Дана', last: 'Ермекова', gender: 'f', year: 2001, level: START_LEVELS.novice },
+  rttf: { first: 'Руслан', last: 'Ахметов', gender: 'm', year: 1987, level: START_LEVELS.amateur },
+  organizer: { first: 'Ерлан', last: 'Касымов', gender: 'm', year: 1984, level: START_LEVELS.amateur },
+  newclub: { first: 'Айгерим', last: 'Нурланова', gender: 'f', year: 1990, level: START_LEVELS.amateur },
+  hall: { first: 'Марат', last: 'Жумабаев', gender: 'm', year: 1993, level: START_LEVELS.amateur },
+  referee: { first: 'Ольга', last: 'Ким', gender: 'f', year: 1986, level: START_LEVELS.amateur },
+  manager: { first: 'Тимур', last: 'Омаров', gender: 'm', year: 1989, level: START_LEVELS.amateur },
+  accountant: { first: 'Сауле', last: 'Бекова', gender: 'f', year: 1985, level: START_LEVELS.novice },
+  admin: { first: 'Данияр', last: 'Алиев', gender: 'm', year: 1988, level: START_LEVELS.amateur },
+}
 
 const HELPERS: { local: string; rights: ClubRight[] }[] = [
   { local: 'hall', rights: ['bookings', 'players'] },
@@ -34,18 +44,39 @@ const HELPERS: { local: string; rights: ClubRight[] }[] = [
 
 const HOURS = Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((d) => [d, { open: (d > 5 ? 10 : 8) * 60, close: (d > 5 ? 22 : 23) * 60 }]))
 
-async function user(trx: Trx, email: string, hash: string, admin = false) {
+async function account(trx: Trx, local: string, hash: string | null, cityId: number, admin = false) {
+  const email = mail(local)
   const found = await trx.selectFrom('users').select('id').where((eb) => eb(eb.fn('lower', ['email']), '=', email)).executeTakeFirst()
+  let userId: number
   if (found) {
     await trx
       .updateTable('users')
-      .set((eb) => ({ password_hash: hash, blocked_at: null, consent_at: eb.fn.coalesce('consent_at', eb.val(new Date())), ...(admin ? { platform_role: 'admin' as const } : {}) }))
+      .set((eb) => ({
+        blocked_at: null,
+        consent_at: eb.fn.coalesce('consent_at', eb.val(new Date())),
+        ...(hash ? { password_hash: hash } : {}),
+        ...(admin ? { platform_role: 'admin' as const } : {}),
+      }))
       .where('id', '=', found.id)
       .execute()
-    return found.id
+    userId = found.id
+  } else {
+    if (!hash) throw new Error(`${email} does not exist yet: set ROLE_PASSWORD`)
+    const row = await trx.insertInto('users').values({ email, password_hash: hash, email_verified_at: new Date(), consent_at: new Date(), platform_role: admin ? 'admin' : 'user' }).returning('id').executeTakeFirstOrThrow()
+    userId = row.id
   }
-  const row = await trx.insertInto('users').values({ email, password_hash: hash, email_verified_at: new Date(), consent_at: new Date(), platform_role: admin ? 'admin' : 'user' }).returning('id').executeTakeFirstOrThrow()
-  return row.id
+
+  const has = await trx.selectFrom('players').select('id').where('user_id', '=', userId).executeTakeFirst()
+  if (!has) {
+    const p = PROFILES[local]!
+    const row = await trx
+      .insertInto('players')
+      .values({ user_id: userId, first_name: p.first, last_name: p.last, gender: p.gender, birth_year: p.year, city_id: cityId, start_level: p.level, search_name: searchName({ firstName: p.first, lastName: p.last }) })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+    await trx.insertInto('player_ratings').values({ player_id: row.id, kind: 'singles', rating: null, calibration: json(emptyCalibration()) }).execute()
+  }
+  return userId
 }
 
 async function club(trx: Trx, input: { slug: string; name: string; status: 'active' | 'review'; owner: number; cityId: number; tables: number }) {
@@ -82,37 +113,28 @@ async function club(trx: Trx, input: { slug: string; name: string; status: 'acti
 }
 
 try {
-  const hash = await hashPassword(password)
+  const hash = password ? await hashPassword(password) : null
   await db.transaction().execute(async (trx) => {
     const almaty = (await trx.selectFrom('cities').select('id').where('slug', '=', 'almaty').executeTakeFirstOrThrow()).id
 
-    for (const p of PLAYERS) {
-      const userId = await user(trx, mail(p.local), hash)
-      const has = await trx.selectFrom('players').select('id').where('user_id', '=', userId).executeTakeFirst()
-      if (has) continue
-      const row = await trx
-        .insertInto('players')
-        .values({ user_id: userId, first_name: p.first, last_name: p.last, gender: p.gender, birth_year: p.year, city_id: almaty, start_level: p.level, search_name: searchName({ firstName: p.first, lastName: p.last }) })
-        .returning('id')
-        .executeTakeFirstOrThrow()
-      await trx.insertInto('player_ratings').values({ player_id: row.id, kind: 'singles', rating: null, calibration: json(emptyCalibration()) }).execute()
-    }
+    for (const local of ['player', 'newbie', 'rttf']) await account(trx, local, hash, almaty)
 
-    const organizer = await user(trx, mail('organizer'), hash)
+    const organizer = await account(trx, 'organizer', hash, almaty)
     const smash = await club(trx, { slug: 'smash-arena', name: 'Smash Arena', status: 'active', owner: organizer, cityId: almaty, tables: 6 })
     for (const h of HELPERS) {
-      const userId = await user(trx, mail(h.local), hash)
+      const userId = await account(trx, h.local, hash, almaty)
       const member = await trx.selectFrom('club_members').select('user_id').where('club_id', '=', smash).where('user_id', '=', userId).executeTakeFirst()
       if (member) await trx.updateTable('club_members').set({ rights: h.rights }).where('club_id', '=', smash).where('user_id', '=', userId).execute()
       else await trx.insertInto('club_members').values({ club_id: smash, user_id: userId, role: 'helper', rights: h.rights, scope: json({ kind: 'club' }), invited_by: organizer }).execute()
     }
 
-    const newOwner = await user(trx, mail('newclub'), hash)
+    const newOwner = await account(trx, 'newclub', hash, almaty)
     await club(trx, { slug: 'ping-pong-lab', name: 'Ping Pong Lab', status: 'review', owner: newOwner, cityId: almaty, tables: 3 })
 
-    await user(trx, mail('admin'), hash, true)
+    await account(trx, 'admin', hash, almaty, true)
   })
-  for (const l of ['player', 'newbie', 'rttf', 'organizer', 'newclub', 'hall', 'referee', 'manager', 'accountant', 'admin']) console.log(mail(l))
+  for (const l of Object.keys(PROFILES)) console.log(mail(l))
+  if (!hash) console.log('Passwords unchanged')
 } catch (e) {
   console.error(e instanceof Error ? e.message : e)
   process.exitCode = 1

@@ -265,7 +265,12 @@ accountRouter.post(
       const existing = await trx.selectFrom('players').select('id').where('user_id', '=', user.id).executeTakeFirst()
       if (existing) return
       const p = body.profile
-      if (!p) throw badRequest('player.profile_required')
+      if (!p) {
+        // Staff (platform admin, club members) only confirm consent.
+        const staff = user.platformRole === 'admin' || (await trx.selectFrom('club_members').select('club_id').where('user_id', '=', user.id).executeTakeFirst())
+        if (staff) return
+        throw badRequest('player.profile_required')
+      }
       const player = await trx
         .insertInto('players')
         .values({

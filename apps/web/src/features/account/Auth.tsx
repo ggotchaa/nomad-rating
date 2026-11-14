@@ -19,7 +19,7 @@ export function afterLogin(me: Me, from: string | undefined): string {
   return from ?? homeOf(me)
 }
 
-export const homeOf = (me: Me) => (me.user?.role === 'admin' && !me.player ? '/admin' : me.clubs.length ? '/manage' : '/me')
+export const homeOf = (me: Me) => (me.user?.role === 'admin' ? '/admin' : me.clubs.length ? '/manage' : '/me')
 
 /** Return target after a gate page; auth pages are never a destination. */
 export const returnTarget = (v: string | null) => {
