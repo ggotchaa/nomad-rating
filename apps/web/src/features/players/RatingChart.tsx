@@ -46,7 +46,7 @@ export function RatingChart({ points }: { points: RatingPoint[] }) {
         </defs>
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="rgba(94,242,255,0.1)" />
+            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="var(--line)" />
             <text x={PAD.l - 8} y={y(v) + 4} textAnchor="end">
               {v}
             </text>
@@ -59,9 +59,9 @@ export function RatingChart({ points }: { points: RatingPoint[] }) {
           {formatDateShort(points[points.length - 1]!.date)}
         </text>
         <path d={`${line} L${x(t1)},${H - PAD.b} L${x(t0)},${H - PAD.b} Z`} fill="url(#rating-fill)" />
-        <path d={line} fill="none" stroke="#5ef2ff" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <line x1={x(times[active]!)} x2={x(times[active]!)} y1={PAD.t} y2={H - PAD.b} stroke="rgba(94,242,255,0.35)" strokeDasharray="3 3" />
-        <circle cx={x(times[active]!)} cy={y(p.rating)} r="5" fill="#03050b" stroke="#5ef2ff" strokeWidth="2" />
+        <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <line x1={x(times[active]!)} x2={x(times[active]!)} y1={PAD.t} y2={H - PAD.b} stroke="var(--line-strong)" strokeDasharray="3 3" />
+        <circle cx={x(times[active]!)} cy={y(p.rating)} r="5" fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
       </svg>
     </div>
   )

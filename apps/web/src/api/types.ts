@@ -170,6 +170,9 @@ export type TournamentDetail = {
   participants: Participant[]
   myEntry: Participant | null
   structure: StageView[] | null
+  isStaff?: boolean
+  shareUrl?: string
+  settings?: { scoreEntry?: 'staff' | 'players'; checkinWindowMinutes?: number; sameDayRegistration?: boolean; waitlist?: boolean }
 }
 
 export type RatingRow = {

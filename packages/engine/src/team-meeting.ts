@@ -5,6 +5,8 @@ import type { GameScore } from './scoring.ts'
 
 export type MeetingGameSpec = { kind: 'singles' | 'doubles'; home: number[]; away: number[] }
 
+export type MeetingSlotGender = 'm' | 'f'
+
 export type MeetingScheme = {
   id: string
   name: string
@@ -14,6 +16,21 @@ export type MeetingScheme = {
   firstTo: number
   playAll: boolean
   tables: 1 | 2
+  /**
+   * Gender of every line-up slot, for custom formats that fix how many boys and girls play
+   * a meeting (spec: «3 юноши и 2 девушки»). Absent = the scheme does not care.
+   */
+  slotGenders?: MeetingSlotGender[]
+}
+
+/** Slot name as the organiser writes it: A_boy_1, B_girl_2. */
+export function slotName(scheme: Pick<MeetingScheme, 'slots' | 'slotGenders'>, side: 'home' | 'away', slot: number): string {
+  const team = side === 'home' ? 'A' : 'B'
+  const genders = scheme.slotGenders
+  if (!genders || slot >= genders.length) return `${team}_${slot + 1}`
+  const kind = genders[slot] === 'f' ? 'girl' : 'boy'
+  const n = genders.slice(0, slot + 1).filter((g) => g === genders[slot]).length
+  return `${team}_${kind}_${n}`
 }
 
 const s = (h: number, a: number): MeetingGameSpec => ({ kind: 'singles', home: [h], away: [a] })
@@ -47,12 +64,19 @@ export function validateScheme(scheme: MeetingScheme): string[] {
   if (scheme.slots < 1 || scheme.slots > 8) errors.push('scheme.slots')
   if (!scheme.games.length) errors.push('scheme.no_games')
   if (scheme.firstTo < 1 || scheme.firstTo * 2 - 1 > scheme.games.length) errors.push('scheme.first_to')
+  if (scheme.slotGenders && scheme.slotGenders.length !== scheme.slots) errors.push('scheme.slot_genders')
   scheme.games.forEach((g, i) => {
     const size = g.kind === 'singles' ? 1 : 2
     if (g.home.length !== size || g.away.length !== size) errors.push(`scheme.game_size:${i + 1}`)
-    if ([...g.home, ...g.away].some((x) => x < 0 || x >= scheme.slots)) errors.push(`scheme.slot:${i + 1}`)
+    // A slot outside the declared line-up (e.g. A_boy_4 when only 3 boys play) is not a valid format.
+    if ([...g.home, ...g.away].some((x) => !Number.isInteger(x) || x < 0 || x >= scheme.slots)) errors.push(`scheme.slot:${i + 1}`)
     if (new Set(g.home).size !== g.home.length || new Set(g.away).size !== g.away.length) errors.push(`scheme.duplicate:${i + 1}`)
   })
+  // Every declared slot has to play at least once, otherwise the line-up asks for a player who never appears.
+  if (scheme.games.length && !errors.some((e) => e.startsWith('scheme.slot:'))) {
+    const used = new Set(scheme.games.flatMap((g) => [...g.home, ...g.away]))
+    for (let i = 0; i < scheme.slots; i++) if (!used.has(i)) errors.push(`scheme.slot_unused:${i + 1}`)
+  }
   return errors
 }
 

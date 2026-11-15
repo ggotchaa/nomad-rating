@@ -167,7 +167,7 @@ function Picker({ hallId }: { hallId: number }) {
                       {t.b.legend.free}
                     </span>
                     <span>
-                      <i style={{ borderColor: 'var(--holo)', background: 'rgba(94,242,255,.16)' }} />
+                      <i style={{ borderColor: 'var(--holo)', background: 'var(--accent-soft)' }} />
                       {t.b.legend.partly}
                     </span>
                     <span>

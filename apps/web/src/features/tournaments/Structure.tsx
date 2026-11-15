@@ -11,7 +11,17 @@ function sourceLabel(source: unknown): string {
   return '—'
 }
 
-function Side({ entry, source, sets, win }: { entry: EntryRef | null; source: unknown; sets: number | null; win: boolean }) {
+function Side({
+  entry,
+  source,
+  sets,
+  win,
+}: {
+  entry: EntryRef | null
+  source: unknown
+  sets: number | null
+  win: boolean
+}) {
   return (
     <div className={`match__side${win ? ' is-win' : ''}${entry ? '' : ' is-tbd'}`}>
       <span>
@@ -35,8 +45,18 @@ function Match({ m }: { m: MatchView }) {
           </span>
         )}
       </div>
-      <Side entry={m.home} source={m.homeSource} sets={done ? m.setsHome : null} win={done && m.winnerEntryId === m.home?.entryId} />
-      <Side entry={m.away} source={m.awaySource} sets={done ? m.setsAway : null} win={done && m.winnerEntryId === m.away?.entryId} />
+      <Side
+        entry={m.home}
+        source={m.homeSource}
+        sets={done ? m.setsHome : null}
+        win={done && m.winnerEntryId === m.home?.entryId}
+      />
+      <Side
+        entry={m.away}
+        source={m.awaySource}
+        sets={done ? m.setsAway : null}
+        win={done && m.winnerEntryId === m.away?.entryId}
+      />
     </div>
   )
 }
@@ -68,7 +88,11 @@ function Bracket({ matches }: { matches: MatchView[] }) {
       {others.size > 0 && (
         <div className="places">
           {[...others.entries()]
-            .sort((a, b) => (a[1][0]!.placeFrom ?? 0) - (b[1][0]!.placeFrom ?? 0) || (a[1][0]!.placeTo ?? 0) - (b[1][0]!.placeTo ?? 0))
+            .sort(
+              (a, b) =>
+                (a[1][0]!.placeFrom ?? 0) - (b[1][0]!.placeFrom ?? 0) ||
+                (a[1][0]!.placeTo ?? 0) - (b[1][0]!.placeTo ?? 0),
+            )
             .map(([key, list]) => (
               <div key={key}>
                 <h3>{t.t.forPlaces(list[0]!.placeFrom ?? 0, list[0]!.placeTo ?? 0)}</h3>
@@ -91,7 +115,9 @@ const played = (m: MatchView) => m.winnerEntryId != null && m.resultType !== 'by
 function TieBreak({ row, rows, matches }: { row: StandingRow; rows: StandingRow[]; matches: MatchView[] }) {
   if (!row.decidedBy || !row.tiedIds?.length) return null
   const ids = [Number(row.id), ...row.tiedIds]
-  const h2h = matches.filter((m) => played(m) && ids.includes(m.home?.entryId ?? -1) && ids.includes(m.away?.entryId ?? -1))
+  const h2h = matches.filter(
+    (m) => played(m) && ids.includes(m.home?.entryId ?? -1) && ids.includes(m.away?.entryId ?? -1),
+  )
   const calc = ids.map((id) => {
     const c = { id, wins: 0, setsW: 0, setsL: 0, ptsW: 0, ptsL: 0 }
     for (const m of h2h) {
@@ -145,66 +171,73 @@ export function Structure({ stages, me }: { stages: StageView[]; me?: number }) 
   return (
     <>
       {stages.map((s) => (
-        <section className="panel" key={s.key}>
-          <h2>{s.name}</h2>
-          {'groups' in s ? (
-            <div className="groups">
-              {s.groups.map((g) => (
-                <div className="groupbox" key={g.code}>
-                  <h3>
-                    {s.groups.length > 1 ? `${t.t.group} ${g.code}` : s.name}
-                  </h3>
-                  {g.matches.some((m) => played(m) && m.resultType === 'normal' && !m.games?.length) && <p className="note small">{t.t.noGamePoints}</p>}
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>{t.t.player}</th>
-                        <th className="num">{t.t.w}</th>
-                        <th className="num">{t.t.l}</th>
-                        <th className="num">{t.t.sets}</th>
-                        <th className="num">{t.t.pts}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.standings
-                        ? g.standings.rows.map((r) => (
-                            <tr key={r.id} className={r.player?.playerId === me ? 'is-me' : ''}>
-                              <td className="rank">{r.place}</td>
-                              <td>
-                                {r.player ? <Link to={`/players/${r.player.playerId}`}>{r.player.name}</Link> : '—'}
-                                <CalibTag e={r.player} />
-                                <TieBreak row={r} rows={g.standings!.rows} matches={g.matches} />
-                              </td>
-                              <td className="num">{r.wins}</td>
-                              <td className="num">{r.losses}</td>
-                              <td className="num">
-                                {r.setsWon}:{r.setsLost}
-                              </td>
-                              <td className="num">{r.points}</td>
-                            </tr>
-                          ))
-                        : g.members.map((p, i) => (
-                            <tr key={p?.entryId ?? i}>
-                              <td className="rank">{i + 1}</td>
-                              <td colSpan={5}>
-                                {p?.name}
-                                <CalibTag e={p} />
-                              </td>
-                            </tr>
-                          ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
-          ) : s.matches.length ? (
-            <Bracket matches={s.matches} />
-          ) : (
-            <p className="empty">{t.t.bracketLater}</p>
-          )}
-        </section>
+        <StageBlock key={s.key} s={s} me={me} />
       ))}
     </>
+  )
+}
+
+/** One stage of the tournament: group tables or a bracket. */
+export function StageBlock({ s, me }: { s: StageView; me?: number }) {
+  return (
+    <section className="panel" key={s.key}>
+      <h2>{s.name}</h2>
+      {'groups' in s ? (
+        <div className="groups">
+          {s.groups.map((g) => (
+            <div className="groupbox" key={g.code}>
+              <h3>{s.groups.length > 1 ? `${t.t.group} ${g.code}` : s.name}</h3>
+              {g.matches.some((m) => played(m) && m.resultType === 'normal' && !m.games?.length) && (
+                <p className="note small">{t.t.noGamePoints}</p>
+              )}
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>{t.t.player}</th>
+                    <th className="num">{t.t.w}</th>
+                    <th className="num">{t.t.l}</th>
+                    <th className="num">{t.t.sets}</th>
+                    <th className="num">{t.t.pts}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.standings
+                    ? g.standings.rows.map((r) => (
+                        <tr key={r.id} className={r.player?.playerId === me ? 'is-me' : ''}>
+                          <td className="rank">{r.place}</td>
+                          <td>
+                            {r.player ? <Link to={`/players/${r.player.playerId}`}>{r.player.name}</Link> : '—'}
+                            <CalibTag e={r.player} />
+                            <TieBreak row={r} rows={g.standings!.rows} matches={g.matches} />
+                          </td>
+                          <td className="num">{r.wins}</td>
+                          <td className="num">{r.losses}</td>
+                          <td className="num">
+                            {r.setsWon}:{r.setsLost}
+                          </td>
+                          <td className="num">{r.points}</td>
+                        </tr>
+                      ))
+                    : g.members.map((p, i) => (
+                        <tr key={p?.entryId ?? i}>
+                          <td className="rank">{i + 1}</td>
+                          <td colSpan={5}>
+                            {p?.name}
+                            <CalibTag e={p} />
+                          </td>
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      ) : s.matches.length ? (
+        <Bracket matches={s.matches} />
+      ) : (
+        <p className="empty">{t.t.bracketLater}</p>
+      )}
+    </section>
   )
 }

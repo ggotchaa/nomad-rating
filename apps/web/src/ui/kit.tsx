@@ -48,12 +48,12 @@ export const StatusChip = ({ status }: { status: string }) => (
   </span>
 )
 
-export function TournamentCard(p: { slug: string; title: string; startsAt: string; fee: number; max: number; taken: number; restrictions: Restrictions; club: string; city?: string; status: string; hideSpots?: boolean }) {
+export function TournamentCard(p: { slug: string; title: string; startsAt: string; fee: number; max: number; taken: number; restrictions: Restrictions; club: string; city?: string; status: string; hideSpots?: boolean; tone?: 'past' | 'live' }) {
   const full = p.taken >= p.max
   const open = p.status === 'published'
   const limits = restrictionLabel(p.restrictions)
   return (
-    <Link className="tcard" to={`/t/${p.slug}`}>
+    <Link className={`tcard${p.tone ? ` tcard--${p.tone}` : ''}`} to={`/t/${p.slug}`}>
       <div className="tcard__date">
         <span>{formatDate(p.startsAt)}</span>
         <span>{formatTime(p.startsAt)}</span>

@@ -115,7 +115,7 @@ export function HallPlan({ plan, tables, mode = 'view', state, caption, selected
         {grid.map(([x1, y1, x2, y2], i) => (
           <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} className="plan__grid" />
         ))}
-        <rect x="0" y="0" width={width} height={length} fill="none" stroke="rgba(94,242,255,0.3)" strokeWidth="0.08" rx="0.3" />
+        <rect x="0" y="0" width={width} height={length} fill="none" stroke="var(--line-strong)" strokeWidth="0.08" rx="0.3" />
         {plan.landmarks.map((l, i) => {
           const sel = selection?.kind === 'landmark' && selection.index === i
           return (

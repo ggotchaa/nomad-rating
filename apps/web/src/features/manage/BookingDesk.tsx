@@ -434,7 +434,7 @@ export function BookingDesk() {
               </div>
               <div className="legend">
                 <span>
-                  <i style={{ borderColor: 'var(--holo)', background: 'rgba(94,242,255,.18)' }} />
+                  <i style={{ borderColor: 'var(--holo)', background: 'var(--accent-soft)' }} />
                   {t.b.status.confirmed}
                 </span>
                 <span>

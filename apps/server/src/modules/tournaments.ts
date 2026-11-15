@@ -475,7 +475,14 @@ tournamentsRouter.get(
       isRated: t.is_rated,
       ratingCoefficient: Number(t.rating_coefficient),
       refundRules: t.refund_rules,
-      settings: isStaff ? { scoreEntry: 'staff', checkinWindowMinutes: 60, ...settings } : { scoreEntry: settings.scoreEntry ?? 'staff', checkinWindowMinutes: settings.checkinWindowMinutes ?? 60, sameDayRegistration: settings.sameDayRegistration ?? false },
+      settings: isStaff
+        ? { scoreEntry: 'staff', checkinWindowMinutes: 60, waitlist: settings.waitlist !== false, ...settings }
+        : {
+            scoreEntry: settings.scoreEntry ?? 'staff',
+            checkinWindowMinutes: settings.checkinWindowMinutes ?? 60,
+            sameDayRegistration: settings.sameDayRegistration ?? false,
+            waitlist: settings.waitlist !== false,
+          },
       cancelledReason: t.cancelled_reason,
       seriesId: t.series_id,
       tableIds: isStaff ? t.table_ids : undefined,
@@ -510,6 +517,8 @@ export const meetingSchemeSchema = z.object({
   firstTo: z.number().int().min(1).max(8),
   playAll: z.boolean(),
   tables: z.union([z.literal(1), z.literal(2)]),
+  /** How many boys and girls play the meeting, slot by slot (custom formats). */
+  slotGenders: z.array(z.enum(['m', 'f'])).min(1).max(8).optional(),
 })
 
 export const createSchema = z.object({
@@ -553,6 +562,7 @@ export const createSchema = z.object({
       avgMatchMinutes: z.number().int().min(5).max(90).optional(),
       restMinutes: z.number().int().min(0).max(30).optional(),
       requireCheckin: z.boolean().optional(),
+      waitlist: z.boolean().optional(),
       callResponseMinutes: z.number().int().min(1).max(15).optional(),
       meeting: meetingSchemeSchema.optional(),
     })
@@ -775,7 +785,8 @@ export async function registerPlayer(trx: Trx, tournamentId: number, playerId: n
 
   const taken = await trx.selectFrom('entries').select((eb) => eb.fn.countAll<number>().as('n')).where('tournament_id', '=', t.id).where('status', 'in', [...ENTRY_OCCUPYING]).executeTakeFirstOrThrow()
   if (!existing && Number(taken.n) >= t.max_participants) {
-    // R-4: waiting list.
+    // R-4: waiting list, unless the organiser turned it off for this tournament.
+    if (t.settings.waitlist === false) throw conflict('entry.no_places')
     const last = await trx.selectFrom('entries').select((eb) => eb.fn.max<number>('waitlist_position').as('p')).where('tournament_id', '=', t.id).executeTakeFirst()
     const entry = await trx
       .insertInto('entries')

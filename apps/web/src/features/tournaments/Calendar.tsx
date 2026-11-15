@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { intlTag, locale } from '../../i18n/locale.ts'
 import { formatTime, localDate } from '../../i18n/format.ts'
@@ -8,7 +8,9 @@ import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { Async, Seg, TournamentCard } from '../../ui/kit.tsx'
 
-type When = 'upcoming' | 'live' | 'finished'
+type When = 'all' | 'upcoming' | 'live' | 'finished'
+
+const DAY = 86400000
 
 function MonthGrid({ rows }: { rows: Card[] }) {
   const first = rows.length ? localDate(new Date(rows[0]!.startsAt)) : localDate()
@@ -33,7 +35,11 @@ function MonthGrid({ rows }: { rows: Card[] }) {
         <button className="button button--sm" onClick={() => shift(-1)} aria-label="←">
           ←
         </button>
-        <h2>{new Intl.DateTimeFormat(intlTag, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)))}</h2>
+        <h2>
+          {new Intl.DateTimeFormat(intlTag, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+            new Date(Date.UTC(y, m - 1, 1)),
+          )}
+        </h2>
         <button className="button button--sm" onClick={() => shift(1)} aria-label="→">
           →
         </button>
@@ -51,7 +57,10 @@ function MonthGrid({ rows }: { rows: Card[] }) {
           const list = byDay.get(i + 1) ?? []
           const iso = `${ym}-${String(i + 1).padStart(2, '0')}`
           return (
-            <div key={iso} className={`monthgrid__day${iso === today ? ' is-today' : ''}${list.length ? ' has-events' : ''}`}>
+            <div
+              key={iso}
+              className={`monthgrid__day${iso === today ? ' is-today' : ''}${list.length ? ' has-events' : ''}`}
+            >
               <span className="mono small">{i + 1}</span>
               {list.map((x) => (
                 <Link key={x.id} to={`/t/${x.slug}`} title={`${x.title} · ${x.club.name}`}>
@@ -66,9 +75,75 @@ function MonthGrid({ rows }: { rows: Card[] }) {
   )
 }
 
+const cards = (rows: Card[], past = false) => (
+  <div className="grid grid--cards">
+    {rows.map((x) => (
+      <TournamentCard
+        key={x.id}
+        slug={x.slug}
+        title={x.title}
+        startsAt={x.startsAt}
+        fee={x.fee}
+        max={x.maxParticipants}
+        taken={x.taken}
+        restrictions={x.restrictions}
+        club={x.club.name}
+        city={x.city}
+        status={x.status}
+        tone={past ? 'past' : x.status === 'running' ? 'live' : undefined}
+      />
+    ))}
+  </div>
+)
+
+/**
+ * «Все» (the default) shows the whole picture at once: finished above, running in the middle,
+ * upcoming below, and the page scrolls to the «now» line on open.
+ */
+function AllView({ rows }: { rows: Card[] }) {
+  const nowRef = useRef<HTMLDivElement>(null)
+  const past = new Set(['finished', 'finished_early', 'cancelled'])
+  const finished = rows.filter((x) => past.has(x.status))
+  const live = rows.filter((x) => x.status === 'running')
+  const upcoming = rows.filter((x) => !past.has(x.status) && x.status !== 'running')
+  useEffect(() => {
+    if (!finished.length) return
+    const el = nowRef.current
+    if (!el) return
+    const top = el.getBoundingClientRect().top + window.scrollY - 90
+    window.scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }, [rows])
+  if (!rows.length) return <p className="empty">{t.t.empty}</p>
+  return (
+    <>
+      {finished.length > 0 && (
+        <section className="stack">
+          <h2 className="muted">{t.t.finished}</h2>
+          {cards(finished.slice().reverse(), true)}
+        </section>
+      )}
+      <div className="row row--between" ref={nowRef} style={{ scrollMarginTop: 90 }}>
+        <h2>
+          <span className="dot" style={{ display: 'inline-block', marginRight: 8, color: 'var(--accent)' }} />
+          {t.t.nowLine}
+        </h2>
+        <span className="small muted">{t.t.allHint}</span>
+      </div>
+      {live.length > 0 && cards(live)}
+      {upcoming.length > 0 && (
+        <section className="stack">
+          <h2 className="muted">{t.t.upcoming}</h2>
+          {cards(upcoming)}
+        </section>
+      )}
+      {!live.length && !upcoming.length && <p className="empty">{t.t.empty}</p>}
+    </>
+  )
+}
+
 export function Calendar() {
   const { me, cities, city } = useSession()
-  const [when, setWhen] = useState<When>('upcoming')
+  const [when, setWhen] = useState<When>('all')
   const [where, setWhere] = useState(city)
   const [fitsMe, setFitsMe] = useState(false)
   const [hasSpots, setHasSpots] = useState(false)
@@ -77,18 +152,34 @@ export function Calendar() {
   if (where) query.set('city', where)
   if (fitsMe) query.set('fitsMe', 'true')
   if (hasSpots) query.set('hasSpots', 'true')
+  if (when === 'all') {
+    // Day-aligned bounds: a timestamp that moves every render would make the URL — and the request — loop.
+    const today = Math.floor(Date.now() / DAY) * DAY
+    query.set('from', new Date(today - 60 * DAY).toISOString())
+    query.set('to', new Date(today + 365 * DAY).toISOString())
+    query.set('limit', '100')
+  }
   const list = useApi<Card[]>(`/tournaments?${query}`)
+  const canCreate = me.clubs.some((c) => c.role === 'organizer' || c.rights.includes('tournaments'))
 
   return (
     <main className="page">
       <header className="pagehead">
-        <h1>{t.t.title}</h1>
+        <div className="row row--between">
+          <h1>{t.t.title}</h1>
+          {canCreate && (
+            <Link className="button button--primary" to="/manage/tournaments/new">
+              + {t.t.createTournament}
+            </Link>
+          )}
+        </div>
         <div className="filters">
           <Seg
             label={t.t.title}
             value={when}
             onChange={setWhen}
             options={[
+              ['all', t.t.all],
               ['upcoming', t.t.upcoming],
               ['live', t.t.live],
               ['finished', t.t.finished],
@@ -111,14 +202,14 @@ export function Calendar() {
               </option>
             ))}
           </select>
-          {when === 'upcoming' && (
+          {when !== 'finished' && (
             <>
-              <label className="check">
+              <label className="check check--pill">
                 <input type="checkbox" checked={hasSpots} onChange={(e) => setHasSpots(e.target.checked)} />
                 {t.t.hasSpots}
               </label>
               {me.player && (
-                <label className="check">
+                <label className="check check--pill">
                   <input type="checkbox" checked={fitsMe} onChange={(e) => setFitsMe(e.target.checked)} />
                   {t.t.fitsMe}
                 </label>
@@ -131,12 +222,10 @@ export function Calendar() {
         {(rows) =>
           view === 'month' ? (
             <MonthGrid rows={rows} />
+          ) : when === 'all' ? (
+            <AllView rows={rows} />
           ) : rows.length ? (
-            <div className="grid grid--cards">
-              {rows.map((x) => (
-                <TournamentCard key={x.id} slug={x.slug} title={x.title} startsAt={x.startsAt} fee={x.fee} max={x.maxParticipants} taken={x.taken} restrictions={x.restrictions} club={x.club.name} city={x.city} status={x.status} />
-              ))}
-            </div>
+            cards(rows, when === 'finished')
           ) : (
             <p className="empty">{t.t.empty}</p>
           )

@@ -2,7 +2,7 @@
 
 import { Router } from 'express'
 import { z } from 'zod'
-import { estimateFormat, formatTemplate, validateFormat } from '@nomad/engine'
+import { estimateFormat, formatTemplate, validateFormat, validateScheme } from '@nomad/engine'
 import type { TemplateParams, TournamentFormat } from '@nomad/engine'
 import { assertTransition, ENTRY_OCCUPYING, tournamentStatus } from '@nomad/shared'
 import type { EntryStatus } from '@nomad/shared'
@@ -53,6 +53,10 @@ export async function updateTournament(id: number, body: TournamentPatch, actorU
       const max = body.maxParticipants ?? t.max_participants
       if (max < taken) throw conflict('tournament.max_below_taken', { taken })
       const settings = { ...t.settings, ...body.settings }
+      if (t.type === 'team' && body.settings?.meeting) {
+        const schemeErrors = validateScheme(body.settings.meeting)
+        if (schemeErrors.length) throw unprocessable('meeting.invalid_scheme', schemeErrors)
+      }
       let format: TournamentFormat = t.format
       if (body.format) format = body.format as TournamentFormat
       else if (body.template) format = formatTemplate(body.template, max, (body.templateParams ?? {}) as TemplateParams)

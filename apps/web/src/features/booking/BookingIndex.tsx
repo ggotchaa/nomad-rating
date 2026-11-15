@@ -6,6 +6,7 @@ import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { locale } from '../../i18n/locale.ts'
 import { Async } from '../../ui/kit.tsx'
+import { MyBookings } from './MyBookings.tsx'
 
 /** Table booking entry: city from the reference list → clubs of that city that take online bookings. */
 export function BookingIndex() {
@@ -47,6 +48,7 @@ export function BookingIndex() {
           </select>
         </div>
       </header>
+      <MyBookings />
       <Async state={clubs} skeleton={2}>
         {(rows) => {
           const open = rows.filter((c) => c.bookingAvailable)

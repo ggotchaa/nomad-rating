@@ -207,6 +207,8 @@ export type TournamentSettings = {
   avgMatchMinutes?: number
   restMinutes?: number
   requireCheckin?: boolean
+  /** Off = registration stops at the last free place instead of building a waiting list (R-4). */
+  waitlist?: boolean
   meeting?: MeetingSchemeJson
 }
 
