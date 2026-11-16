@@ -1,6 +1,9 @@
 export const ru = {
   nav: { home: 'Главная', tournaments: 'Турниры', rating: 'Рейтинг', clubs: 'Клубы', cabinet: 'Кабинет', manage: 'Кабинет клуба', login: 'Войти', logout: 'Выйти' },
   common: {
+    theme: 'Тема оформления',
+    themeLight: 'Светлая тема',
+    themeDark: 'Тёмная тема',
     loading: 'Загрузка…',
     loadError: 'Не удалось загрузить данные',
     retry: 'Повторить',

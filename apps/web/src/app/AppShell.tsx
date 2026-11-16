@@ -4,6 +4,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { t } from '../i18n/index.ts'
 import { locale } from '../i18n/locale.ts'
 import { LangLinks, LangSelect } from '../ui/Lang.tsx'
+import { ThemeToggle } from '../ui/ThemeToggle.tsx'
 import { useSession } from './auth.tsx'
 import { NotificationBell } from '../features/notifications/Bell.tsx'
 import { CallPopup } from '../features/conduct/CallPopup.tsx'
@@ -20,7 +21,8 @@ export function AppShell() {
   }, [pathname])
 
   const gate = me.user?.mfaRequired ? '/mfa' : me.user?.needsWelcome ? '/welcome' : null
-  if (gate && !['/mfa', '/welcome', '/logout'].includes(pathname)) return <Navigate to={`${gate}?returnTo=${encodeURIComponent(pathname)}`} replace />
+  if (gate && !['/mfa', '/welcome', '/logout'].includes(pathname))
+    return <Navigate to={`${gate}?returnTo=${encodeURIComponent(pathname)}`} replace />
 
   return (
     <div className="app">
@@ -53,8 +55,13 @@ export function AppShell() {
               ))}
             </select>
             <LangSelect />
+            <ThemeToggle />
             {me.clubs.length > 1 && (
-              <select aria-label={t.nav.manage} value={me.activeClubId ?? me.clubs[0]!.id} onChange={(e) => void setActiveClub(Number(e.target.value))}>
+              <select
+                aria-label={t.nav.manage}
+                value={me.activeClubId ?? me.clubs[0]!.id}
+                onChange={(e) => void setActiveClub(Number(e.target.value))}
+              >
                 {me.clubs.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -64,7 +71,9 @@ export function AppShell() {
             )}
             {me.user ? (
               <>
-                <span className="usertag">{me.player ? `${me.player.first_name} ${me.player.last_name}` : me.user.email}</span>
+                <span className="usertag">
+                  {me.player ? `${me.player.first_name} ${me.player.last_name}` : me.user.email}
+                </span>
                 <button
                   className="button button--sm"
                   onClick={() => {

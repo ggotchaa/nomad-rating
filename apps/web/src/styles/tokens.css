@@ -1,6 +1,7 @@
-/* Design tokens. Product screens use the light palette of the manager-console design
-   (#FFFFFF / #161A22 / #2448C9); the scroll landing keeps the dark «hologram court»
-   palette, scoped to `.landing` at the bottom of this file. */
+/* Design tokens. The product ships two themes: the light palette of the manager-console
+   design (default) and the dark «hologram court» one the product started from. The theme
+   is picked with `data-theme` on <html>; the scroll landing is always dark, so `.landing`
+   carries the dark values whatever the chosen theme is. */
 :root {
   --bg: #f4f5f7;
   --bg-2: #ffffff;
@@ -37,6 +38,9 @@
   --text-2: #586070;
   --text-3: #8a919d;
 
+  --bar-bg: rgba(255, 255, 255, 0.88);
+  --scrim: rgba(22, 26, 34, 0.42);
+
   --font-display: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-body: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
@@ -53,14 +57,23 @@
   --ring: 0 0 0 3px rgba(36, 72, 201, 0.18);
 }
 
-/* Scroll landing: the original dark hologram palette. */
+/* Dark theme — the original «hologram court» palette. Also the landing, always. */
+:root[data-theme='dark'],
 .landing {
   --bg: #03050b;
   --bg-2: #070b16;
   --surface: rgba(12, 20, 38, 0.55);
   --surface-strong: rgba(14, 24, 46, 0.86);
+  --surface-sunk: rgba(6, 12, 24, 0.5);
+  --surface-hover: rgba(94, 242, 255, 0.08);
   --line: rgba(94, 242, 255, 0.16);
   --line-strong: rgba(94, 242, 255, 0.42);
+
+  --accent: #5ef2ff;
+  --accent-ink: #001318;
+  --accent-hover: #8af6ff;
+  --accent-soft: rgba(94, 242, 255, 0.12);
+  --accent-line: rgba(94, 242, 255, 0.45);
 
   --holo: #5ef2ff;
   --holo-2: #8a7dff;
@@ -68,10 +81,30 @@
   --ball: #ff8a3d;
   --ok: #3dffa8;
 
+  --ok-soft: rgba(61, 255, 168, 0.1);
+  --ok-line: rgba(61, 255, 168, 0.4);
+  --warn: #ffc48a;
+  --warn-soft: rgba(255, 138, 61, 0.12);
+  --warn-line: rgba(255, 138, 61, 0.45);
+  --bad: #ff8fa5;
+  --bad-soft: rgba(255, 61, 98, 0.12);
+  --bad-line: rgba(255, 61, 98, 0.45);
+
   --text: #e9f6ff;
   --text-2: #9fb3c8;
   --text-3: #5d708a;
 
+  --bar-bg: rgba(3, 5, 11, 0.82);
+  --scrim: rgba(1, 3, 8, 0.72);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 2px 12px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --ring: 0 0 0 3px rgba(94, 242, 255, 0.25);
+}
+
+/* The landing keeps the display face and the rounder corners it was drawn with. */
+.landing {
   --font-display: 'Unbounded', 'Manrope Variable', system-ui, sans-serif;
   --radius: 18px;
 

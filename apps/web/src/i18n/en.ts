@@ -3,6 +3,9 @@ import type { Messages } from './ru.ts'
 export const en: Messages = {
   nav: { home: 'Home', tournaments: 'Tournaments', rating: 'Rating', clubs: 'Clubs', cabinet: 'Account', manage: 'Club panel', login: 'Log in', logout: 'Log out' },
   common: {
+    theme: 'Colour theme',
+    themeLight: 'Light theme',
+    themeDark: 'Dark theme',
     loading: 'Loading…',
     loadError: 'Failed to load data',
     retry: 'Retry',

@@ -3,6 +3,9 @@ import type { Messages } from './ru.ts'
 export const kk: Messages = {
   nav: { home: 'Басты бет', tournaments: 'Турнирлер', rating: 'Рейтинг', clubs: 'Клубтар', cabinet: 'Кабинет', manage: 'Клуб кабинеті', login: 'Кіру', logout: 'Шығу' },
   common: {
+    theme: 'Безендіру тақырыбы',
+    themeLight: 'Ашық тақырып',
+    themeDark: 'Қою тақырып',
     loading: 'Жүктелуде…',
     loadError: 'Деректерді жүктеу мүмкін болмады',
     retry: 'Қайталау',

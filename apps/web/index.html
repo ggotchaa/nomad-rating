@@ -3,10 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#04060c" />
-    <meta name="description" content="Nomad — рейтинговые турниры по настольному теннису для любителей: запись онлайн, рейтинг Эло, бронь столов." />
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="Nomad — рейтинговые турниры по настольному теннису для любителей: запись онлайн, рейтинг Эло, бронь столов."
+    />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Nomad — настольный теннис для любителей</title>
+    <!-- Before first paint, so a dark-theme visitor never sees a white flash. -->
+    <script>
+      try {
+        var t = localStorage.getItem('nomad.theme')
+        if (t === 'dark' || t === 'light') {
+          document.documentElement.dataset.theme = t
+          document.querySelector('meta[name="theme-color"]').content = t === 'dark' ? '#03050b' : '#ffffff'
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
