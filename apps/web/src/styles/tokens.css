@@ -15,7 +15,8 @@
   --accent: #2448c9;
   --accent-ink: #ffffff;
   --accent-hover: #1d3bab;
-  --accent-soft: #f3f6ff;
+  --accent-soft: #e4ecff;
+  --accent-on-soft: #1d47c2;
   --accent-line: #c3cff2;
 
   /* Legacy aliases: product CSS written against the holo palette keeps working. */
@@ -28,6 +29,7 @@
   --ok-soft: #e7f5ec;
   --ok-line: #bfe3cd;
   --warn: #6b3a00;
+  --warn-strong: #8a4b00;
   --warn-soft: #fff4e5;
   --warn-line: #ffe7c7;
   --bad: #a12a2a;
@@ -41,12 +43,15 @@
   --bar-bg: rgba(255, 255, 255, 0.88);
   --scrim: rgba(22, 26, 34, 0.42);
 
-  --font-display: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-body: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Manrope Variable', 'Inter Variable', system-ui, sans-serif;
+  --font-body: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
 
-  --radius: 14px;
-  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --row-radius: 10px;
   --gutter: clamp(16px, 4vw, 48px);
   --max: 1280px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -73,6 +78,7 @@
   --accent-ink: #001318;
   --accent-hover: #8af6ff;
   --accent-soft: rgba(94, 242, 255, 0.12);
+  --accent-on-soft: #8af6ff;
   --accent-line: rgba(94, 242, 255, 0.45);
 
   --holo: #5ef2ff;
@@ -84,6 +90,7 @@
   --ok-soft: rgba(61, 255, 168, 0.1);
   --ok-line: rgba(61, 255, 168, 0.4);
   --warn: #ffc48a;
+  --warn-strong: #ffb26b;
   --warn-soft: rgba(255, 138, 61, 0.12);
   --warn-line: rgba(255, 138, 61, 0.45);
   --bad: #ff8fa5;
@@ -107,6 +114,7 @@
 .landing {
   --font-display: 'Unbounded', 'Manrope Variable', system-ui, sans-serif;
   --radius: 18px;
+  --radius-sm: 10px;
 
   color: var(--text);
 }

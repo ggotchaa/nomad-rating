@@ -129,15 +129,13 @@ function Entries({
           <b>{(counts.waitlist ?? 0) + (counts.invited ?? 0)}</b>
         </div>
       </div>
-      <div className="tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')}>
-          {t.m.allEntries}
-          <span className="count">{counts.all}</span>
+      <div className="chipbar" role="group" aria-label={t.misc.status}>
+        <button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+          {t.m.allEntries} · {counts.all}
         </button>
         {statuses.map((s) => (
-          <button key={s} type="button" role="tab" aria-selected={filter === s} onClick={() => setFilter(s)}>
-            {t.t.entryStatus[s] ?? s}
-            <span className="count">{counts[s]}</span>
+          <button key={s} type="button" aria-pressed={filter === s} onClick={() => setFilter(s)}>
+            {t.t.entryStatus[s] ?? s} · {counts[s]}
           </button>
         ))}
       </div>

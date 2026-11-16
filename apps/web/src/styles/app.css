@@ -6,6 +6,8 @@
   flex-direction: column;
   background: var(--bg);
   color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 .app h1,
 .app h2,
@@ -13,19 +15,20 @@
   font-family: var(--font-display);
   font-weight: 800;
   line-height: 1.18;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
   margin: 0;
   text-wrap: balance;
 }
 .app h1 {
-  font-size: clamp(24px, 3.2vw, 34px);
+  font-size: clamp(22px, 2.6vw, 28px);
 }
 .app h2 {
-  font-size: clamp(17px, 2vw, 20px);
+  font-size: 17px;
+  font-weight: 700;
 }
 .app h3 {
   font-size: 15px;
-  letter-spacing: -0.005em;
+  font-weight: 700;
 }
 .app p {
   margin: 0;
@@ -38,7 +41,7 @@
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  min-height: 42px;
+  min-height: 40px;
   padding: 8px 12px;
   width: 100%;
   transition:
@@ -306,17 +309,16 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--text);
-  font-weight: 650;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: var(--shadow-1);
   transition:
     border-color 0.15s,
     background 0.15s,
@@ -329,7 +331,6 @@
 }
 .button:active {
   transform: translateY(1px);
-  box-shadow: none;
 }
 .button--primary {
   background: var(--accent);
@@ -361,7 +362,7 @@
   border-color: var(--bad);
 }
 .button--sm {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 12px;
   font-size: 13px;
 }
@@ -371,19 +372,17 @@
 .button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: clamp(16px, 2vw, 22px);
+  padding: 20px;
   display: grid;
-  gap: 16px;
+  gap: 14px;
   align-content: start;
   min-width: 0;
-  box-shadow: var(--shadow-1);
 }
 .panel--flat {
   box-shadow: none;
@@ -453,9 +452,9 @@
   white-space: nowrap;
 }
 .chip--holo {
-  color: var(--accent);
+  color: var(--accent-on-soft);
   background: var(--accent-soft);
-  border-color: var(--accent-line);
+  border-color: transparent;
 }
 .chip--ok {
   color: var(--ok);
@@ -538,6 +537,39 @@
   color: var(--text);
   box-shadow: var(--shadow-1);
 }
+/* Filter chips with counts, as the manager-console design draws its status filter. */
+.chipbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chipbar button {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.chipbar button:hover {
+  border-color: var(--text-3);
+  color: var(--text);
+}
+.chipbar button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-on-soft);
+}
+
 /* Icon-only segments (theme switch): square cells instead of text padding. */
 .seg--icons button {
   display: grid;
@@ -563,9 +595,10 @@
   position: relative;
   border: 0;
   background: none;
-  padding: 10px 14px;
+  height: 44px;
+  padding: 0 18px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-2);
   cursor: pointer;
   white-space: nowrap;
@@ -575,11 +608,10 @@
 .tabs a::after {
   content: '';
   position: absolute;
-  left: 10px;
-  right: 10px;
+  left: 0;
+  right: 0;
   bottom: -1px;
-  height: 2px;
-  border-radius: 2px;
+  height: 3px;
   background: transparent;
   transition: background 0.18s var(--ease-out);
 }
@@ -758,7 +790,6 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-1);
   transition:
     border-color 0.18s,
     box-shadow 0.18s,
@@ -803,10 +834,11 @@
   background: var(--ball);
 }
 
+/* The design frames a list in a bordered, rounded box with a page-coloured header row. */
 .tablewrap {
   overflow-x: auto;
-  margin: 0 calc(-1 * clamp(16px, 2vw, 22px));
-  padding: 0 clamp(16px, 2vw, 22px);
+  border: 1px solid var(--line);
+  border-radius: var(--row-radius);
 }
 .table {
   width: 100%;
@@ -815,22 +847,17 @@
 }
 .table th {
   text-align: left;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  font-weight: 700;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line-strong);
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 600;
+  padding: 10px 14px;
+  background: var(--bg);
   white-space: nowrap;
 }
 .table td {
-  padding: 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
   vertical-align: middle;
-}
-.table tr:last-child td {
-  border-bottom: 0;
 }
 .table .num {
   text-align: right;
@@ -872,11 +899,11 @@
   gap: 2px;
 }
 .fact span {
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   font-weight: 700;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .fact b {
   font-size: 15px;
@@ -896,25 +923,24 @@
   display: grid;
   gap: 2px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunk);
+  border-radius: var(--row-radius);
+  background: var(--bg);
 }
 .tile span {
   font-size: 12px;
-  font-weight: 600;
   color: var(--text-2);
 }
 .tile b {
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 22px;
+  font-weight: 800;
   line-height: 1.1;
 }
 .tile--ok b {
   color: var(--ok);
 }
 .tile--warn b {
-  color: var(--ball);
+  color: var(--warn-strong);
 }
 .tile--bad b {
   color: var(--bad);
@@ -948,9 +974,12 @@
   color: var(--accent);
 }
 .empty {
-  padding: 28px 12px;
+  padding: 18px;
   text-align: center;
-  color: var(--text-3);
+  color: var(--text-2);
+  font-size: 13px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--row-radius);
 }
 .skeleton {
   min-height: 110px;
@@ -1106,7 +1135,11 @@
 }
 .groupbox .table td,
 .groupbox .table th {
-  padding: 6px;
+  padding: 6px 8px;
+}
+.groupbox .tablewrap {
+  border: 0;
+  border-radius: 0;
 }
 .bracket {
   display: flex;
@@ -1470,7 +1503,9 @@
   }
 }
 .modal > .panel {
-  width: min(480px, 100%);
+  width: min(520px, 100%);
+  border-radius: var(--radius-lg);
+  padding: 22px;
   max-height: 90vh;
   overflow-y: auto;
   background: var(--surface-strong);

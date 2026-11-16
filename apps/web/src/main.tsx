@@ -1,6 +1,7 @@
 import '@fontsource/unbounded/400.css'
 import '@fontsource/unbounded/700.css'
 import '@fontsource/unbounded/900.css'
+import '@fontsource-variable/inter'
 import '@fontsource-variable/manrope'
 import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/500.css'
@@ -33,7 +34,16 @@ import { ConductPage } from './features/conduct/ConductPage.tsx'
 import { CheckinPage, CheckinQrScreen } from './features/conduct/Checkin.tsx'
 import { LivePage } from './features/live/LivePage.tsx'
 import { t } from './i18n/index.ts'
-import { AcceptInvitation, ConfirmEmail, ForgotPassword, MfaVerify, ProfileEdit, ResetPassword, Security, Welcome } from './features/account/AccountFlows.tsx'
+import {
+  AcceptInvitation,
+  ConfirmEmail,
+  ForgotPassword,
+  MfaVerify,
+  ProfileEdit,
+  ResetPassword,
+  Security,
+  Welcome,
+} from './features/account/AccountFlows.tsx'
 import { RttfClaim } from './features/account/Rttf.tsx'
 import { RegisterClub } from './features/clubs/RegisterClub.tsx'
 import { ClubSettings } from './features/manage/ClubSettings.tsx'
@@ -124,23 +134,121 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <ManageIndex /> },
           { path: 'today', element: <ClubToday /> },
-          { path: 'tournaments', element: <Guard right="tournaments"><ManageTournaments /></Guard> },
-          { path: 'tournaments/new', element: <Guard right="tournaments"><NewTournament /></Guard> },
-          { path: 'tournaments/:id', element: <Guard right="tournaments"><ManageTournamentPage /></Guard> },
-          { path: 'tournaments/:id/conduct', element: <Guard right="conduct"><ConductPage /></Guard> },
-          { path: 'tournaments/:id/qr', element: <Guard right="conduct"><CheckinQrScreen /></Guard> },
-          { path: 'bookings', element: <Guard right="bookings"><BookingDesk /></Guard> },
-          { path: 'players', element: <Guard right="players"><ManagePlayers /></Guard> },
-          { path: 'settings', element: <Guard right="club"><HallSettings /></Guard> },
+          {
+            path: 'tournaments',
+            element: (
+              <Guard right="tournaments">
+                <ManageTournaments />
+              </Guard>
+            ),
+          },
+          {
+            path: 'tournaments/new',
+            element: (
+              <Guard right="tournaments">
+                <NewTournament />
+              </Guard>
+            ),
+          },
+          {
+            path: 'tournaments/:id',
+            element: (
+              <Guard right="tournaments">
+                <ManageTournamentPage />
+              </Guard>
+            ),
+          },
+          {
+            path: 'tournaments/:id/conduct',
+            element: (
+              <Guard right="conduct">
+                <ConductPage />
+              </Guard>
+            ),
+          },
+          {
+            path: 'tournaments/:id/qr',
+            element: (
+              <Guard right="conduct">
+                <CheckinQrScreen />
+              </Guard>
+            ),
+          },
+          {
+            path: 'bookings',
+            element: (
+              <Guard right="bookings">
+                <BookingDesk />
+              </Guard>
+            ),
+          },
+          {
+            path: 'players',
+            element: (
+              <Guard right="players">
+                <ManagePlayers />
+              </Guard>
+            ),
+          },
+          {
+            path: 'settings',
+            element: (
+              <Guard right="club">
+                <HallSettings />
+              </Guard>
+            ),
+          },
           { path: 'club', element: <ClubSettings /> },
-          { path: 'import', element: <Guard right="players"><ImportPlayers /></Guard> },
-          { path: 'finance', element: <Guard right="finance"><Finance /></Guard> },
-          { path: 'helpers', element: <Guard right="organizer"><Helpers /></Guard> },
-          { path: 'audit', element: <Guard right="organizer"><ManageAudit /></Guard> },
-          { path: 'leagues', element: <Guard right="tournaments"><ManageLeagues /></Guard> },
+          {
+            path: 'import',
+            element: (
+              <Guard right="players">
+                <ImportPlayers />
+              </Guard>
+            ),
+          },
+          {
+            path: 'finance',
+            element: (
+              <Guard right="finance">
+                <Finance />
+              </Guard>
+            ),
+          },
+          {
+            path: 'helpers',
+            element: (
+              <Guard right="organizer">
+                <Helpers />
+              </Guard>
+            ),
+          },
+          {
+            path: 'audit',
+            element: (
+              <Guard right="organizer">
+                <ManageAudit />
+              </Guard>
+            ),
+          },
+          {
+            path: 'leagues',
+            element: (
+              <Guard right="tournaments">
+                <ManageLeagues />
+              </Guard>
+            ),
+          },
         ],
       },
-      { path: '*', element: <main className="page"><p className="empty">{t.common.notFound}</p></main> },
+      {
+        path: '*',
+        element: (
+          <main className="page">
+            <p className="empty">{t.common.notFound}</p>
+          </main>
+        ),
+      },
     ],
   },
 ])
