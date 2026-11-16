@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { Navigate } from 'react-router'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { t } from '../i18n/index.ts'
@@ -20,6 +20,21 @@ export function AppShell() {
     window.scrollTo(0, 0)
   }, [pathname])
 
+  // Nav moves to its own row whenever the single-row header would overflow.
+  const barRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const fit = () => {
+      el.classList.remove('is-stacked')
+      el.classList.toggle('is-stacked', el.scrollWidth > el.clientWidth)
+    }
+    fit()
+    void document.fonts.ready.then(fit)
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  })
+
   const gate = me.user?.mfaRequired ? '/mfa' : me.user?.needsWelcome ? '/welcome' : null
   if (gate && !['/mfa', '/welcome', '/logout'].includes(pathname))
     return <Navigate to={`${gate}?returnTo=${encodeURIComponent(pathname)}`} replace />
@@ -29,7 +44,7 @@ export function AppShell() {
       <CallPopup />
       <DialogHost />
       <header className="topbar">
-        <div className="topbar__in">
+        <div className="topbar__in" ref={barRef}>
           <Link className="logo" to="/" aria-label="Nomad">
             <i />
             NOMAD

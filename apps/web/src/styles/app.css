@@ -224,19 +224,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.topbar__in.is-stacked {
+  flex-wrap: wrap;
+  padding-top: 8px;
+  gap: 8px;
+}
+.is-stacked .mainnav {
+  order: 3;
+  flex-basis: 100%;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
 @media (max-width: 860px) {
-  .topbar__in {
-    flex-wrap: wrap;
-    padding-top: 8px;
-    gap: 8px;
-  }
-  .mainnav {
-    order: 3;
-    flex-basis: 100%;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    scrollbar-width: none;
-  }
   .usertag {
     display: none;
   }
