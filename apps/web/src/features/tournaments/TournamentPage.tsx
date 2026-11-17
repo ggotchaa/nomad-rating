@@ -188,7 +188,7 @@ export function TournamentPage() {
                 {notes && <p className="note prose">{notes}</p>}
               </section>
 
-              <div className="grid grid--2">
+              <div className={tab === 'about' ? 'grid grid--2' : 'grid'}>
                 <div className="stack">
                   <div className="tabs" role="tablist">
                     <button type="button" role="tab" aria-selected={tab === 'about'} onClick={() => setTab('about')}>
@@ -295,12 +295,12 @@ export function TournamentPage() {
                     </div>
                   ) : current ? (
                     <div className="tabpanel">
-                      <StageBlock s={current} me={me.player?.id} />
+                      <StageBlock s={current} stages={stages} format={d.format} me={me.player?.id} />
                     </div>
                   ) : null}
                 </div>
 
-                <div className="stack">
+                <div className="stack noprint">
                   {!finished && d.status !== 'running' && <Register d={d} reload={state.reload} />}
                   <ShareBox slug={d.slug} url={shareUrl} text={d.title} live={d.status === 'running' || finished} />
                   {d.isStaff && <RegistrationQr url={shareUrl} />}

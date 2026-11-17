@@ -157,6 +157,13 @@ export const ru = {
     pts: 'Очки',
     sets: 'Партии',
     table: 'Стол',
+    groupDone: 'Завершена',
+    groupPlayed: (a: number, b: number) => `Сыграно ${a} из ${b}`,
+    placesRange: (a: number, b: number) => `места ${a}–${b}`,
+    forPlace: (a: number, b: number) => `за ${a}–${b} место`,
+    placeN: (n: number) => `${n}-е место`,
+    print: 'Печать',
+    walkoverShort: 'н/я',
     forPlaces: (a: number, b: number) => (a === b ? `За ${a} место` : `За ${a}–${b} места`),
   },
   r: {

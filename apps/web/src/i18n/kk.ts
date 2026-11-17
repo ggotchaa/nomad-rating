@@ -159,6 +159,13 @@ export const kk: Messages = {
     pts: 'Ұпай',
     sets: 'Партиялар',
     table: 'Үстел',
+    groupDone: 'Аяқталды',
+    groupPlayed: (a: number, b: number) => `${b} ішінен ${a} ойналды`,
+    placesRange: (a: number, b: number) => `${a}–${b} орындар`,
+    forPlace: (a: number, b: number) => `${a}–${b} орын үшін`,
+    placeN: (n: number) => `${n}-орын`,
+    print: 'Басып шығару',
+    walkoverShort: 'к/қ',
     forPlaces: (a: number, b: number) => (a === b ? `${a}-орын үшін` : `${a}–${b}-орындар үшін`),
   },
   r: {

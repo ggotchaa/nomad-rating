@@ -128,6 +128,7 @@ export type MatchView = {
   games: { home: number; away: number }[]
   winnerEntryId: number | null
   table: number | null
+  scheduledAt?: string | null
 }
 
 export type StandingRow = { id: string; played: number; wins: number; losses: number; points: number; setsWon: number; setsLost: number; place: number; decidedBy: string | null; player?: EntryRef; tiedWith: string[]; tiedIds?: number[] }
@@ -137,6 +138,11 @@ export type GroupView = { code: string; members: (EntryRef | undefined)[]; stand
 export type StageView =
   | { key: string; kind: 'groups' | 'round_robin'; name: string; status: string; groups: GroupView[] }
   | { key: string; kind: 'single_elim' | 'all_places'; name: string; status: string; size: number | null; matches: MatchView[] }
+
+export type StructureFormat = {
+  groupPoints?: { win: number; loss: number; walkover: number }
+  transitions?: { from: string; to: string; rule: { by: string; places?: number[] } }[]
+}
 
 export type StageEstimate = { id: string; name: string; kind: string; players: number; matches: number; groups?: number[]; bracketSize?: number }
 export type FormatEstimate = { stages: StageEstimate[]; totalMatches: number; minutes: number }
@@ -162,7 +168,7 @@ export type TournamentDetail = {
   club: { id: number; slug: string; name: string; city: string }
   hall: { id: number; name: string; address: string; howToFind?: string; commentForPlayers?: string }
   tables: number
-  format: { template: string; match: { winsNeeded: number } }
+  format: StructureFormat & { template: string; match: { winsNeeded: number } }
   estimate: FormatEstimate
   taken: number
   free: number

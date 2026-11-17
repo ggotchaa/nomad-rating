@@ -367,7 +367,7 @@ export function ManageTournamentPage() {
               </div>
             ) : (
               <div className="tabpanel">
-                {d.structure?.length ? <Structure stages={d.structure} /> : <p className="empty">{t.m.noStages}</p>}
+                {d.structure?.length ? <Structure stages={d.structure} format={d.format} /> : <p className="empty">{t.m.noStages}</p>}
               </div>
             )}
           </>

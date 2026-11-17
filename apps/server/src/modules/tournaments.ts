@@ -381,6 +381,7 @@ export async function structure(t: Tournament) {
     games: m.games,
     winnerEntryId: m.winner_entry_id,
     table: m.table_number,
+    scheduledAt: m.scheduled_at ?? m.started_at,
     calledAt: m.called_at,
     version: m.version,
   })

@@ -159,6 +159,13 @@ export const en: Messages = {
     pts: 'Points',
     sets: 'Games',
     table: 'Table',
+    groupDone: 'Finished',
+    groupPlayed: (a: number, b: number) => `${a} of ${b} played`,
+    placesRange: (a: number, b: number) => `places ${a}–${b}`,
+    forPlace: (a: number, b: number) => `for ${a}–${b} place`,
+    placeN: (n: number) => `place ${n}`,
+    print: 'Print',
+    walkoverShort: 'w/o',
     forPlaces: (a: number, b: number) => (a === b ? `For place ${a}` : `For places ${a}–${b}`),
   },
   r: {
