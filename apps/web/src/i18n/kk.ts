@@ -1588,6 +1588,8 @@ export const kk: Messages = {
     'entry.has_played_matches': 'Ойыншы ойнап қойған — ауыстыруға болмайды',
     'entry.replace_singles_only': 'Ауыстыру тек жеке турнирде қолжетімді',
     'tournament.table_in_play': 'Алынатын үстелде матч жүріп жатыр',
+    'tournament.no_tables': 'Турнирге үстелдер жоқ. «Клуб және зал» → зал жоспары бөлімінде үстелдерді баптап, қайталап көріңіз',
+    'tournament.hall_not_in_club': 'Зал бұл клубқа тиесілі емес',
     'format.stage_started': 'Бұл кезең басталып кеткен — оны өзгертуге болмайды',
     'match.not_your_match': 'Бұл сіздің матчыңыз емес',
     'match.players_entry_off': 'Есепті төрешілер енгізеді',

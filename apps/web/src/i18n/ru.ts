@@ -1586,6 +1586,8 @@ export const ru = {
     'entry.has_played_matches': 'Игрок уже играл — заменить нельзя',
     'entry.replace_singles_only': 'Замена доступна только в одиночном турнире',
     'tournament.table_in_play': 'На убираемом столе идёт матч',
+    'tournament.no_tables': 'Для турнира нет столов. Настройте столы в разделе «Клуб и зал» → план зала и попробуйте снова',
+    'tournament.hall_not_in_club': 'Зал не принадлежит этому клубу',
     'format.stage_started': 'Этот этап уже начат — его нельзя менять',
     'match.not_your_match': 'Это не ваш матч',
     'match.players_entry_off': 'Счёт вводят судьи',

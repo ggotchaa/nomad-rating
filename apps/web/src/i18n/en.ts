@@ -1588,6 +1588,8 @@ export const en: Messages = {
     'entry.has_played_matches': 'The player has already played — cannot be replaced',
     'entry.replace_singles_only': 'Replacement is available in singles tournaments only',
     'tournament.table_in_play': 'A match is being played on a removed table',
+    'tournament.no_tables': 'No tables for the tournament. Set up tables in "Club and hall" → hall plan, then try again',
+    'tournament.hall_not_in_club': 'The hall does not belong to this club',
     'format.stage_started': 'This stage has already started and cannot be changed',
     'match.not_your_match': 'This is not your match',
     'match.players_entry_off': 'Scores are entered by referees',
