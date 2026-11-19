@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { RatingRow } from '../../api/types.ts'
 import { useApi } from '../../app/hooks.ts'
 import { CalibratingMark } from '../rating/widgets.tsx'
+import { Avatar } from '../../ui/Avatar.tsx'
 
 /** Name search over all players (incl. calibrating and inactive); calls onPick with the chosen row. */
 export function PlayerSearch({ placeholder, onPick, exclude }: { placeholder: string; onPick: (p: RatingRow) => void; exclude?: number }) {
@@ -28,9 +29,12 @@ export function PlayerSearch({ placeholder, onPick, exclude }: { placeholder: st
                 onPick(p)
               }}
             >
-              <div>
-                <b>{p.name}</b>
-                <span>{[p.city, p.birthYear].filter(Boolean).join(' · ')}</span>
+              <div className="withava">
+                <Avatar name={p.name} photoUrl={p.photoUrl} />
+                <div>
+                  <b>{p.name}</b>
+                  <span>{[p.city, p.birthYear].filter(Boolean).join(' · ')}</span>
+                </div>
               </div>
               {p.calibrating ? <CalibratingMark /> : <span className="mono">{p.rating}</span>}
             </button>

@@ -186,6 +186,7 @@ export type RatingRow = {
   calibrating?: boolean
   id: number
   name: string
+  photoUrl?: string | null
   gender: 'm' | 'f'
   birthYear: number
   city: string | null
@@ -219,6 +220,7 @@ export type PlayerProfile = {
   photoUrl: string | null
   city: string | null
   addedByClub: boolean
+  claimed: boolean
   ratings: PlayerRating[]
 }
 
@@ -317,7 +319,7 @@ export type MyClub = { id: number; slug: string; name: string; role: 'organizer'
 
 export type ManageTournament = { id: number; slug: string; title: string; status: string; starts_at: string; fee: number; max_participants: number; taken: number }
 
-export type ClubPlayer = { id: number; name: string; birthYear: number; gender: 'm' | 'f'; city: string | null; rating: number | null; startLevel: number; requestedLevel: number | null; levelStatus: 'pending' | 'confirmed' | 'rejected' | null; hasAccount: boolean; addedByClub: boolean; tournaments: number; bookingNoShows: number }
+export type ClubPlayer = { id: number; name: string; birthYear: number; gender: 'm' | 'f'; city: string | null; rating: number | null; startLevel: number; requestedLevel: number | null; levelStatus: 'pending' | 'confirmed' | 'rejected' | null; hasAccount: boolean; addedByClub: boolean; photoUrl: string | null; tournaments: number; bookingNoShows: number }
 
 export type DeskBooking = {
   id: number

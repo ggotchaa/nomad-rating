@@ -19,6 +19,7 @@ import { financeRouter } from '../modules/finance.ts'
 import { clubDeskRouter } from '../modules/club-desk.ts'
 import { helpersRouter, invitationsRouter } from '../modules/helpers.ts'
 import { adminRouter } from '../modules/admin.ts'
+import { adminDisputesRouter, clubPhotoRouter, myCardsRouter } from '../modules/player-cards.ts'
 import { adminRttfRouter, rttfRouter } from '../modules/rttf.ts'
 import { UPLOADS_ROOT } from '../storage/index.ts'
 import { ratingRouter } from '../modules/rating.ts'
@@ -59,15 +60,18 @@ export function createApp() {
   api.use('/clubs', clubManageRouter)
   api.use('/clubs', helpersRouter)
   api.use('/clubs', clubPlayersRouter)
+  api.use('/clubs', clubPhotoRouter)
   api.use('/clubs', financeRouter)
   api.use('/clubs', clubDeskRouter)
   api.use('/invitations', invitationsRouter)
   api.use('/my', myAccountRouter)
   api.use('/my', claimRouter)
+  api.use('/my', myCardsRouter)
   api.use('/rttf', rttfRouter)
   api.use('/admin/rttf', adminRttfRouter)
   api.use('/admin/tournaments', adminTournamentsRouter)
   api.use('/admin', adminRouter)
+  api.use('/admin', adminDisputesRouter)
   api.use('/admin', adminPlayersRouter)
   api.use('/admin', adminSystemRouter)
   api.use('/settings', publicSettingsRouter)

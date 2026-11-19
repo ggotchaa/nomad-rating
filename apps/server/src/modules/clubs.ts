@@ -444,6 +444,7 @@ clubsRouter.get(
         'p.start_level',
         'p.requested_level',
         'p.level_status',
+        'p.photo_url',
         'c.name_ru as city',
         'r.rating',
         (eb) =>
@@ -486,6 +487,7 @@ clubsRouter.get(
         levelStatus: r.level_status,
         hasAccount: r.user_id != null,
         addedByClub: r.added_by_club_id === clubId,
+        photoUrl: r.photo_url,
         tournaments: Number(r.tournaments ?? 0),
         bookingNoShows: Number(r.no_shows ?? 0),
       })),

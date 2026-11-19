@@ -1467,6 +1467,33 @@
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
 }
+.ava {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+  border: 1px solid var(--accent-line);
+}
+.ava--initials {
+  display: inline-grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.ava-crop {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+}
+.withava {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .chart {
   width: 100%;
   height: auto;

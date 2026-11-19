@@ -9,6 +9,7 @@ import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { ask } from '../../ui/dialogs.tsx'
 import { Async, Field } from '../../ui/kit.tsx'
+import { Avatar, PhotoEditor } from '../../ui/Avatar.tsx'
 import { afterLogin, homeOf, returnTarget, safePath } from './Auth.tsx'
 
 /** busy / error / ok state around one async action. */
@@ -430,8 +431,6 @@ function ResendConfirmation() {
 export function ProfileEdit() {
   const { me, ready, setMe, cities } = useSession()
   const save = useAction()
-  const photo = useAction()
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   if (ready && !me.user) return <Navigate to="/login" state={{ from: '/me/profile' }} replace />
   const p = me.player
   if (!p) return ready ? <Navigate to="/welcome" replace /> : null
@@ -518,19 +517,9 @@ export function ProfileEdit() {
       </form>
       <section className="panel stack">
         <h2>{t.acc.photo}</h2>
-        {(photoUrl ?? p.photo_url) && <img src={photoUrl ?? p.photo_url!} alt="" width={120} height={120} style={{ objectFit: 'cover', borderRadius: 12 }} />}
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          aria-label={t.acc.photo}
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void photo.run(async () => setPhotoUrl((await api<{ photoUrl: string }>('/my/photo', { method: 'POST', body: file, headers: { 'Content-Type': file.type } })).photoUrl))
-          }}
-        />
-        <p className="small muted">{t.acc.photoHint}</p>
-        {photo.notes}
+        <PhotoEditor name={`${p.last_name} ${p.first_name}`} photoUrl={p.photo_url} endpoint="/my/photo" onChange={(url) => setMe({ ...me, player: { ...p, photo_url: url } })} />
       </section>
+      <ClaimFromList />
       <ClaimByCode />
     </main>
   )
@@ -561,6 +550,57 @@ export function ClaimByCode() {
         {t.acc.claim}
       </button>
     </form>
+  )
+}
+
+type Claimable = { id: number; name: string; birthYear: number; city: string | null; club: string | null; photoUrl: string | null }
+
+/** T-18: a card entered by name (club or captain) is found by name and taken over with its history. */
+export function ClaimFromList() {
+  const { setMe } = useSession()
+  const [q, setQ] = useState('')
+  const list = useApi<Claimable[]>(q.trim().length >= 2 ? `/my/claimable?q=${encodeURIComponent(q.trim())}` : null)
+  const { busy, run, notes } = useAction()
+  const claim = async (c: Claimable) => {
+    if (!(await ask.confirm(t.cards.claimConfirm(c.name)))) return
+    void run(async () => {
+      const r = await api<{ claimed: number | null; mergeRequest: number | null }>('/my/claim-card', { method: 'POST', json: { playerId: c.id } })
+      setMe(await api<Me>('/auth/me'))
+      list.reload()
+      return r.claimed ? t.acc.claimDone : t.acc.claimMerge
+    })
+  }
+  return (
+    <section className="panel stack">
+      <h2>{t.cards.claimTitle}</h2>
+      <p className="small muted">{t.cards.claimLead}</p>
+      <input type="search" placeholder={t.cards.search} aria-label={t.cards.search} value={q} onChange={(e) => setQ(e.target.value)} />
+      {notes}
+      {list.data &&
+        (list.data.length ? (
+          <div className="stack">
+            {list.data.map((c) => (
+              <div key={c.id} className="row row--between">
+                <span className="withava">
+                  <Avatar name={c.name} photoUrl={c.photoUrl} />
+                  <span>
+                    <b>{c.name}</b>
+                    <span className="small muted">
+                      {' '}
+                      {c.birthYear} · {[c.city, c.club].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </span>
+                <button className="button button--sm button--primary" disabled={busy} onClick={() => void claim(c)}>
+                  {t.cards.thisIsMe}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="empty">{t.cards.noneFound}</p>
+        ))}
+    </section>
   )
 }
 

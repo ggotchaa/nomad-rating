@@ -8,6 +8,7 @@ import { useSession } from '../../app/auth.tsx'
 import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { Async, Field, Modal } from '../../ui/kit.tsx'
+import { Avatar, PhotoEditor } from '../../ui/Avatar.tsx'
 import { useClub } from './ManageLayout.tsx'
 
 type Duplicate = { id: number; name: string; birthYear: number; city: string | null }
@@ -147,6 +148,7 @@ export function ManagePlayers() {
   const [adding, setAdding] = useState(false)
   const [code, setCode] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [photoFor, setPhotoFor] = useState<ClubPlayer | null>(null)
   return (
     <section className="panel">
       <div className="panel__head">
@@ -179,7 +181,18 @@ export function ManagePlayers() {
                   .map((p) => (
                     <tr key={p.id}>
                       <td>
-                        <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
+                        <span className="withava">
+                          {p.addedByClub && !p.hasAccount ? (
+                            <button type="button" className="linkbtn" title={t.acc.photo} aria-label={`${t.acc.photo}: ${p.name}`} onClick={() => setPhotoFor(p)}>
+                              <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
+                            </button>
+                          ) : (
+                            <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
+                          )}
+                          <span>
+                            <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
+                          </span>
+                        </span>
                       </td>
                       <td className="muted">{p.city}</td>
                       <td className="num">
@@ -197,6 +210,19 @@ export function ManagePlayers() {
           </div>
         )}
       </Async>
+      {photoFor && (
+        <Modal title={`${t.acc.photo}: ${photoFor.name}`} onClose={() => setPhotoFor(null)}>
+          <PhotoEditor
+            name={photoFor.name}
+            photoUrl={photoFor.photoUrl}
+            endpoint={`/clubs/${club.id}/players/${photoFor.id}/photo`}
+            onChange={(url) => {
+              setPhotoFor({ ...photoFor, photoUrl: url })
+              list.reload()
+            }}
+          />
+        </Modal>
+      )}
       {adding && (
         <NewPlayer
           onClose={() => setAdding(false)}
