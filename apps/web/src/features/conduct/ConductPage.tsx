@@ -14,8 +14,10 @@ import { ask as dialog } from '../../ui/dialogs.tsx'
 import type { StructureFormat } from '../../api/types.ts'
 import { StageBlock } from '../tournaments/Structure.tsx'
 import { MatchesTab } from './MatchesTab.tsx'
+import { DraftPanel, LateEntry, OpenEarly, setGroupOrder } from './StageTools.tsx'
 
-const label = (m: ConductMatch) => (m.label?.startsWith('group:') ? `${t.t.group} ${m.label.slice(6)}` : (m.label ?? ''))
+const label = (m: ConductMatch) =>
+  m.label?.startsWith('group:') ? `${t.t.group} ${m.label.slice(6)}` : (m.label ?? '')
 
 function CallState({ m, telegram }: { m: ConductMatch; telegram?: ConductState['telegram'] }) {
   if (m.status !== 'called') return null
@@ -28,7 +30,9 @@ function CallState({ m, telegram }: { m: ConductMatch; telegram?: ConductState['
           <span key={s} className={`chip ${cls}`} title={r?.reason}>
             {m[s]?.name.split(' ')[0]}: {r ? t.conduct.call_answer[r.answer] : t.conduct.noAnswer}
             {r?.reason ? ` · ${r.reason}` : ''}
-            {m[s] && telegram && telegram[m[s]!.playerId] !== 'sent' && <span title={t.conduct.tgNotDeliveredHint}> · {t.conduct.tgNotDelivered}</span>}
+            {m[s] && telegram && telegram[m[s]!.playerId] !== 'sent' && (
+              <span title={t.conduct.tgNotDeliveredHint}> · {t.conduct.tgNotDelivered}</span>
+            )}
           </span>
         )
       })}
@@ -38,7 +42,9 @@ function CallState({ m, telegram }: { m: ConductMatch; telegram?: ConductState['
 }
 
 function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unknown) => Promise<boolean> }) {
-  const present = d.entries.filter((e) => (d.tournament.settings.requireCheckin ? e.status === 'checked_in' : ['paid', 'checked_in'].includes(e.status)))
+  const present = d.entries.filter((e) =>
+    d.tournament.settings.requireCheckin ? e.status === 'checked_in' : ['paid', 'checked_in'].includes(e.status),
+  )
   const [order, setOrder] = useState<ConductEntry[]>(() => [...present].sort((a, b) => b.rating - a.rating))
   const move = (i: number, dir: -1 | 1) => {
     const next = [...order]
@@ -48,8 +54,16 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
     setOrder(next)
   }
   const s = d.structure
-  const shape = s ? (s.groups ? t.conduct.structureGroups(s.players, s.groups.join(' + ')) : s.bracket ? t.conduct.structureBracket(s.players, s.bracket) : '') : ''
-  const under = d.entries.filter((e) => ['paid', 'checked_in', 'awaiting_payment'].includes(e.status)).length < d.tournament.minParticipants
+  const shape = s
+    ? s.groups
+      ? t.conduct.structureGroups(s.players, s.groups.join(' + '))
+      : s.bracket
+        ? t.conduct.structureBracket(s.players, s.bracket)
+        : ''
+    : ''
+  const under =
+    d.entries.filter((e) => ['paid', 'checked_in', 'awaiting_payment'].includes(e.status)).length <
+    d.tournament.minParticipants
   return (
     <section className="panel">
       <div className="panel__head">
@@ -57,7 +71,10 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
         <button
           className="button button--primary"
           disabled={order.length < Math.max(2, d.tournament.minParticipants)}
-          onClick={async () => (await dialog.confirm(`${shape}\n${t.conduct.startConfirm}`)) && void run(`/tournaments/${d.tournament.id}/start`, { order: order.map((e) => e.entryId) })}
+          onClick={async () =>
+            (await dialog.confirm(`${shape}\n${t.conduct.startConfirm}`)) &&
+            void run(`/tournaments/${d.tournament.id}/start`, { order: order.map((e) => e.entryId) })
+          }
         >
           {t.conduct.start} · {order.length}
         </button>
@@ -65,9 +82,16 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
       {shape && <p className="small">{shape}</p>}
       {under && (
         <div className="note note--error row row--between">
-          <span>{d.tournament.underfillAckAt ? t.conduct.underfillAcked(d.tournament.minParticipants) : t.conduct.underfill(d.tournament.minParticipants)}</span>
+          <span>
+            {d.tournament.underfillAckAt
+              ? t.conduct.underfillAcked(d.tournament.minParticipants)
+              : t.conduct.underfill(d.tournament.minParticipants)}
+          </span>
           {!d.tournament.underfillAckAt && (
-            <button className="button button--sm" onClick={() => void run(`/tournaments/${d.tournament.id}/underfill-ack`)}>
+            <button
+              className="button button--sm"
+              onClick={() => void run(`/tournaments/${d.tournament.id}/underfill-ack`)}
+            >
               {t.conduct.underfillAck}
             </button>
           )}
@@ -92,7 +116,9 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
       <h3>{t.t.participants}</h3>
       <div className="stack" style={{ maxWidth: 420 }}>
         <span className="small muted">{t.conduct.manualAdd}</span>
-        <PlayerSearch onPick={(p) => void run(`/tournaments/${d.tournament.id}/entries/manual`, { playerId: p.id, checkin: true })} />
+        <PlayerSearch
+          onPick={(p) => void run(`/tournaments/${d.tournament.id}/entries/manual`, { playerId: p.id, checkin: true })}
+        />
       </div>
       <div className="tablewrap">
         <table className="table">
@@ -114,7 +140,11 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
                             className="chip"
                             title={t.conduct.checkin}
                             disabled={!['paid', 'checked_in'].includes(e.status)}
-                            onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`, { playerId: m.playerId })}
+                            onClick={() =>
+                              void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`, {
+                                playerId: m.playerId,
+                              })
+                            }
                           >
                             {m.name}
                           </button>
@@ -125,12 +155,21 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
                 </td>
                 <td className="num mono">{e.rating}</td>
                 <td>
-                  {e.status === 'checked_in' ? <span className="chip chip--ok">{t.conduct.checkedIn}</span> : <span className="chip">{t.t.entryStatus[e.status] ?? e.status}</span>}
-                  {d.busyElsewhere[e.entryId] && <span className="chip chip--warn">{t.conduct.busyElsewhere(d.busyElsewhere[e.entryId]!)}</span>}
+                  {e.status === 'checked_in' ? (
+                    <span className="chip chip--ok">{t.conduct.checkedIn}</span>
+                  ) : (
+                    <span className="chip">{t.t.entryStatus[e.status] ?? e.status}</span>
+                  )}
+                  {d.busyElsewhere[e.entryId] && (
+                    <span className="chip chip--warn">{t.conduct.busyElsewhere(d.busyElsewhere[e.entryId]!)}</span>
+                  )}
                 </td>
                 <td>
                   {e.status === 'paid' && (
-                    <button className="button button--sm" onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`)}>
+                    <button
+                      className="button button--sm"
+                      onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`)}
+                    >
                       {t.conduct.checkin}
                     </button>
                   )}
@@ -145,7 +184,15 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
 }
 
 /** F-7: tables and match rules of unplayed matches while the tournament runs. */
-function RunningChanges({ d, onDone, onError }: { d: ConductState; onDone: () => void; onError: (text: string) => void }) {
+function RunningChanges({
+  d,
+  onDone,
+  onError,
+}: {
+  d: ConductState
+  onDone: () => void
+  onError: (text: string) => void
+}) {
   const [tables, setTables] = useState(d.tournament.tableIds)
   const [wins, setWins] = useState(d.format.match.winsNeeded)
   const put = async (path: string, json: unknown) => {
@@ -163,10 +210,19 @@ function RunningChanges({ d, onDone, onError }: { d: ConductState; onDone: () =>
       <div className="row" style={{ flexWrap: 'wrap' }}>
         {d.hallTables.map((x) => (
           <label key={x.id} className="chip">
-            <input type="checkbox" checked={tables.includes(x.id)} onChange={(e) => setTables(e.target.checked ? [...tables, x.id] : tables.filter((id) => id !== x.id))} /> № {x.number}
+            <input
+              type="checkbox"
+              checked={tables.includes(x.id)}
+              onChange={(e) => setTables(e.target.checked ? [...tables, x.id] : tables.filter((id) => id !== x.id))}
+            />{' '}
+            № {x.number}
           </label>
         ))}
-        <button className="button button--sm" disabled={!tables.length} onClick={() => void put('tables', { tableIds: tables })}>
+        <button
+          className="button button--sm"
+          disabled={!tables.length}
+          onClick={() => void put('tables', { tableIds: tables })}
+        >
           {t.conduct.saveTables}
         </button>
       </div>
@@ -183,7 +239,10 @@ function RunningChanges({ d, onDone, onError }: { d: ConductState; onDone: () =>
         <button
           className="button button--sm"
           disabled={wins === d.format.match.winsNeeded}
-          onClick={async () => (await dialog.confirm(t.conduct.matchRulesConfirm)) && void put('format', { ...d.format, match: { ...d.format.match, winsNeeded: wins } })}
+          onClick={async () =>
+            (await dialog.confirm(t.conduct.matchRulesConfirm)) &&
+            void put('format', { ...d.format, match: { ...d.format.match, winsNeeded: wins } })
+          }
         >
           {t.conduct.saveRules}
         </button>
@@ -203,6 +262,8 @@ export function ConductPage() {
   const [tab, setTab] = useState<'board' | 'matches'>('board')
   const [stageKey, setStageKey] = useState<string | null>(null)
   const [sideOpen, setSideOpen] = useState(false)
+  const [picked, setPicked] = useState<number | null>(null)
+  const [late, setLate] = useState(false)
 
   const run = async (path: string, json?: unknown, ok?: string) => {
     setMessage(null)
@@ -244,7 +305,9 @@ export function ConductPage() {
                   onClick={async () => {
                     const n = (await dialog.prompt(t.adminT.tablePrompt))?.trim()
                     if (!n) return
-                    const table = d.hallTables.find((x) => String(x.number) === n && d.tournament.tableIds.includes(x.id))
+                    const table = d.hallTables.find(
+                      (x) => String(x.number) === n && d.tournament.tableIds.includes(x.id),
+                    )
                     if (!table) return setMessage({ ok: false, text: t.adminT.noSuchTable })
                     void run(`${base}/matches/${m.id}/table`, { tableId: table.id }, t.adminT.tableMoved)
                   }}
@@ -253,7 +316,10 @@ export function ConductPage() {
                 </button>
               </>
             )}
-            <button className="button button--sm button--primary" onClick={() => setScoring({ match: m, mode: 'result' })}>
+            <button
+              className="button button--sm button--primary"
+              onClick={() => setScoring({ match: m, mode: 'result' })}
+            >
               {t.conduct.score}
             </button>
             <button className="button button--sm" onClick={() => void noShow(m)}>
@@ -263,10 +329,15 @@ export function ConductPage() {
         )
         const noShow = async (m: ConductMatch) => {
           const who = await dialog.prompt(`${t.conduct.noShowWho}\n1 — ${m.home?.name}\n2 — ${m.away?.name}`)
-          if (who === '1' || who === '2') void run(`${base}/matches/${m.id}/no-show`, { absent: who === '1' ? 'home' : 'away' })
+          if (who === '1' || who === '2')
+            void run(`${base}/matches/${m.id}/no-show`, { absent: who === '1' ? 'home' : 'away' })
         }
         const started = !['published', 'registration_closed'].includes(d.tournament.status)
-        const stage = d.stages.find((s) => s.key === stageKey) ?? d.stages.find((s) => s.status === 'running') ?? d.stages.filter((s) => s.status !== 'pending').at(-1) ?? d.stages[0]
+        const stage =
+          d.stages.find((s) => s.key === stageKey) ??
+          d.stages.find((s) => s.status === 'running') ??
+          d.stages.filter((s) => s.status !== 'pending').at(-1) ??
+          d.stages[0]
         const onTables = d.tables.filter((x) => x.match)
         return (
           <>
@@ -287,7 +358,13 @@ export function ConductPage() {
                 </Link>
                 {running && (
                   <>
-                    <button className="button button--primary" onClick={async () => (await dialog.confirm(t.conduct.finishConfirm)) && void run(`${base}/finish`, undefined, t.conduct.finished)}>
+                    <button
+                      className="button button--primary"
+                      onClick={async () =>
+                        (await dialog.confirm(t.conduct.finishConfirm)) &&
+                        void run(`${base}/finish`, undefined, t.conduct.finished)
+                      }
+                    >
                       {t.conduct.finish}
                     </button>
                     <button
@@ -305,11 +382,14 @@ export function ConductPage() {
               {pending > 0 && <p className="note note--error">{t.conduct.offline(pending)}</p>}
               {conflicts.map((c) => {
                 const mine = c.body as { setsHome: number; setsAway: number }
-                const m = [...d.recent, ...d.queue, ...d.attention].find((x) => c.path.endsWith(`/matches/${x.id}/result`))
+                const m = [...d.recent, ...d.queue, ...d.attention].find((x) =>
+                  c.path.endsWith(`/matches/${x.id}/result`),
+                )
                 return (
                   <div className="note note--error row row--between" key={c.path}>
                     <span>
-                      {t.conduct.conflictBoth(m ? `№ ${m.number}` : '')}: {t.conduct.conflictMine} {mine.setsHome}:{mine.setsAway} · {t.conduct.conflictServer}{' '}
+                      {t.conduct.conflictBoth(m ? `№ ${m.number}` : '')}: {t.conduct.conflictMine} {mine.setsHome}:
+                      {mine.setsAway} · {t.conduct.conflictServer}{' '}
                       {c.server ? `${c.server.setsHome}:${c.server.setsAway}` : '—'}
                     </span>
                     <span className="row">
@@ -335,6 +415,7 @@ export function ConductPage() {
               {message && <p className={`note ${message.ok ? 'note--ok' : 'note--error'}`}>{message.text}</p>}
             </section>
 
+            {!started && <DraftPanel base={base} draft={d.draft} run={run} />}
             {!started && <Seeding d={d} run={(p, j) => run(p, j)} />}
 
             {started && (
@@ -349,7 +430,14 @@ export function ConductPage() {
             )}
 
             {started && tab === 'matches' && (
-              <MatchesTab tournamentId={d.tournament.id} running={running} canCorrect={d.canCorrect} run={(p, j) => run(p, j)} onScore={(match, mode) => setScoring({ match, mode })} onNoShow={(m) => void noShow(m)} />
+              <MatchesTab
+                tournamentId={d.tournament.id}
+                running={running}
+                canCorrect={d.canCorrect}
+                run={(p, j) => run(p, j)}
+                onScore={(match, mode) => setScoring({ match, mode })}
+                onNoShow={(m) => void noShow(m)}
+              />
             )}
 
             {started && tab === 'board' && (
@@ -358,17 +446,57 @@ export function ConductPage() {
                   {d.stages.length > 1 && (
                     <div className="tabs" role="tablist">
                       {d.stages.map((s) => (
-                        <button key={s.key} type="button" role="tab" aria-selected={s.key === stage?.key} onClick={() => setStageKey(s.key)}>
+                        <button
+                          key={s.key}
+                          type="button"
+                          role="tab"
+                          aria-selected={s.key === stage?.key}
+                          onClick={() => setStageKey(s.key)}
+                        >
                           {s.name}
                         </button>
                       ))}
                     </div>
                   )}
-                  {stage ? <StageBlock s={stage} stages={d.stages} format={d.format as StructureFormat} heading={d.stages.length === 1} /> : <p className="empty">{t.conduct.noStructure}</p>}
+                  {running && <OpenEarly base={base} stages={d.stages} run={run} />}
+                  {running && picked != null && <p className="note small">{t.conduct.swapPickHint}</p>}
+                  {stage ? (
+                    <StageBlock
+                      s={stage}
+                      stages={d.stages}
+                      format={d.format as StructureFormat}
+                      heading={d.stages.length === 1}
+                      staff={
+                        running && stage.status === 'running'
+                          ? {
+                              picked,
+                              onPick: async (entryId) => {
+                                if (picked == null) return setPicked(entryId)
+                                setPicked(null)
+                                if (picked !== entryId && (await dialog.confirm(t.conduct.swapConfirm)))
+                                  void run(
+                                    `${base}/stages/${stage.key}/swap`,
+                                    { a: picked, b: entryId },
+                                    t.conduct.swapDone,
+                                  )
+                              },
+                              onGroupOrder: (g) => void setGroupOrder(base, g, run),
+                            }
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <p className="empty">{t.conduct.noStructure}</p>
+                  )}
                 </section>
                 {running && (
                   <>
-                    <button type="button" className="button conduct-board__toggle" aria-expanded={sideOpen} onClick={() => setSideOpen(!sideOpen)}>
+                    <button
+                      type="button"
+                      className="button conduct-board__toggle"
+                      aria-expanded={sideOpen}
+                      onClick={() => setSideOpen(!sideOpen)}
+                    >
                       {sideOpen ? t.conduct.hide : `${t.conduct.tablesWidget} · ${onTables.length}/${d.tables.length}`}
                     </button>
                     <aside className="panel conduct-board__side">
@@ -378,10 +506,14 @@ export function ConductPage() {
                           {d.attention.map((m) => (
                             <div className="row row--between" key={m.id}>
                               <span className="small">
-                                № {m.number} · {m.home?.name} — {m.away?.name} · {m.disputed ? t.conduct.disputed : t.conduct.reported}{' '}
+                                № {m.number} · {m.home?.name} — {m.away?.name} ·{' '}
+                                {m.disputed ? t.conduct.disputed : t.conduct.reported}{' '}
                                 {m.reportedScore && `${m.reportedScore.setsHome}:${m.reportedScore.setsAway}`}
                               </span>
-                              <button className="button button--sm button--primary" onClick={() => setScoring({ match: m, mode: 'result' })}>
+                              <button
+                                className="button button--sm button--primary"
+                                onClick={() => setScoring({ match: m, mode: 'result' })}
+                              >
                                 {t.conduct.score}
                               </button>
                             </div>
@@ -400,7 +532,8 @@ export function ConductPage() {
                             <span className="chip">{t.conduct.matchStatus[x.match!.status]}</span>
                           </div>
                           <p className="small">
-                            № {x.match!.number} · {label(x.match!)} {x.match!.calledAt && `· ${formatTime(x.match!.calledAt)}`}
+                            № {x.match!.number} · {label(x.match!)}{' '}
+                            {x.match!.calledAt && `· ${formatTime(x.match!.calledAt)}`}
                             <br />
                             {x.match!.home?.name} — {x.match!.away?.name}
                           </p>
@@ -419,9 +552,16 @@ export function ConductPage() {
                             {q.home?.name} — {q.away?.name}
                           </span>
                           {q.waitReason ? (
-                            <span className="chip chip--warn">{q.waitReason === 'rest' && q.readyAt ? t.conduct.readyAt(formatTime(q.readyAt)) : t.conduct.wait[q.waitReason]}</span>
+                            <span className="chip chip--warn">
+                              {q.waitReason === 'rest' && q.readyAt
+                                ? t.conduct.readyAt(formatTime(q.readyAt))
+                                : t.conduct.wait[q.waitReason]}
+                            </span>
                           ) : (
-                            <button className="button button--sm button--primary" onClick={() => void run(`${base}/matches/${q.id}/call`, { tableId: q.suggestedTableId })}>
+                            <button
+                              className="button button--sm button--primary"
+                              onClick={() => void run(`${base}/matches/${q.id}/call`, { tableId: q.suggestedTableId })}
+                            >
                               {t.conduct.call} → {q.suggestedTable}
                             </button>
                           )}
@@ -436,7 +576,13 @@ export function ConductPage() {
             {running && tab === 'board' && (
               <>
                 <section className="panel">
-                  <h2>{t.t.participants}</h2>
+                  <div className="panel__head">
+                    <h2>{t.t.participants}</h2>
+                    <button className="button" onClick={() => setLate(true)}>
+                      {t.conduct.lateTitle}
+                    </button>
+                  </div>
+                  {late && <LateEntry base={base} stages={d.stages} run={run} onClose={() => setLate(false)} />}
                   {d.entries
                     .filter((e) => e.status === 'playing')
                     .map((e) => (
@@ -446,8 +592,21 @@ export function ConductPage() {
                             {e.seed}. {e.name}
                           </span>
                           <span className="row">
-                            <button className="button button--sm" onClick={() => setReplacing(replacing === e.entryId ? null : e.entryId)}>
+                            <button
+                              className="button button--sm"
+                              onClick={() => setReplacing(replacing === e.entryId ? null : e.entryId)}
+                            >
                               {t.conduct.replace}
+                            </button>
+                            <button
+                              className="button button--sm"
+                              title={t.conduct.removeHint}
+                              onClick={async () => {
+                                const reason = await ask(t.conduct.removeReason)
+                                if (reason) void run(`${base}/entries/${e.entryId}/remove`, { reason })
+                              }}
+                            >
+                              {t.conduct.remove}
                             </button>
                             <button
                               className="button button--sm button--danger"
@@ -455,7 +614,11 @@ export function ConductPage() {
                                 const mode = await dialog.prompt(t.conduct.withdrawMode, '1')
                                 if (mode !== '1' && mode !== '2') return
                                 const reason = await ask(t.conduct.withdrawReason)
-                                if (reason) void run(`${base}/entries/${e.entryId}/withdraw`, { reason, mode: mode === '1' ? 'annul' : 'walkover' })
+                                if (reason)
+                                  void run(`${base}/entries/${e.entryId}/withdraw`, {
+                                    reason,
+                                    mode: mode === '1' ? 'annul' : 'walkover',
+                                  })
                               }}
                             >
                               {t.conduct.withdraw}
@@ -468,7 +631,11 @@ export function ConductPage() {
                             <PlayerSearch
                               onPick={async (p) => {
                                 const reason = await ask(t.conduct.replaceReason)
-                                if (reason && (await run(`${base}/entries/${e.entryId}/replace`, { playerId: p.id, reason }))) setReplacing(null)
+                                if (
+                                  reason &&
+                                  (await run(`${base}/entries/${e.entryId}/replace`, { playerId: p.id, reason }))
+                                )
+                                  setReplacing(null)
                               }}
                             />
                           </div>

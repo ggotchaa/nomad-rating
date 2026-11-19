@@ -1,4 +1,4 @@
-import type { StageView } from '../../api/types.ts'
+import type { DraftView, StageView } from '../../api/types.ts'
 
 export type Side = { entryId: number; playerId: number; name: string; rating: number | null }
 export type CallResponse = { answer: 'delivered' | 'going' | 'cannot'; reason?: string; at: string }
@@ -55,6 +55,7 @@ export type ConductState = {
   structure: { players: number; groups: number[] | null; bracket: number | null } | null
   busyElsewhere: Record<number, string>
   stages: StageView[]
+  draft: DraftView | null
   canCorrect: boolean
   tables: { id: number; number: number; match: ConductMatch | null }[]
   queue: QueueMatch[]

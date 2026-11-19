@@ -107,7 +107,7 @@ export type Participant = {
   ratingChange?: { delta: number | null; rating_after: number | null; calibrated: boolean } | null
 }
 
-export type EntryRef = { entryId: number; playerId: number; name: string; rating: number | null; seed: number | null; calibrating?: boolean; startLevel?: number }
+export type EntryRef = { entryId: number; playerId: number; name: string; rating: number | null; seed: number | null; calibrating?: boolean; startLevel?: number; photoUrl?: string | null }
 
 export type MatchView = {
   id: number
@@ -129,15 +129,35 @@ export type MatchView = {
   winnerEntryId: number | null
   table: number | null
   scheduledAt?: string | null
+  /** Seed still waiting for this group to finish (final opened early). */
+  homeWaitsGroup?: string | null
+  awayWaitsGroup?: string | null
 }
 
 export type StandingRow = { id: string; played: number; wins: number; losses: number; points: number; setsWon: number; setsLost: number; place: number; decidedBy: string | null; player?: EntryRef; tiedWith: string[]; tiedIds?: number[] }
 
-export type GroupView = { code: string; members: (EntryRef | undefined)[]; standings: { needsDecision: boolean; rows: StandingRow[] } | null; matches: MatchView[] }
+export type GroupView = { id?: number; code: string; manualOrder?: number[] | null; members: (EntryRef | undefined)[]; standings: { needsDecision: boolean; rows: StandingRow[] } | null; matches: MatchView[] }
+
+export type StageWarning = { code: string; params?: Record<string, string | number> }
+export type LockReason = 'match_called' | 'match_played' | 'waiting_group' | 'not_in_stage'
+type StageCommon = { key: string; name: string; status: string; warnings?: StageWarning[]; locks?: Record<string, LockReason | null> }
 
 export type StageView =
-  | { key: string; kind: 'groups' | 'round_robin'; name: string; status: string; groups: GroupView[] }
-  | { key: string; kind: 'single_elim' | 'all_places'; name: string; status: string; size: number | null; matches: MatchView[] }
+  | (StageCommon & { kind: 'groups' | 'round_robin'; groups: GroupView[] })
+  | (StageCommon & { kind: 'single_elim' | 'all_places' | 'minus2' | 'mixed'; size: number | null; matches: MatchView[] })
+
+export type DraftEntry = { entryId: number; playerId: number; name: string; rating: number; status: string }
+export type DraftView = {
+  published: boolean
+  generatedAt: string
+  stage: string
+  kind: string | null
+  warnings: StageWarning[]
+  groups: { code: string; members: DraftEntry[] }[] | null
+  seeds: (DraftEntry | null)[] | null
+  newEntries: DraftEntry[]
+  absent: number[]
+}
 
 export type StructureFormat = {
   groupPoints?: { win: number; loss: number; walkover: number }
@@ -176,6 +196,7 @@ export type TournamentDetail = {
   participants: Participant[]
   myEntry: Participant | null
   structure: StageView[] | null
+  draft?: DraftView | null
   isStaff?: boolean
   shareUrl?: string
   settings?: { scoreEntry?: 'staff' | 'players'; checkinWindowMinutes?: number; sameDayRegistration?: boolean; waitlist?: boolean }

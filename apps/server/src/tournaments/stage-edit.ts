@@ -11,7 +11,15 @@ import { audit } from '../audit.ts'
 import { badRequest, conflict, unprocessable } from '../http/errors.ts'
 import { playerName } from '../modules/players.ts'
 import { teamSeedRating } from '../teams/ratings.ts'
-import { dependentMatches, loadTournament, nextMatchNumber, recordResult, stageSeeds, syncBracket, wasPlayed } from './structure.ts'
+import {
+  dependentMatches,
+  loadTournament,
+  nextMatchNumber,
+  recordResult,
+  stageSeeds,
+  syncBracket,
+  wasPlayed,
+} from './structure.ts'
 
 type Trx = Transaction<Database>
 
@@ -26,9 +34,15 @@ async function seededEntries(trx: Trx, t: Tournament, statuses: readonly string[
     .where('e.tournament_id', '=', t.id)
     .where('e.status', 'in', [...statuses] as never)
     .execute()
-  if (t.type !== 'singles') for (const e of entries) e.rating = await teamSeedRating(trx, t.type === 'doubles' ? 'pair' : 'team', e.roster ?? [])
+  if (t.type !== 'singles')
+    for (const e of entries)
+      e.rating = await teamSeedRating(trx, t.type === 'doubles' ? 'pair' : 'team', e.roster ?? [])
   return entries
-    .map((e) => ({ id: String(e.id), rating: e.rating ?? e.start_level, clubId: e.added_by_club_id == null ? null : String(e.added_by_club_id) }))
+    .map((e) => ({
+      id: String(e.id),
+      rating: e.rating ?? e.start_level,
+      clubId: e.added_by_club_id == null ? null : String(e.added_by_club_id),
+    }))
     .sort((a, b) => b.rating - a.rating || Number(a.id) - Number(b.id))
 }
 
@@ -38,24 +52,56 @@ const presentStatuses = (t: Tournament) => (t.settings.requireCheckin ? ['checke
 // Draft (T-8)
 
 /** Groups or bracket of the first stage before registration and check-in close, marked «Черновик». */
-export async function generateDraft(trx: Trx, tournamentId: number, actorUserId: number | null, options: { presentOnly?: boolean } = {}): Promise<TournamentDraft> {
+export async function generateDraft(
+  trx: Trx,
+  tournamentId: number,
+  actorUserId: number | null,
+  options: { presentOnly?: boolean } = {},
+): Promise<TournamentDraft> {
   const t = await loadTournament(trx, tournamentId)
   if (!BEFORE_START.includes(t.status)) throw conflict('draft.already_started')
-  const seeded = await seededEntries(trx, t, options.presentOnly ? presentStatuses(t) : ['awaiting_payment', 'paid', 'checked_in'])
+  const seeded = await seededEntries(
+    trx,
+    t,
+    options.presentOnly ? presentStatuses(t) : ['awaiting_payment', 'paid', 'checked_in'],
+  )
   if (seeded.length < 2) throw unprocessable('draft.too_few_players', { players: seeded.length })
   const spec = t.format.stages[0]!
   let draft: TournamentDraft
   const base = { stage: spec.id, generatedAt: new Date().toISOString(), entries: seeded.map((p) => Number(p.id)) }
   if (spec.kind === 'groups' || spec.kind === 'round_robin') {
-    if (seeded.length < 3 && spec.kind === 'groups') throw unprocessable('draft.too_few_players', { players: seeded.length })
+    if (seeded.length < 3 && spec.kind === 'groups')
+      throw unprocessable('draft.too_few_players', { players: seeded.length })
     const plan = planGroups(spec, seeded)
-    draft = { ...base, groups: plan.groups.map((g) => ({ code: g.code, members: g.members.map(Number) })), warnings: plan.warnings }
+    draft = {
+      ...base,
+      groups: plan.groups.map((g) => ({ code: g.code, members: g.members.map(Number) })),
+      warnings: plan.warnings,
+    }
   } else {
     const size = bracketSizeFor(seeded.length)
-    draft = { ...base, seeds: Array.from({ length: size }, (_, i) => (seeded[i] ? Number(seeded[i]!.id) : null)), warnings: bracketSizeWarnings(seeded.length) }
+    draft = {
+      ...base,
+      seeds: Array.from({ length: size }, (_, i) => (seeded[i] ? Number(seeded[i]!.id) : null)),
+      warnings: bracketSizeWarnings(seeded.length),
+    }
   }
-  await trx.updateTable('tournaments').set({ draft: json(draft) }).where('id', '=', t.id).execute()
-  await audit({ actorUserId, clubId: t.club_id, entity: 'tournament', entityId: t.id, action: t.draft ? 'draft_rebuild' : 'draft_generate', after: { players: seeded.length, presentOnly: Boolean(options.presentOnly) } }, trx)
+  await trx
+    .updateTable('tournaments')
+    .set({ draft: json(draft) })
+    .where('id', '=', t.id)
+    .execute()
+  await audit(
+    {
+      actorUserId,
+      clubId: t.club_id,
+      entity: 'tournament',
+      entityId: t.id,
+      action: t.draft ? 'draft_rebuild' : 'draft_generate',
+      after: { players: seeded.length, presentOnly: Boolean(options.presentOnly) },
+    },
+    trx,
+  )
   return draft
 }
 
@@ -66,15 +112,44 @@ async function draftOf(trx: Trx, tournamentId: number) {
   return { t, draft: structuredClone(t.draft) }
 }
 
-async function saveDraft(trx: Trx, t: Tournament, draft: TournamentDraft, action: string, after: Record<string, unknown>, actorUserId: number | null) {
-  await trx.updateTable('tournaments').set({ draft: json(draft) }).where('id', '=', t.id).execute()
+async function saveDraft(
+  trx: Trx,
+  t: Tournament,
+  draft: TournamentDraft,
+  action: string,
+  after: Record<string, unknown>,
+  actorUserId: number | null,
+) {
+  await trx
+    .updateTable('tournaments')
+    .set({ draft: json(draft) })
+    .where('id', '=', t.id)
+    .execute()
   await audit({ actorUserId, clubId: t.club_id, entity: 'tournament', entityId: t.id, action, after }, trx)
 }
 
-export async function publishDraft(trx: Trx, tournamentId: number, publish: boolean, actorUserId: number | null): Promise<void> {
+export async function publishDraft(
+  trx: Trx,
+  tournamentId: number,
+  publish: boolean,
+  actorUserId: number | null,
+): Promise<void> {
   const { t } = await draftOf(trx, tournamentId)
-  await trx.updateTable('tournaments').set({ draft_published_at: publish ? new Date() : null }).where('id', '=', t.id).execute()
-  await audit({ actorUserId, clubId: t.club_id, entity: 'tournament', entityId: t.id, action: publish ? 'draft_publish' : 'draft_unpublish' }, trx)
+  await trx
+    .updateTable('tournaments')
+    .set({ draft_published_at: publish ? new Date() : null })
+    .where('id', '=', t.id)
+    .execute()
+  await audit(
+    {
+      actorUserId,
+      clubId: t.club_id,
+      entity: 'tournament',
+      entityId: t.id,
+      action: publish ? 'draft_publish' : 'draft_unpublish',
+    },
+    trx,
+  )
 }
 
 export async function clearDraft(trx: Trx, tournamentId: number, actorUserId: number | null): Promise<void> {
@@ -92,7 +167,13 @@ const positionIn = (draft: TournamentDraft, entryId: number): DraftPosition | nu
 }
 
 /** Swaps two players of the draft (any position, before the start everything is free). */
-export async function draftSwap(trx: Trx, tournamentId: number, a: number, b: number, actorUserId: number | null): Promise<void> {
+export async function draftSwap(
+  trx: Trx,
+  tournamentId: number,
+  a: number,
+  b: number,
+  actorUserId: number | null,
+): Promise<void> {
   const { t, draft } = await draftOf(trx, tournamentId)
   const pa = positionIn(draft, a)
   const pb = positionIn(draft, b)
@@ -108,7 +189,13 @@ export async function draftSwap(trx: Trx, tournamentId: number, a: number, b: nu
 }
 
 /** Moves a player to another group, or to a bracket slot (swapping with whoever is there). */
-export async function draftMove(trx: Trx, tournamentId: number, entryId: number, to: { group?: string; seed?: number }, actorUserId: number | null): Promise<void> {
+export async function draftMove(
+  trx: Trx,
+  tournamentId: number,
+  entryId: number,
+  to: { group?: string; seed?: number },
+  actorUserId: number | null,
+): Promise<void> {
   const { t, draft } = await draftOf(trx, tournamentId)
   const from = positionIn(draft, entryId)
   if (!from) throw badRequest('draft.unknown_entry')
@@ -127,11 +214,22 @@ export async function draftMove(trx: Trx, tournamentId: number, entryId: number,
 }
 
 /** A new registration goes to a free place: the smallest group or the first empty bracket slot. */
-export async function draftAddToFreeSlot(trx: Trx, tournamentId: number, entryId: number, actorUserId: number | null): Promise<void> {
+export async function draftAddToFreeSlot(
+  trx: Trx,
+  tournamentId: number,
+  entryId: number,
+  actorUserId: number | null,
+): Promise<void> {
   const { t, draft } = await draftOf(trx, tournamentId)
   if (positionIn(draft, entryId)) throw conflict('draft.already_in')
-  const entry = await trx.selectFrom('entries').select(['id', 'status']).where('id', '=', entryId).where('tournament_id', '=', t.id).executeTakeFirst()
-  if (!entry || !['awaiting_payment', 'paid', 'checked_in'].includes(entry.status)) throw badRequest('draft.unknown_entry')
+  const entry = await trx
+    .selectFrom('entries')
+    .select(['id', 'status'])
+    .where('id', '=', entryId)
+    .where('tournament_id', '=', t.id)
+    .executeTakeFirst()
+  if (!entry || !['awaiting_payment', 'paid', 'checked_in'].includes(entry.status))
+    throw badRequest('draft.unknown_entry')
   if (draft.groups) {
     const smallest = [...draft.groups].sort((a, b) => a.members.length - b.members.length)[0]!
     smallest.members.push(entryId)
@@ -148,21 +246,32 @@ export async function draftAddToFreeSlot(trx: Trx, tournamentId: number, entryId
  * Layout of the first stage at the start: the draft without the players who did not come; newcomers take free places.
  * Returns null when the draft no longer fits (then the stage is built from the seeding as usual).
  */
-export function layoutFromDraft(draft: TournamentDraft | null, presentIds: readonly string[]): { groups?: PlannedGroup[]; seeds?: (string | null)[] } | null {
+export function layoutFromDraft(
+  draft: TournamentDraft | null,
+  presentIds: readonly string[],
+): { groups?: PlannedGroup[]; seeds?: (string | null)[] } | null {
   if (!draft) return null
   const present = new Set(presentIds)
   const placed = new Set<string>()
   if (draft.groups) {
-    const groups = draft.groups.map((g) => ({ code: g.code, members: g.members.map(String).filter((id) => present.has(id)) }))
+    const groups = draft.groups.map((g) => ({
+      code: g.code,
+      members: g.members.map(String).filter((id) => present.has(id)),
+    }))
     for (const g of groups) for (const id of g.members) placed.add(id)
-    for (const id of presentIds) if (!placed.has(id)) [...groups].sort((a, b) => a.members.length - b.members.length)[0]!.members.push(id)
+    for (const id of presentIds)
+      if (!placed.has(id)) [...groups].sort((a, b) => a.members.length - b.members.length)[0]!.members.push(id)
     return groups.every((g) => g.members.length >= 2) ? { groups } : null
   }
   const drafted = (draft.seeds ?? []).map((id) => (id == null ? null : String(id)))
-  const same = drafted.filter(Boolean).length === presentIds.length && drafted.every((id) => id == null || present.has(id))
+  const same =
+    drafted.filter(Boolean).length === presentIds.length && drafted.every((id) => id == null || present.has(id))
   if (same) return { seeds: drafted }
   // Players left or came: keep the drafted order but close the gaps, so byes still go to the strongest.
-  const order = [...drafted.filter((id): id is string => id != null && present.has(id)), ...presentIds.filter((id) => !drafted.includes(id))]
+  const order = [
+    ...drafted.filter((id): id is string => id != null && present.has(id)),
+    ...presentIds.filter((id) => !drafted.includes(id)),
+  ]
   return { seeds: Array.from({ length: bracketSizeFor(order.length) }, (_, i) => order[i] ?? null) }
 }
 
@@ -170,18 +279,40 @@ export function layoutFromDraft(draft: TournamentDraft | null, presentIds: reado
 export async function draftView(trx: Pick<Trx, 'selectFrom'>, t: Tournament, staff: boolean) {
   const draft = t.draft
   if (!draft || !BEFORE_START.includes(t.status) || (!staff && !t.draft_published_at)) return null
-  const ids = [...new Set([...(draft.groups?.flatMap((g) => g.members) ?? []), ...(draft.seeds?.filter((x): x is number => x != null) ?? [])])]
+  const ids = [
+    ...new Set([
+      ...(draft.groups?.flatMap((g) => g.members) ?? []),
+      ...(draft.seeds?.filter((x): x is number => x != null) ?? []),
+    ]),
+  ]
   const rows = await trx
     .selectFrom('entries as e')
     .innerJoin('players as p', 'p.id', 'e.player_id')
     .leftJoin('teams as tm', 'tm.id', 'e.team_id')
     .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-    .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'p.start_level', 'r.rating', 'tm.name as team_name'])
+    .select([
+      'e.id',
+      'e.status',
+      'p.id as player_id',
+      'p.first_name',
+      'p.last_name',
+      'p.start_level',
+      'r.rating',
+      'tm.name as team_name',
+    ])
     .where('e.tournament_id', '=', t.id)
     .execute()
   const ref = (id: number | null) => {
     const e = rows.find((r) => r.id === id)
-    return e ? { entryId: e.id, playerId: e.player_id, name: e.team_name ?? playerName(e), rating: e.rating ?? e.start_level, status: e.status } : null
+    return e
+      ? {
+          entryId: e.id,
+          playerId: e.player_id,
+          name: e.team_name ?? playerName(e),
+          rating: e.rating ?? e.start_level,
+          status: e.status,
+        }
+      : null
   }
   const active = rows.filter((r) => ['awaiting_payment', 'paid', 'checked_in'].includes(r.status))
   return {
@@ -195,7 +326,13 @@ export async function draftView(trx: Pick<Trx, 'selectFrom'>, t: Tournament, sta
     // Registered after the draft was made: «Пересобрать» or «Добавить в свободный слот».
     newEntries: staff ? active.filter((r) => !ids.includes(r.id)).map((r) => ref(r.id)) : [],
     // In the draft but not coming any more (cancelled, or not checked in once check-in is required).
-    absent: staff ? ids.filter((id) => !active.some((r) => r.id === id) || (t.settings.requireCheckin && rows.find((r) => r.id === id)?.status !== 'checked_in')) : [],
+    absent: staff
+      ? ids.filter(
+          (id) =>
+            !active.some((r) => r.id === id) ||
+            (t.settings.requireCheckin && rows.find((r) => r.id === id)?.status !== 'checked_in'),
+        )
+      : [],
   }
 }
 
@@ -205,11 +342,19 @@ export async function draftView(trx: Pick<Trx, 'selectFrom'>, t: Tournament, sta
 export type LockReason = 'match_called' | 'match_played' | 'waiting_group' | 'not_in_stage'
 
 /** Why an entry can't be moved in a running stage, or null when it can. */
-export function lockReason(stage: Pick<Stage, 'kind' | 'seeds' | 'seed_slots'>, matches: readonly Match[], entryId: number): LockReason | null {
+export function lockReason(
+  stage: Pick<Stage, 'kind' | 'seeds' | 'seed_slots'>,
+  matches: readonly Match[],
+  entryId: number,
+): LockReason | null {
   if (isBracketKind(stage.kind)) {
     const seed = stageSeeds(stage).indexOf(String(entryId)) + 1
     if (!seed) return 'not_in_stage'
-    const first = matches.find((m) => [m.home_source, m.away_source].some((s) => (s as { kind?: string; seed?: number } | null)?.kind === 'seed' && (s as { seed: number }).seed === seed))
+    const first = matches.find((m) =>
+      [m.home_source, m.away_source].some(
+        (s) => (s as { kind?: string; seed?: number } | null)?.kind === 'seed' && (s as { seed: number }).seed === seed,
+      ),
+    )
     if (!first) return null
     if (first.status === 'called' || first.status === 'playing') return 'match_called'
     if (wasPlayed(first) || dependentMatches(matches, first.bracket_number!).some(wasPlayed)) return 'match_played'
@@ -223,7 +368,12 @@ export function lockReason(stage: Pick<Stage, 'kind' | 'seeds' | 'seed_slots'>, 
 }
 
 async function stageByKey(trx: Trx, tournamentId: number, stageKey: string) {
-  const stage = await trx.selectFrom('stages').selectAll().where('tournament_id', '=', tournamentId).where('stage_key', '=', stageKey).executeTakeFirst()
+  const stage = await trx
+    .selectFrom('stages')
+    .selectAll()
+    .where('tournament_id', '=', tournamentId)
+    .where('stage_key', '=', stageKey)
+    .executeTakeFirst()
   if (!stage) throw badRequest('stage.not_found')
   return stage
 }
@@ -242,17 +392,43 @@ async function reseedBracket(trx: Trx, stage: Stage, seeds: (string | null | und
   const direct = rows.filter((r) => changed.has(seedOf(r.home_source)) || changed.has(seedOf(r.away_source)))
   const affected = [...new Set(direct.flatMap((d) => [d, ...dependentMatches(rows, d.bracket_number!)]))]
   if (affected.some(wasPlayed)) throw conflict('swap.locked', { reason: 'match_played' })
-  await trx.updateTable('stages').set({ seeds: json(seeds.map((id) => (id == null ? null : Number(id)))) }).where('id', '=', stage.id).execute()
+  await trx
+    .updateTable('stages')
+    .set({ seeds: json(seeds.map((id) => (id == null ? null : Number(id)))) })
+    .where('id', '=', stage.id)
+    .execute()
   await trx
     .updateTable('matches')
-    .set({ home_entry_id: null, away_entry_id: null, status: 'waiting', result_type: null, winner_entry_id: null, table_id: null, called_at: null, call_count: 0, call_responses: json({}) })
-    .where('id', 'in', affected.map((m) => m.id))
+    .set({
+      home_entry_id: null,
+      away_entry_id: null,
+      status: 'waiting',
+      result_type: null,
+      winner_entry_id: null,
+      table_id: null,
+      called_at: null,
+      call_count: 0,
+      call_responses: json({}),
+    })
+    .where(
+      'id',
+      'in',
+      affected.map((m) => m.id),
+    )
     .execute()
   await syncBracket(trx, stage.id)
 }
 
 /** Swaps two players of a running stage (T-10): only players whose match is not called, playing or played. */
-export async function swapEntries(trx: Trx, tournamentId: number, stageKey: string, a: number, b: number, reason: string, actorUserId: number | null): Promise<void> {
+export async function swapEntries(
+  trx: Trx,
+  tournamentId: number,
+  stageKey: string,
+  a: number,
+  b: number,
+  reason: string,
+  actorUserId: number | null,
+): Promise<void> {
   const t = await loadTournament(trx, tournamentId)
   if (t.status !== 'running') throw conflict('tournament.not_running')
   const stage = await stageByKey(trx, tournamentId, stageKey)
@@ -270,19 +446,51 @@ export async function swapEntries(trx: Trx, tournamentId: number, stageKey: stri
     seeds[ib] = String(a)
     await reseedBracket(trx, stage, seeds)
   } else {
-    const groups = await trx.selectFrom('group_members as gm').innerJoin('groups as g', 'g.id', 'gm.group_id').select(['gm.group_id', 'gm.entry_id']).where('g.stage_id', '=', stage.id).where('gm.entry_id', 'in', [a, b]).execute()
+    const groups = await trx
+      .selectFrom('group_members as gm')
+      .innerJoin('groups as g', 'g.id', 'gm.group_id')
+      .select(['gm.group_id', 'gm.entry_id'])
+      .where('g.stage_id', '=', stage.id)
+      .where('gm.entry_id', 'in', [a, b])
+      .execute()
     const ga = groups.find((g) => g.entry_id === a)!.group_id
     const gb = groups.find((g) => g.entry_id === b)!.group_id
     if (ga !== gb) {
-      await trx.updateTable('group_members').set({ group_id: gb }).where('group_id', '=', ga).where('entry_id', '=', a).execute()
-      await trx.updateTable('group_members').set({ group_id: ga }).where('group_id', '=', gb).where('entry_id', '=', b).execute()
-      for (const [group, from, to] of [[ga, a, b], [gb, b, a]] as const) {
-        await trx.updateTable('matches').set({ home_entry_id: to }).where('group_id', '=', group).where('home_entry_id', '=', from).execute()
-        await trx.updateTable('matches').set({ away_entry_id: to }).where('group_id', '=', group).where('away_entry_id', '=', from).execute()
+      await trx
+        .updateTable('group_members')
+        .set({ group_id: gb })
+        .where('group_id', '=', ga)
+        .where('entry_id', '=', a)
+        .execute()
+      await trx
+        .updateTable('group_members')
+        .set({ group_id: ga })
+        .where('group_id', '=', gb)
+        .where('entry_id', '=', b)
+        .execute()
+      for (const [group, from, to] of [
+        [ga, a, b],
+        [gb, b, a],
+      ] as const) {
+        await trx
+          .updateTable('matches')
+          .set({ home_entry_id: to })
+          .where('group_id', '=', group)
+          .where('home_entry_id', '=', from)
+          .execute()
+        await trx
+          .updateTable('matches')
+          .set({ away_entry_id: to })
+          .where('group_id', '=', group)
+          .where('away_entry_id', '=', from)
+          .execute()
       }
     }
   }
-  await audit({ actorUserId, clubId: t.club_id, entity: 'stage', entityId: stage.id, action: 'swap', reason, after: { a, b } }, trx)
+  await audit(
+    { actorUserId, clubId: t.club_id, entity: 'stage', entityId: stage.id, action: 'swap', reason, after: { a, b } },
+    trx,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -300,13 +508,25 @@ export type LateEntryInput = {
   missed: 'play' | 'technical' | 'ignore'
 }
 
-export async function addLateEntry(trx: Trx, tournamentId: number, input: LateEntryInput, actorUserId: number | null, now = new Date()): Promise<number> {
+export async function addLateEntry(
+  trx: Trx,
+  tournamentId: number,
+  input: LateEntryInput,
+  actorUserId: number | null,
+  now = new Date(),
+): Promise<number> {
   const t = await loadTournament(trx, tournamentId)
   if (t.status !== 'running') throw conflict('tournament.not_running')
   if (t.type !== 'singles') throw conflict('entry.late_singles_only')
   const stage = await stageByKey(trx, tournamentId, input.stageKey)
   if (stage.status !== 'running') throw conflict('stage.not_running')
-  const busy = await trx.selectFrom('entries').select('id').where('tournament_id', '=', t.id).where('player_id', '=', input.playerId).where('status', 'in', ['awaiting_payment', 'paid', 'checked_in', 'playing']).executeTakeFirst()
+  const busy = await trx
+    .selectFrom('entries')
+    .select('id')
+    .where('tournament_id', '=', t.id)
+    .where('player_id', '=', input.playerId)
+    .where('status', 'in', ['awaiting_payment', 'paid', 'checked_in', 'playing'])
+    .executeTakeFirst()
   if (busy) throw conflict('entry.already_registered')
   const player = await trx
     .selectFrom('players as p')
@@ -315,10 +535,23 @@ export async function addLateEntry(trx: Trx, tournamentId: number, input: LateEn
     .where('p.id', '=', input.playerId)
     .executeTakeFirst()
   if (!player) throw badRequest('player.not_found')
-  const maxSeed = await trx.selectFrom('entries').select((eb) => eb.fn.max<number>('seed').as('m')).where('tournament_id', '=', t.id).executeTakeFirst()
+  const maxSeed = await trx
+    .selectFrom('entries')
+    .select((eb) => eb.fn.max<number>('seed').as('m'))
+    .where('tournament_id', '=', t.id)
+    .executeTakeFirst()
   const entry = await trx
     .insertInto('entries')
-    .values({ tournament_id: t.id, player_id: player.id, status: 'playing', seed: (maxSeed?.m ?? 0) + 1, rating_at_start: player.rating ?? player.start_level, registered_by: actorUserId, checked_in_at: now, late_payment: input.payment })
+    .values({
+      tournament_id: t.id,
+      player_id: player.id,
+      status: 'playing',
+      seed: (maxSeed?.m ?? 0) + 1,
+      rating_at_start: player.rating ?? player.start_level,
+      registered_by: actorUserId,
+      checked_in_at: now,
+      late_payment: input.payment,
+    })
     .returning('id')
     .executeTakeFirstOrThrow()
 
@@ -337,7 +570,12 @@ export async function addLateEntry(trx: Trx, tournamentId: number, input: LateEn
     seeds[index] = String(entry.id)
     await reseedBracket(trx, stage, seeds)
   } else {
-    const group = await trx.selectFrom('groups').selectAll().where('stage_id', '=', stage.id).where('code', '=', input.group ?? '').executeTakeFirst()
+    const group = await trx
+      .selectFrom('groups')
+      .selectAll()
+      .where('stage_id', '=', stage.id)
+      .where('code', '=', input.group ?? '')
+      .executeTakeFirst()
     if (!group) throw badRequest('group.not_found')
     const members = await trx
       .selectFrom('group_members as gm')
@@ -346,8 +584,15 @@ export async function addLateEntry(trx: Trx, tournamentId: number, input: LateEn
       .where('gm.group_id', '=', group.id)
       .orderBy('gm.seed_index')
       .execute()
-    await trx.insertInto('group_members').values({ group_id: group.id, entry_id: entry.id, seed_index: (members.at(-1)?.seed_index ?? 0) + 1 }).execute()
-    const lastTour = await trx.selectFrom('matches').select((eb) => eb.fn.max<number>('tour').as('m')).where('group_id', '=', group.id).executeTakeFirst()
+    await trx
+      .insertInto('group_members')
+      .values({ group_id: group.id, entry_id: entry.id, seed_index: (members.at(-1)?.seed_index ?? 0) + 1 })
+      .execute()
+    const lastTour = await trx
+      .selectFrom('matches')
+      .select((eb) => eb.fn.max<number>('tour').as('m'))
+      .where('group_id', '=', group.id)
+      .executeTakeFirst()
     let number = await nextMatchNumber(trx, t.id)
     const created: number[] = []
     for (const [i, m] of members.filter((x) => x.status !== 'withdrew').entries()) {
@@ -372,20 +617,66 @@ export async function addLateEntry(trx: Trx, tournamentId: number, input: LateEn
         .executeTakeFirstOrThrow()
       created.push(row.id)
     }
-    if (input.missed === 'technical') for (const id of created) await recordResult(trx, id, { setsHome: 0, setsAway: 0, resultType: 'walkover', winner: 'home' }, actorUserId, now)
+    if (input.missed === 'technical')
+      for (const id of created)
+        await recordResult(
+          trx,
+          id,
+          { setsHome: 0, setsAway: 0, resultType: 'walkover', winner: 'home' },
+          actorUserId,
+          now,
+        )
   }
-  await audit({ actorUserId, clubId: t.club_id, entity: 'entry', entityId: entry.id, action: 'late_add', after: { playerId: input.playerId, stage: input.stageKey, group: input.group, seed: input.seed, payment: input.payment, missed: input.missed } }, trx)
+  await audit(
+    {
+      actorUserId,
+      clubId: t.club_id,
+      entity: 'entry',
+      entityId: entry.id,
+      action: 'late_add',
+      after: {
+        playerId: input.playerId,
+        stage: input.stageKey,
+        group: input.group,
+        seed: input.seed,
+        payment: input.payment,
+        missed: input.missed,
+      },
+    },
+    trx,
+  )
   return entry.id
 }
 
 /** Removes a player who has not played yet (added by mistake, T-9). */
-export async function removeUnplayedEntry(trx: Trx, entryId: number, reason: string, actorUserId: number | null, now = new Date()): Promise<void> {
-  const entry = await trx.selectFrom('entries').selectAll().where('id', '=', entryId).forUpdate().executeTakeFirstOrThrow()
+export async function removeUnplayedEntry(
+  trx: Trx,
+  entryId: number,
+  reason: string,
+  actorUserId: number | null,
+  now = new Date(),
+): Promise<void> {
+  const entry = await trx
+    .selectFrom('entries')
+    .selectAll()
+    .where('id', '=', entryId)
+    .forUpdate()
+    .executeTakeFirstOrThrow()
   const t = await loadTournament(trx, entry.tournament_id)
   if (t.status !== 'running') throw conflict('tournament.not_running')
-  const own = await trx.selectFrom('matches').selectAll().where('tournament_id', '=', t.id).where((eb) => eb.or([eb('home_entry_id', '=', entryId), eb('away_entry_id', '=', entryId)])).execute()
+  const own = await trx
+    .selectFrom('matches')
+    .selectAll()
+    .where('tournament_id', '=', t.id)
+    .where((eb) => eb.or([eb('home_entry_id', '=', entryId), eb('away_entry_id', '=', entryId)]))
+    .execute()
   if (own.some((m) => wasPlayed(m))) throw conflict('entry.has_played_matches')
-  const stages = await trx.selectFrom('stages').selectAll().where('tournament_id', '=', t.id).where('status', '=', 'running').execute()
+  const stages = await trx
+    .selectFrom('stages')
+    .selectAll()
+    .where('tournament_id', '=', t.id)
+    .where('status', '=', 'running')
+    .execute()
   for (const stage of stages) {
     if (isBracketKind(stage.kind)) {
       const seeds = stageSeeds(stage)
@@ -395,13 +686,24 @@ export async function removeUnplayedEntry(trx: Trx, entryId: number, reason: str
         await reseedBracket(trx, stage, seeds)
       }
     } else {
-      await trx.deleteFrom('matches').where('stage_id', '=', stage.id).where((eb) => eb.or([eb('home_entry_id', '=', entryId), eb('away_entry_id', '=', entryId)])).execute()
-      await trx.deleteFrom('group_members').where('entry_id', '=', entryId).where('group_id', 'in', (eb) => eb.selectFrom('groups').select('id').where('stage_id', '=', stage.id)).execute()
+      await trx
+        .deleteFrom('matches')
+        .where('stage_id', '=', stage.id)
+        .where((eb) => eb.or([eb('home_entry_id', '=', entryId), eb('away_entry_id', '=', entryId)]))
+        .execute()
+      await trx
+        .deleteFrom('group_members')
+        .where('entry_id', '=', entryId)
+        .where('group_id', 'in', (eb) => eb.selectFrom('groups').select('id').where('stage_id', '=', stage.id))
+        .execute()
     }
   }
   assertTransition('entry', entryStatus, entry.status, 'withdrew')
   await trx.updateTable('entries').set({ status: 'withdrew', updated_at: now }).where('id', '=', entryId).execute()
-  await audit({ actorUserId, clubId: t.club_id, entity: 'entry', entityId: entryId, action: 'remove_unplayed', reason }, trx)
+  await audit(
+    { actorUserId, clubId: t.club_id, entity: 'entry', entityId: entryId, action: 'remove_unplayed', reason },
+    trx,
+  )
 }
 
 export type { StageWarning }

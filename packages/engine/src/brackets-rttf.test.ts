@@ -24,7 +24,7 @@ function play(bracket: Bracket, players: number, win: (h: number, a: number, mat
 
 const favourite = (h: number, a: number): 'home' | 'away' => (h < a ? 'home' : 'away')
 /** Upsets in every third match (a walkover counts the same as a win for the bracket). */
-const upsets = (h: number, a: number, match: number): 'home' | 'away' => ((match % 3 === 0) !== (h < a) ? 'home' : 'away')
+const upsets = (h: number, a: number, match: number): 'home' | 'away' => ((match % 3 === 0) !== h < a ? 'home' : 'away')
 
 const expectExactPlaces = (places: { id: string; place: number; placeTo: number }[], players: number) => {
   expect(places).toHaveLength(players)
@@ -67,7 +67,13 @@ describe('сетка −2 (прил. 12)', () => {
   const minus2 = (size: number, eliminateAfter?: number) => placesBracket(size, { lowerRounds: size, eliminateAfter })
 
   it('lower branch for 16 plays 3–16, 3–12, 3–8, 3–6 and the match for 3–4', () => {
-    const ranges = [...new Set(minus2(16).matches.filter((m) => m.stageLabel === 'lower').map((m) => `${m.placeFrom}–${m.placeTo}`))]
+    const ranges = [
+      ...new Set(
+        minus2(16)
+          .matches.filter((m) => m.stageLabel === 'lower')
+          .map((m) => `${m.placeFrom}–${m.placeTo}`),
+      ),
+    ]
     expect(ranges).toEqual(['3–16', '3–12', '3–8', '3–6', '3–4'])
   })
 
@@ -81,14 +87,22 @@ describe('сетка −2 (прил. 12)', () => {
       expectExactPlaces(places, players)
       const third = resolved.find((m) => m.winnerPlace === 3)!
       expect(third.stageLabel).toBe('lower')
-      expect(places.find((p) => p.place === 1)?.id).toBe((resolved.find((m) => m.winnerPlace === 1)!.winner as { id: string }).id)
+      expect(places.find((p) => p.place === 1)?.id).toBe(
+        (resolved.find((m) => m.winnerPlace === 1)!.winner as { id: string }).id,
+      )
     })
   }
 
   it('the first loss at any stage sends a player to the lower branch', () => {
     const b = minus2(16)
     const upper = b.matches.filter((m) => m.placeFrom === 1 && m.stageLabel !== 'final')
-    const lowerSources = new Set(b.matches.filter((m) => m.stageLabel === 'lower').flatMap((m) => [m.home, m.away]).filter((s) => s.kind === 'loser').map((s) => (s as { match: number }).match))
+    const lowerSources = new Set(
+      b.matches
+        .filter((m) => m.stageLabel === 'lower')
+        .flatMap((m) => [m.home, m.away])
+        .filter((s) => s.kind === 'loser')
+        .map((s) => (s as { match: number }).match),
+    )
     expect(upper.every((m) => lowerSources.has(m.number))).toBe(true)
   })
 
@@ -100,13 +114,20 @@ describe('сетка −2 (прил. 12)', () => {
   it('elimination after 2 losses = lower branch without playing off the places', () => {
     const { places } = play(minus2(16, 2), 16, favourite)
     expect(places.filter((p) => p.place !== p.placeTo).length).toBeGreaterThan(0)
-    expect(places.slice(0, 4).map((p) => [p.place, p.placeTo])).toEqual([[1, 1], [2, 2], [3, 3], [4, 4]])
+    expect(places.slice(0, 4).map((p) => [p.place, p.placeTo])).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+      [4, 4],
+    ])
   })
 
   it('mixed: early rounds by −1, the last 2 rounds by −2', () => {
     const b = placesBracket(16, { lowerRounds: 2 })
     expect(b.kind).toBe('mixed')
-    const ranges = [...new Set(b.matches.filter((m) => m.stageLabel === 'lower').map((m) => `${m.placeFrom}–${m.placeTo}`))]
+    const ranges = [
+      ...new Set(b.matches.filter((m) => m.stageLabel === 'lower').map((m) => `${m.placeFrom}–${m.placeTo}`)),
+    ]
     expect(ranges).toEqual(['3–8', '3–6', '3–4'])
     expectExactPlaces(play(b, 16, upsets).places, 16)
   })
@@ -114,7 +135,12 @@ describe('сетка −2 (прил. 12)', () => {
 
 describe('group exit seeding (variant Б)', () => {
   const groups = 'ABCDEFGH'.split('')
-  const q = (group: string, place: number): Qualifier => ({ id: `${group}${place}`, group, groupPlace: place, groupIndex: groups.indexOf(group) })
+  const q = (group: string, place: number): Qualifier => ({
+    id: `${group}${place}`,
+    group,
+    groupPlace: place,
+    groupIndex: groups.indexOf(group),
+  })
 
   it('16 from 8 groups: A1–B2, H1–G2, E1–F2, D1–C2, C1–D2, F1–E2, G1–H2, B1–A2', () => {
     const qualifiers = [...groups.map((g) => q(g, 1)), ...[...groups].reverse().map((g) => q(g, 2))]
@@ -128,7 +154,12 @@ describe('group exit seeding (variant Б)', () => {
 
   it('3rd places avoid the quarter of their own 1st and 2nd', () => {
     const four = groups.slice(0, 4)
-    const qualifiers = [...four.map((g) => q(g, 1)), ...four.map((g) => q(g, 2)), ...four.map((g) => q(g, 3)), ...four.map((g) => q(g, 4))]
+    const qualifiers = [
+      ...four.map((g) => q(g, 1)),
+      ...four.map((g) => q(g, 2)),
+      ...four.map((g) => q(g, 3)),
+      ...four.map((g) => q(g, 4)),
+    ]
     const { seeds, warnings } = seedsFromGroups(qualifiers)
     const slots = [1, 16, 8, 9, 5, 12, 4, 13, 3, 14, 6, 11, 7, 10, 2, 15]
     const quarterOf = (id: string) => Math.floor(slots.indexOf(seeds.indexOf(id) + 1) / 4)
@@ -151,7 +182,10 @@ describe('group exit seeding (variant Б)', () => {
 describe('group seeding modes', () => {
   const ids = Array.from({ length: 8 }, (_, i) => i + 1)
   it('«по рейтингу» fills group A with the strongest', () => {
-    expect(sequentialGroups(ids, [4, 4])).toEqual([[1, 2, 3, 4], [5, 6, 7, 8]])
+    expect(sequentialGroups(ids, [4, 4])).toEqual([
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+    ])
   })
   it('«равномерный» balances the rating sums', () => {
     const rating = (n: number) => 2000 - n * 100
@@ -183,9 +217,15 @@ describe('group places (T-3)', () => {
 
   it('group of 5: equal points are split by the match between the equals', () => {
     const ms = [
-      r('A', 'B', [3, 0]), r('A', 'C', [3, 0]), r('A', 'D', [0, 3]), r('A', 'E', [3, 0]),
-      r('B', 'C', [3, 1]), r('B', 'D', [3, 1]), r('B', 'E', [3, 1]),
-      r('C', 'D', [3, 2]), r('C', 'E', [3, 0]),
+      r('A', 'B', [3, 0]),
+      r('A', 'C', [3, 0]),
+      r('A', 'D', [0, 3]),
+      r('A', 'E', [3, 0]),
+      r('B', 'C', [3, 1]),
+      r('B', 'D', [3, 1]),
+      r('B', 'E', [3, 1]),
+      r('C', 'D', [3, 2]),
+      r('C', 'E', [3, 0]),
       r('D', 'E', [0, 3]),
     ]
     // A, B: 3 wins (7 points), A beat B; C: 2 wins (6); D, E: 1 win (5), E beat D.
@@ -227,7 +267,10 @@ describe('group places (T-3)', () => {
     expect(byRating.rows.every((x) => x.decidedBy === 'rating')).toBe(true)
     const lots = groupStandings(ids, ms, { ratings: Object.fromEntries(ids.map((id) => [id, 1000])) })
     expect(lots.needsDecision).toBe(true)
-    const manual = groupStandings(ids, ms, { ratings: Object.fromEntries(ids.map((id) => [id, 1000])), manualOrder: ['E', 'D', 'C', 'B', 'A'] })
+    const manual = groupStandings(ids, ms, {
+      ratings: Object.fromEntries(ids.map((id) => [id, 1000])),
+      manualOrder: ['E', 'D', 'C', 'B', 'A'],
+    })
     expect(manual.rows.map((x) => x.id)).toEqual(['E', 'D', 'C', 'B', 'A'])
     expect(manual.needsDecision).toBe(false)
   })

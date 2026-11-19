@@ -17,6 +17,7 @@ import { notifyNext, refreshCallAnswer, sendCall, sendCallCancelled, sendTableCh
 import { bus } from '../realtime/bus.ts'
 import { busyElsewhere, structurePreview } from '../tournaments/busy.ts'
 import { conductState, matchList } from '../tournaments/queue.ts'
+import { draftView } from '../tournaments/stage-edit.ts'
 import { correctResult, finishTournament, recordResult, replaceEntryPlayer, rulesOfMatch, withdrawEntry } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
 import { formatSchema, structure } from './tournaments.ts'
@@ -76,7 +77,8 @@ conductRouter.get(
       format: t.format,
       hallTables: await db.selectFrom('hall_tables').select(['id', 'number']).where('hall_id', '=', t.hall_id).where('status', '=', 'active').orderBy('number').execute(),
       structure: notStarted ? await structurePreview(t) : null,
-      stages: notStarted ? [] : ((await structure(t)) ?? []),
+      stages: notStarted ? [] : ((await structure(t, { staff: true })) ?? []),
+      draft: notStarted ? await draftView(db, t, true) : null,
       canCorrect: !role || role.role === 'organizer',
       busyElsewhere: notStarted || t.status === 'running' ? await busyElsewhere(t.id) : {},
     })

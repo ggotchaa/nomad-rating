@@ -30,12 +30,14 @@ type Stage = StageMatch &
         kind: 'groups'
         name: string
         groupSize: number
-        seeding: 'snake' | 'random' | 'manual'
+        seeding: 'snake' | 'even' | 'rating' | 'random' | 'manual'
         separateClubs?: boolean
       }
     | { id: string; kind: 'round_robin'; name: string }
     | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
-    | { id: string; kind: 'all_places'; name: string }
+    | { id: string; kind: 'all_places'; name: string; eliminateAfter?: number | null }
+    | { id: string; kind: 'minus2'; name: string; eliminateAfter?: number | null }
+    | { id: string; kind: 'mixed'; name: string; lowerRounds: number; eliminateAfter?: number | null }
   )
 type Rule =
   | { by: 'places'; places: number[] }
@@ -92,7 +94,9 @@ export type TournamentInput = {
 type ClubTemplate = { id: number; name: string; format: Format }
 type StepId = 'basics' | 'format' | 'meeting' | 'payment'
 
-const KINDS = ['groups', 'round_robin', 'single_elim', 'all_places'] as const
+const KINDS = ['groups', 'round_robin', 'single_elim', 'all_places', 'minus2', 'mixed'] as const
+const isBracket = (kind: string) =>
+  kind === 'single_elim' || kind === 'all_places' || kind === 'minus2' || kind === 'mixed'
 const TIEBREAKS = ['h2h_points', 'h2h_sets_ratio', 'h2h_points_ratio', 'rating', 'lots']
 const TZ = 'Asia/Almaty'
 const CLOSE_HOURS = [0, 2, 6, 12, 24, 48, 72]
@@ -102,6 +106,7 @@ function newStage(kind: (typeof KINDS)[number], index: number): Stage {
   const name = t.ctor.kind[kind]!
   if (kind === 'groups') return { id, kind, name, groupSize: 4, seeding: 'snake', separateClubs: true }
   if (kind === 'single_elim') return { id, kind, name, thirdPlace: 'match' }
+  if (kind === 'mixed') return { id, kind, name, lowerRounds: 2 }
   return { id, kind, name }
 }
 
@@ -118,9 +123,7 @@ function normalize(f: Format): Format {
     }
   })
   const placement: Format['placement'] = [
-    ...f.stages
-      .filter((s) => s.kind === 'single_elim' || s.kind === 'all_places')
-      .map((s) => ({ stage: s.id, who: 'all' as const })),
+    ...f.stages.filter((s) => isBracket(s.kind)).map((s) => ({ stage: s.id, who: 'all' as const })),
     ...f.stages
       .filter(
         (s) =>
@@ -165,7 +168,7 @@ function Override({
 const WINS: [string, string][] = [2, 3, 4].map((n) => [String(n), `${n} (bo${n * 2 - 1})`])
 
 function StageMatchEditor({ stage, onChange }: { stage: Stage; onChange: (patch: StageMatch) => void }) {
-  const bracket = stage.kind === 'single_elim' || stage.kind === 'all_places'
+  const bracket = isBracket(stage.kind)
   const clean = (r: Partial<Rules>) => (Object.values(r).some((v) => v != null) ? r : undefined)
   const setMatch = (patch: Partial<Rules>) => onChange({ match: clean({ ...stage.match, ...patch }) })
   const setRound = (round: 'semifinal' | 'final', wins: string | undefined) =>
@@ -306,6 +309,40 @@ function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: For
                   </option>
                 ))}
               </select>
+            )}
+            {(s.kind === 'all_places' || s.kind === 'minus2' || s.kind === 'mixed') && (
+              <div className="row small">
+                {s.kind === 'mixed' && (
+                  <label className="row">
+                    {t.ctor.lowerRounds}
+                    <input
+                      type="number"
+                      min={1}
+                      max={6}
+                      value={s.lowerRounds}
+                      style={{ width: 70 }}
+                      onChange={(e) =>
+                        setStage(i, { lowerRounds: Math.min(6, Math.max(1, Number(e.target.value) || 1)) })
+                      }
+                    />
+                  </label>
+                )}
+                <label className="row">
+                  {t.ctor.eliminateAfter}
+                  <select
+                    value={s.eliminateAfter ?? ''}
+                    style={{ width: 'auto' }}
+                    onChange={(e) => setStage(i, { eliminateAfter: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">{t.ctor.eliminateOff}</option>
+                    {[1, 2, 3].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             )}
             <StageMatchEditor stage={s} onChange={(patch) => setStage(i, patch)} />
             {incoming && (

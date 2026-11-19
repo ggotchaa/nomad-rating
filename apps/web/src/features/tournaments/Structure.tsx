@@ -1,8 +1,56 @@
+import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router'
-import type { EntryRef, GroupView, MatchView, StageView, StandingRow, StructureFormat } from '../../api/types.ts'
+import type {
+  EntryRef,
+  GroupView,
+  LockReason,
+  MatchView,
+  StageView,
+  StageWarning,
+  StandingRow,
+  StructureFormat,
+} from '../../api/types.ts'
 import { t } from '../../i18n/index.ts'
+import { Avatar } from '../../ui/Avatar.tsx'
 import { CalibTag } from '../rating/widgets.tsx'
+
+/** Organiser tools on the draw (conduct screen only): swap two players, set group places by hand. */
+export type StaffTools = {
+  picked?: number | null
+  onPick?: (entryId: number) => void
+  onGroupOrder?: (g: GroupView) => void
+}
+
+function PickButton({ entryId, lock, staff }: { entryId: number; lock?: LockReason | null; staff?: StaffTools }) {
+  if (!staff?.onPick) return null
+  const picked = staff.picked === entryId
+  return (
+    <button
+      type="button"
+      className={`brk__pick noprint${picked ? ' is-picked' : ''}`}
+      disabled={Boolean(lock)}
+      title={lock ? t.t.lockReason[lock] : picked ? t.t.swapCancel : staff.picked ? t.t.swapHere : t.t.swapPick}
+      onClick={(e) => {
+        e.stopPropagation()
+        staff.onPick!(entryId)
+      }}
+    >
+      ⇄
+    </button>
+  )
+}
+
+export function StageWarnings({ warnings }: { warnings?: StageWarning[] }) {
+  if (!warnings?.length) return null
+  return (
+    <div className="note note--warn stack">
+      {warnings.map((w, i) => (
+        <span key={i}>{t.t.stageWarning(w.code, w.params ?? {})}</span>
+      ))}
+    </div>
+  )
+}
 
 type Points = { win: number; loss: number; walkover: number }
 const DEFAULT_POINTS: Points = { win: 2, loss: 1, walkover: 0 }
@@ -25,7 +73,8 @@ const meta = (m: MatchView, number = false) =>
 const gamesOf = (m: MatchView, flip = false) =>
   (m.games ?? []).map((g) => (flip ? `${g.away}:${g.home}` : `${g.home}:${g.away}`)).join(', ')
 
-function sourceLabel(source: unknown): string {
+function sourceLabel(source: unknown, waitsGroup?: string | null): string {
+  if (waitsGroup) return t.t.waitsGroup(waitsGroup)
   const s = source as { kind?: string; match?: number; seed?: number } | null
   if (s?.kind === 'winner') return t.misc.winnerOf(s.match ?? 0)
   if (s?.kind === 'loser') return `−${s.match}`
@@ -100,13 +149,18 @@ function GroupMatrix({
   points,
   advancing,
   me,
+  staff,
+  locks,
 }: {
   g: GroupView
   title: string
   points: Points
   advancing: Set<number>
   me?: number
+  staff?: StaffTools
+  locks?: Record<string, LockReason | null>
 }) {
+  const [opened, setOpened] = useState<number | null>(null)
   const players = g.members.filter((p): p is EntryRef => p != null)
   const rows = new Map((g.standings?.rows ?? []).map((r) => [Number(r.id), r]))
   const total = g.matches.filter((m) => m.status !== 'annulled').length
@@ -145,7 +199,12 @@ function GroupMatrix({
       const won = m.winnerEntryId === row.entryId
       const pts = won ? points.win : m.resultType === 'walkover' ? points.walkover : points.loss
       return (
-        <td key={col.entryId} className="gm__cell" title={gamesOf(m, !home) || undefined}>
+        <td
+          key={col.entryId}
+          className={`gm__cell ${won ? 'is-win' : 'is-loss'}${opened === m.id ? ' is-open' : ''}`}
+          title={gamesOf(m, !home) || undefined}
+          onClick={() => setOpened(opened === m.id ? null : m.id)}
+        >
           <b>{pts}</b>
           <small>{own != null && other != null ? `${own}:${other}` : t.t.walkoverShort}</small>
         </td>
@@ -196,8 +255,10 @@ function GroupMatrix({
                 <tr key={p.entryId} className={cls || undefined}>
                   <td className="gm__no">{i + 1}</td>
                   <th scope="row" className="gm__name">
+                    <Avatar name={p.name} photoUrl={p.photoUrl} size={22} />
                     <Link to={`/players/${p.playerId}`}>{p.name}</Link>
                     <CalibTag e={p} />
+                    <PickButton entryId={p.entryId} lock={locks?.[p.entryId]} staff={staff} />
                   </th>
                   {players.map((c) => cell(p, c))}
                   <td className="gm__sum">{r ? r.points : any ? earned(p.entryId) : ''}</td>
@@ -208,6 +269,29 @@ function GroupMatrix({
           </tbody>
         </table>
       </div>
+      {(() => {
+        const m = g.matches.find((x) => x.id === opened)
+        if (!m) return null
+        return (
+          <p className="gm__games small">
+            <b>
+              {m.home?.name} — {m.away?.name}
+            </b>{' '}
+            {m.setsHome}:{m.setsAway}
+            {m.games?.length ? ` (${gamesOf(m)})` : ''} · № {m.number}
+          </p>
+        )
+      })()}
+      {g.standings?.needsDecision && (
+        <div className="note note--warn row row--between">
+          <span>{t.t.needsDecision}</span>
+          {staff?.onGroupOrder && (
+            <button type="button" className="button button--sm" onClick={() => staff.onGroupOrder!(g)}>
+              {t.t.setPlaces}
+            </button>
+          )}
+        </div>
+      )}
       {g.matches.some((m) => played(m) && m.resultType === 'normal' && !m.games?.length) && (
         <p className="small muted">{t.t.noGamePoints}</p>
       )}
@@ -265,8 +349,22 @@ const decides = (m: MatchView) => m.placeFrom != null && m.placeTo === m.placeFr
 const forPlace = (m: MatchView) => t.t.forPlace(m.placeFrom ?? 0, m.placeTo ?? 0)
 const maxPlace = (n: Node): number => Math.max(n.match.placeTo ?? 0, ...n.children.map(maxPlace))
 
-function Side({ m, side, medals }: { m: MatchView; side: 'home' | 'away'; medals: boolean }) {
+function Side({
+  m,
+  side,
+  medals,
+  staff,
+  locks,
+}: {
+  m: MatchView
+  side: 'home' | 'away'
+  medals: boolean
+  staff?: StaffTools
+  locks?: Record<string, LockReason | null>
+}) {
   const entry = side === 'home' ? m.home : m.away
+  const isBye = m.resultType === 'bye' && entry == null
+  const fromSeed = ((side === 'home' ? m.homeSource : m.awaySource) as { kind?: string } | null)?.kind === 'seed'
   const isDone = done(m)
   const win = isDone && entry != null && m.winnerEntryId === entry.entryId
   const lost = isDone && !win
@@ -275,8 +373,19 @@ function Side({ m, side, medals }: { m: MatchView; side: 'home' | 'away'; medals
   return (
     <div className={`brk__side${win ? ' is-win' : ''}${lost ? ' is-lost' : ''}${entry ? '' : ' is-tbd'}`}>
       <span className="brk__name">
-        {entry ? entry.name : isDone ? '—' : sourceLabel(side === 'home' ? m.homeSource : m.awaySource)}
+        {entry && <Avatar name={entry.name} photoUrl={entry.photoUrl} size={20} />}
+        {entry
+          ? entry.name
+          : isBye
+            ? t.t.bye
+            : isDone
+              ? '—'
+              : sourceLabel(
+                  side === 'home' ? m.homeSource : m.awaySource,
+                  side === 'home' ? m.homeWaitsGroup : m.awayWaitsGroup,
+                )}
         <CalibTag e={entry} />
+        {entry && fromSeed && <PickButton entryId={entry.entryId} lock={locks?.[entry.entryId]} staff={staff} />}
       </span>
       <b>{score ?? ''}</b>
       {place != null && (
@@ -288,27 +397,56 @@ function Side({ m, side, medals }: { m: MatchView; side: 'home' | 'away'; medals
   )
 }
 
-function Box({ m, titled, medals }: { m: MatchView; titled: boolean; medals: boolean }) {
+function Box({
+  m,
+  titled,
+  medals,
+  staff,
+  locks,
+}: {
+  m: MatchView
+  titled: boolean
+  medals: boolean
+  staff?: StaffTools
+  locks?: Record<string, LockReason | null>
+}) {
   return (
     <div className={`brk__box${m.status === 'playing' ? ' is-live' : ''}`} title={gamesOf(m) || undefined}>
       {titled && medals && decides(m) && <span className="brk__title">{forPlace(m)}</span>}
       <div className="brk__card">
-        <Side m={m} side="home" medals={medals} />
-        <Side m={m} side="away" medals={medals} />
+        <Side m={m} side="home" medals={medals} staff={staff} locks={locks} />
+        <Side m={m} side="away" medals={medals} staff={staff} locks={locks} />
       </div>
       <span className="brk__meta">
         {m.status === 'playing' && <span className="gm__live">LIVE</span>}
-        {meta(m, true)}
+        {m.resultType === 'bye' ? t.t.bye : meta(m, true)}
       </span>
     </div>
   )
 }
 
-function Tree({ tree, main, medals }: { tree: Node; main: boolean; medals: boolean }) {
+function Tree({
+  tree,
+  main,
+  medals,
+  staff,
+  locks,
+}: {
+  tree: Node
+  main: boolean
+  medals: boolean
+  staff?: StaffTools
+  locks?: Record<string, LockReason | null>
+}) {
   const { height, cells } = treeCells(tree)
+  const lower = tree.match.label === 'lower'
   const label = (column: number) => {
     const depth = height - 1 - column
     if (!main && depth === 0 && medals && decides(tree.match)) return forPlace(tree.match)
+    if (lower) {
+      const m = cells.find((c) => c.column === column)?.node.match
+      return m ? t.t.placesRange(m.placeFrom ?? 0, m.placeTo ?? 0) : ''
+    }
     if (main) {
       const l = cells.find((c) => c.column === column)?.node.match.label ?? ''
       return t.misc.rounds[l] ?? l
@@ -341,7 +479,13 @@ function Tree({ tree, main, medals }: { tree: Node; main: boolean; medals: boole
               className={`brk__cell${join}${main || height > 1 ? '' : ' is-solo'}`}
               style={{ gridColumn: column + 1, gridRow: `${row + 2} / span ${node.leaves}`, ...lines } as CSSProperties}
             >
-              <Box m={node.match} titled={column === height - 1 && (main || height === 1)} medals={medals} />
+              <Box
+                m={node.match}
+                titled={column === height - 1 && (main || height === 1)}
+                medals={medals}
+                staff={staff}
+                locks={locks}
+              />
             </div>
           )
         })}
@@ -351,19 +495,37 @@ function Tree({ tree, main, medals }: { tree: Node; main: boolean; medals: boole
 }
 
 /** `medals`: places are the tournament's own only in the first bracket stage; later ones (consolation) number from 1 again. */
-function Bracket({ s, medals }: { s: Extract<StageView, { matches: MatchView[] }>; medals: boolean }) {
+function Bracket({
+  s,
+  medals,
+  staff,
+}: {
+  s: Extract<StageView, { matches: MatchView[] }>
+  medals: boolean
+  staff?: StaffTools
+}) {
   const [main, ...rest] = bracketTrees(s.matches)
   if (!main) return null
+  const lower = rest.filter((tree) => tree.match.label === 'lower')
+  const blocks = rest.filter((tree) => tree.match.label !== 'lower')
   return (
     <section className="panel brk">
       <h3 className="brk__head">
         {s.name}
-        {medals && s.kind === 'all_places' && <small>{t.t.placesRange(1, maxPlace(main))}</small>}
+        {medals && s.kind !== 'single_elim' && (
+          <small>{t.t.placesRange(1, Math.max(maxPlace(main), ...rest.map(maxPlace)))}</small>
+        )}
       </h3>
-      <Tree tree={main} main medals={medals} />
-      {rest.length > 0 && (
+      <Tree tree={main} main medals={medals} staff={staff} locks={s.locks} />
+      {lower.map((tree) => (
+        <div key={tree.match.id} className="brk__sub brk__lower">
+          <h4>{t.t.lowerBranch}</h4>
+          <Tree tree={tree} main={false} medals={medals} />
+        </div>
+      ))}
+      {blocks.length > 0 && (
         <div className="brk__extra">
-          {rest.map((tree) => (
+          {blocks.map((tree) => (
             <div key={tree.match.id} className="brk__sub">
               {medals && tree.leaves > 1 && <h4>{t.t.placesRange(tree.match.placeFrom ?? 0, maxPlace(tree))}</h4>}
               <Tree tree={tree} main={false} medals={medals} />
@@ -409,12 +571,15 @@ export function StageBlock({
   format,
   me,
   heading = false,
+  staff,
 }: {
   s: StageView
   stages?: StageView[]
   format?: StructureFormat
   me?: number
   heading?: boolean
+  /** Conduct screen: warnings, swaps and manual places. */
+  staff?: StaffTools
 }) {
   if ('groups' in s) {
     const advancing = advancingFrom(s, stages, format)
@@ -422,6 +587,7 @@ export function StageBlock({
     return (
       <div className="stage">
         {heading && <h2>{s.name}</h2>}
+        <StageWarnings warnings={s.warnings} />
         {s.groups.map((g) => (
           <GroupMatrix
             key={g.code}
@@ -430,6 +596,8 @@ export function StageBlock({
             points={points}
             advancing={advancing}
             me={me}
+            staff={staff}
+            locks={s.locks}
           />
         ))}
       </div>
@@ -445,8 +613,9 @@ export function StageBlock({
           </button>
         )}
       </div>
+      <StageWarnings warnings={s.warnings} />
       {s.matches.length ? (
-        <Bracket s={s} medals={stages.find((x) => !('groups' in x)) === s} />
+        <Bracket s={s} medals={stages.find((x) => !('groups' in x)) === s} staff={staff} />
       ) : (
         <p className="empty">{t.t.bracketLater}</p>
       )}

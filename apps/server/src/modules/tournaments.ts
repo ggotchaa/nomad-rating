@@ -353,10 +353,10 @@ export async function structure(t: Tournament, options: { staff?: boolean } = {}
         .innerJoin('players as p', 'p.id', 'e.player_id')
         .leftJoin('teams as tm', 'tm.id', 'e.team_id')
         .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'p.start_level', 'r.rating', 'e.rating_at_start', 'e.seed', 'tm.name as team_name'])
+        .select(['e.id', 'e.status', 'p.id as player_id', 'p.first_name', 'p.last_name', 'p.start_level', 'p.photo_url', 'r.rating', 'e.rating_at_start', 'e.seed', 'tm.name as team_name'])
         .where('e.tournament_id', '=', t.id)
         .execute()
-    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: e.team_name ?? playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew', calibrating: !e.team_name && e.rating == null, startLevel: e.start_level }]),
+    ).map((e) => [e.id, { entryId: e.id, playerId: e.player_id, name: e.team_name ?? playerName(e), rating: e.rating_at_start, seed: e.seed, withdrew: e.status === 'withdrew', calibrating: !e.team_name && e.rating == null, startLevel: e.start_level, photoUrl: e.team_name ? null : e.photo_url }]),
   )
   const matches = await db
     .selectFrom('matches as m')

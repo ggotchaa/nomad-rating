@@ -13,7 +13,7 @@ import { useClub } from './ManageLayout.tsx'
 
 type Duplicate = { id: number; name: string; birthYear: number; city: string | null }
 
-function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (code: string) => void }) {
+export function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (code: string, id: number) => void }) {
   const { club } = useClub()
   const { cities, city } = useSession()
   const [error, setError] = useState<string | null>(null)
@@ -26,7 +26,7 @@ function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (co
     setBusy(true)
     setError(null)
     try {
-      const created = await api<{ claimCode: string }>(`/clubs/${club.id}/players`, {
+      const created = await api<{ id: number; claimCode: string }>(`/clubs/${club.id}/players`, {
         method: 'POST',
         json: {
           firstName: f.get('firstName'),
@@ -39,7 +39,7 @@ function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreated: (co
           force: duplicates.length > 0,
         },
       })
-      onCreated(created.claimCode)
+      onCreated(created.claimCode, created.id)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'player.possible_duplicates') setDuplicates(err.details as Duplicate[])
       else setError(errorText(err))

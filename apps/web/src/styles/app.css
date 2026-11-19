@@ -2331,3 +2331,82 @@
   background: var(--bar-bg);
   backdrop-filter: blur(8px);
 }
+
+/* Brackets −2, swaps, group cells (T-5…T-10) */
+.note--warn {
+  border-color: var(--warn-line, var(--line-strong));
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.gm__cell.is-win {
+  background: var(--ok-soft);
+}
+.gm__cell.is-win b {
+  color: var(--ok);
+}
+.gm__cell.is-loss b {
+  color: var(--bad);
+}
+.gm__cell.is-win,
+.gm__cell.is-loss {
+  cursor: pointer;
+}
+.gm__cell.is-open {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.gm__games {
+  margin: 8px 0 0;
+}
+.gm__name .ava,
+.brk__name .ava {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.brk__lower {
+  margin-top: 18px;
+}
+.brk__pick {
+  margin-left: 6px;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brk__pick:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.brk__pick.is-picked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.brk__pick:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.draft__groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.draft__group ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+.draft__group li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.draft__group li .muted {
+  margin-left: auto;
+}

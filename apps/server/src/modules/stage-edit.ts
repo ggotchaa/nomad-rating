@@ -8,16 +8,33 @@ import { requireClubRight, requirePlatformAdmin } from '../auth/access.ts'
 import { handler, notFound } from '../http/errors.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { bus } from '../realtime/bus.ts'
-import { addLateEntry, clearDraft, draftAddToFreeSlot, draftMove, draftSwap, generateDraft, publishDraft, removeUnplayedEntry, swapEntries } from '../tournaments/stage-edit.ts'
+import {
+  addLateEntry,
+  clearDraft,
+  draftAddToFreeSlot,
+  draftMove,
+  draftSwap,
+  generateDraft,
+  publishDraft,
+  removeUnplayedEntry,
+  swapEntries,
+} from '../tournaments/stage-edit.ts'
 import { openStageEarly, setGroupOrder } from '../tournaments/structure.ts'
 
 export const stageEditRouter = Router()
 
 async function staff(req: Request) {
   const id = intParam(req, 'id')
-  const t = await db.selectFrom('tournaments').select(['id', 'club_id', 'hall_id']).where('id', '=', id).executeTakeFirst()
+  const t = await db
+    .selectFrom('tournaments')
+    .select(['id', 'club_id', 'hall_id'])
+    .where('id', '=', id)
+    .executeTakeFirst()
   if (!t) throw notFound('tournament.not_found')
-  const user = req.user?.platformRole === 'admin' ? requirePlatformAdmin(req) : await requireClubRight(req, t.club_id, 'conduct', { tournamentId: id, hallId: t.hall_id })
+  const user =
+    req.user?.platformRole === 'admin'
+      ? requirePlatformAdmin(req)
+      : await requireClubRight(req, t.club_id, 'conduct', { tournamentId: id, hallId: t.hall_id })
   return { id, user }
 }
 
@@ -28,7 +45,10 @@ stageEditRouter.post(
   '/:id/draft',
   handler(async (req, res) => {
     const { id, user } = await staff(req)
-    const { presentOnly } = parseBody(z.object({ presentOnly: z.boolean().default(false) }).default({ presentOnly: false }), req)
+    const { presentOnly } = parseBody(
+      z.object({ presentOnly: z.boolean().default(false) }).default({ presentOnly: false }),
+      req,
+    )
     const draft = await db.transaction().execute((trx) => generateDraft(trx, id, user.id, { presentOnly }))
     changed(id)
     res.json(draft)
@@ -46,8 +66,8 @@ stageEditRouter.post(
   }),
 )
 
-stageEditRouter.delete(
-  '/:id/draft',
+stageEditRouter.post(
+  '/:id/draft/clear',
   handler(async (req, res) => {
     const { id, user } = await staff(req)
     await db.transaction().execute((trx) => clearDraft(trx, id, user.id))
@@ -71,7 +91,14 @@ stageEditRouter.post(
   '/:id/draft/move',
   handler(async (req, res) => {
     const { id, user } = await staff(req)
-    const body = parseBody(z.object({ entryId: z.number().int(), group: z.string().max(4).optional(), seed: z.number().int().min(1).optional() }), req)
+    const body = parseBody(
+      z.object({
+        entryId: z.number().int(),
+        group: z.string().max(4).optional(),
+        seed: z.number().int().min(1).optional(),
+      }),
+      req,
+    )
     await db.transaction().execute((trx) => draftMove(trx, id, body.entryId, body, user.id))
     changed(id)
     res.json({ ok: true })
@@ -104,7 +131,9 @@ stageEditRouter.post(
   handler(async (req, res) => {
     const { id, user } = await staff(req)
     const body = parseBody(z.object({ a: z.number().int(), b: z.number().int(), reason: reason.optional() }), req)
-    await db.transaction().execute((trx) => swapEntries(trx, id, String(req.params.stageKey), body.a, body.b, body.reason ?? '', user.id))
+    await db
+      .transaction()
+      .execute((trx) => swapEntries(trx, id, String(req.params.stageKey), body.a, body.b, body.reason ?? '', user.id))
     changed(id)
     res.json({ ok: true })
   }),
@@ -115,9 +144,16 @@ stageEditRouter.post(
   handler(async (req, res) => {
     const { id, user } = await staff(req)
     const body = parseBody(z.object({ order: z.array(z.number().int()).min(2).max(16), reason }), req)
-    const group = await db.selectFrom('groups as g').innerJoin('stages as s', 's.id', 'g.stage_id').select('s.tournament_id').where('g.id', '=', intParam(req, 'groupId')).executeTakeFirst()
+    const group = await db
+      .selectFrom('groups as g')
+      .innerJoin('stages as s', 's.id', 'g.stage_id')
+      .select('s.tournament_id')
+      .where('g.id', '=', intParam(req, 'groupId'))
+      .executeTakeFirst()
     if (group?.tournament_id !== id) throw notFound('group.not_found')
-    await db.transaction().execute((trx) => setGroupOrder(trx, intParam(req, 'groupId'), body.order, body.reason, user.id))
+    await db
+      .transaction()
+      .execute((trx) => setGroupOrder(trx, intParam(req, 'groupId'), body.order, body.reason, user.id))
     changed(id)
     res.json({ ok: true })
   }),
@@ -150,7 +186,11 @@ stageEditRouter.post(
   handler(async (req, res) => {
     const { id, user } = await staff(req)
     const body = parseBody(z.object({ reason }), req)
-    const entry = await db.selectFrom('entries').select('tournament_id').where('id', '=', intParam(req, 'entryId')).executeTakeFirst()
+    const entry = await db
+      .selectFrom('entries')
+      .select('tournament_id')
+      .where('id', '=', intParam(req, 'entryId'))
+      .executeTakeFirst()
     if (entry?.tournament_id !== id) throw notFound('entry.not_found')
     await db.transaction().execute((trx) => removeUnplayedEntry(trx, intParam(req, 'entryId'), body.reason, user.id))
     changed(id)
