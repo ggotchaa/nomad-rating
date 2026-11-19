@@ -21,17 +21,23 @@ export type PlacesSpec = { eliminateAfter?: number | null }
 
 export type StageSpec = StageMatch &
   (
-  | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: GroupSeeding; separateClubs?: boolean }
-  | { id: string; kind: 'round_robin'; name: string }
-  | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
-  | ({ id: string; kind: 'all_places'; name: string } & PlacesSpec)
-  | ({ id: string; kind: 'minus2'; name: string } & PlacesSpec)
-  | ({ id: string; kind: 'mixed'; name: string; lowerRounds: number } & PlacesSpec)
+    | { id: string; kind: 'groups'; name: string; groupSize: number; seeding: GroupSeeding; separateClubs?: boolean }
+    | { id: string; kind: 'round_robin'; name: string }
+    | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
+    | ({ id: string; kind: 'all_places'; name: string } & PlacesSpec)
+    | ({
+        id: string
+        kind: 'minus2'
+        name: string
+        /** RTTF protocol with its own numbering (32 players max). */ scheme?: 'long32'
+      } & PlacesSpec)
+    | ({ id: string; kind: 'mixed'; name: string; lowerRounds: number } & PlacesSpec)
   )
 
 export type StageKind = StageSpec['kind']
 export type BracketStageSpec = Extract<StageSpec, { kind: 'single_elim' | 'all_places' | 'minus2' | 'mixed' }>
-export const isBracketKind = (kind: string): kind is BracketStageSpec['kind'] => ['single_elim', 'all_places', 'minus2', 'mixed'].includes(kind)
+export const isBracketKind = (kind: string): kind is BracketStageSpec['kind'] =>
+  ['single_elim', 'all_places', 'minus2', 'mixed'].includes(kind)
 
 export type TransitionRule =
   /** Given places of every group, e.g. [1, 2] → main bracket. */
@@ -61,7 +67,15 @@ export type TournamentFormat = {
   restMinutes: number
 }
 
-export const FORMAT_TEMPLATES = ['round_robin', 'olympic', 'gs1', 'gs2', 'gs3', 'groups_main_consolation'] as const
+export const FORMAT_TEMPLATES = [
+  'round_robin',
+  'olympic',
+  'gs1',
+  'gs2',
+  'gs3',
+  'groups_main_consolation',
+  'long32',
+] as const
 export type FormatTemplateId = (typeof FORMAT_TEMPLATES)[number]
 
 export type TemplateParams = {
@@ -107,6 +121,13 @@ export function formatTemplate(id: FormatTemplateId, players: number, params: Te
         transitions: [],
         placement: [{ stage: 'rr', who: 'all' }],
       }
+    case 'long32':
+      return {
+        ...base,
+        stages: [{ id: 'main', kind: 'minus2', name: '32 длинная', scheme: 'long32' }],
+        transitions: [],
+        placement: [{ stage: 'main', who: 'all' }],
+      }
     case 'olympic':
       return {
         ...base,
@@ -117,7 +138,14 @@ export function formatTemplate(id: FormatTemplateId, players: number, params: Te
     case 'gs1':
     case 'gs2': {
       const count = params.advance ?? suggestAdvance(players, groupSize)
-      const bracket = placesStage('main', id === 'gs1' ? (params.bracket === 'single_elim' ? 'all_places' : (params.bracket ?? 'all_places')) : 'single_elim')
+      const bracket = placesStage(
+        'main',
+        id === 'gs1'
+          ? params.bracket === 'single_elim'
+            ? 'all_places'
+            : (params.bracket ?? 'all_places')
+          : 'single_elim',
+      )
       return {
         ...base,
         stages: [groups, bracket],
@@ -183,13 +211,23 @@ export function validateFormat(format: TournamentFormat): string[] {
     }
     if (to <= from) errors.push(`format.transition_backwards:${t.from}->${t.to}`)
     const source = format.stages[from] as StageSpec
-    if (source.kind !== 'groups' && source.kind !== 'round_robin') errors.push(`format.transition_from_bracket:${t.from}`)
+    if (source.kind !== 'groups' && source.kind !== 'round_robin')
+      errors.push(`format.transition_from_bracket:${t.from}`)
   }
   format.stages.forEach((stage, i) => {
     if (i > 0 && !format.transitions.some((t) => t.to === stage.id)) errors.push(`format.unreachable_stage:${stage.id}`)
-    if (stage.kind === 'groups' && (stage.groupSize < 3 || stage.groupSize > 8)) errors.push(`format.group_size:${stage.id}`)
-    if (stage.kind === 'mixed' && !(stage.lowerRounds >= 1 && stage.lowerRounds <= 6)) errors.push(`format.lower_rounds:${stage.id}`)
-    if ((stage.kind === 'all_places' || stage.kind === 'minus2' || stage.kind === 'mixed') && stage.eliminateAfter != null && !(stage.eliminateAfter >= 1 && stage.eliminateAfter <= 3)) errors.push(`format.eliminate_after:${stage.id}`)
+    if (stage.kind === 'groups' && (stage.groupSize < 3 || stage.groupSize > 8))
+      errors.push(`format.group_size:${stage.id}`)
+    if (stage.kind === 'mixed' && !(stage.lowerRounds >= 1 && stage.lowerRounds <= 6))
+      errors.push(`format.lower_rounds:${stage.id}`)
+    if (stage.kind === 'minus2' && stage.scheme != null && stage.scheme !== 'long32')
+      errors.push(`format.scheme:${stage.id}`)
+    if (
+      (stage.kind === 'all_places' || stage.kind === 'minus2' || stage.kind === 'mixed') &&
+      stage.eliminateAfter != null &&
+      !(stage.eliminateAfter >= 1 && stage.eliminateAfter <= 3)
+    )
+      errors.push(`format.eliminate_after:${stage.id}`)
   })
   // Places from one stage go to one destination only.
   for (const stage of format.stages) {
@@ -208,7 +246,11 @@ export function validateFormat(format: TournamentFormat): string[] {
     if (!placed.has(stage.id) && !advancesAll) errors.push(`format.stage_without_places:${stage.id}`)
   }
   const badWins = (m?: Partial<MatchRules>) => m?.winsNeeded != null && (m.winsNeeded < 2 || m.winsNeeded > 4)
-  if (badWins(format.match) || format.stages.some((s) => badWins(s.match) || badWins(s.rounds?.semifinal) || badWins(s.rounds?.final))) errors.push('format.wins_needed')
+  if (
+    badWins(format.match) ||
+    format.stages.some((s) => badWins(s.match) || badWins(s.rounds?.semifinal) || badWins(s.rounds?.final))
+  )
+    errors.push('format.wins_needed')
   if (format.restMinutes < 0 || format.restMinutes > 30) errors.push('format.rest_minutes')
   return errors
 }
@@ -252,10 +294,13 @@ export function estimateFormat(
       } else {
         const size = bracketSizeFor(count)
         estimate.bracketSize = size
-        matches = bracketMatchCount(stage.kind, size, stage.kind === 'single_elim' ? stage.thirdPlace : 'match', {
-          lowerRounds: stage.kind === 'mixed' ? stage.lowerRounds : undefined,
-          eliminateAfter: stage.kind === 'single_elim' ? undefined : stage.eliminateAfter,
-        })
+        matches =
+          stage.kind === 'minus2' && stage.scheme === 'long32' && size <= 32
+            ? 60
+            : bracketMatchCount(stage.kind, size, stage.kind === 'single_elim' ? stage.thirdPlace : 'match', {
+                lowerRounds: stage.kind === 'mixed' ? stage.lowerRounds : undefined,
+                eliminateAfter: stage.kind === 'single_elim' ? undefined : stage.eliminateAfter,
+              })
       }
     }
     estimate.matches = matches

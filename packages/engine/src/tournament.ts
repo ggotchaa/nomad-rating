@@ -1,7 +1,7 @@
 // Building stages and moving players between them (spec 4.4 M-1, M-2; 4.6 transitions and final places).
 // Pure functions: the server stores the result in stages / groups / matches tables.
 
-import { bracketSizeFor, placesBracket, recommendBracketSize, seedOrder, singleElimination } from './bracket.ts'
+import { bracketSizeFor, long32, placesBracket, recommendBracketSize, seedOrder, singleElimination } from './bracket.ts'
 import type { Bracket, BracketPlace } from './bracket.ts'
 import { clubClashes, evenGroups, groupCode, groupSizes, randomGroups, roundRobinTours, separateClubs, sequentialGroups, snakeGroups } from './groups.ts'
 import type { StandingRow, StandingsResult } from './groups.ts'
@@ -70,6 +70,7 @@ export function buildBracket(stage: BracketStageSpec, players: number): Bracket 
     case 'all_places':
       return placesBracket(size, { eliminateAfter: stage.eliminateAfter })
     case 'minus2':
+      if (stage.scheme === 'long32' && size <= 32) return long32()
       return placesBracket(size, { lowerRounds: size, eliminateAfter: stage.eliminateAfter })
     case 'mixed':
       return placesBracket(size, { lowerRounds: stage.lowerRounds, eliminateAfter: stage.eliminateAfter })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bracketPlaces, placesBracket, resolveBracket } from './bracket.ts'
+import { bracketPlaces, long32, placesBracket, resolveBracket } from './bracket.ts'
 import type { Bracket } from './bracket.ts'
 import { evenGroups, groupStandings, sequentialGroups } from './groups.ts'
 import type { GroupMatchResult } from './groups.ts'
@@ -273,5 +273,58 @@ describe('group places (T-3)', () => {
     })
     expect(manual.rows.map((x) => x.id)).toEqual(['E', 'D', 'C', 'B', 'A'])
     expect(manual.needsDecision).toBe(false)
+  })
+})
+
+describe('«32 длинная» (RTTF protocol)', () => {
+  const b = long32()
+  const byNumber = new Map(b.matches.map((m) => [m.number, m]))
+  const src = (s: (typeof b.matches)[number]['home']) =>
+    s.kind === 'seed' ? `s${s.seed}` : `${s.kind === 'winner' ? 'M' : 'L'}${s.match}`
+  const pair = (n: number) => `${src(byNumber.get(n)!.home)}–${src(byNumber.get(n)!.away)}`
+
+  it('has the protocol matches M1…M60 with the protocol links', () => {
+    expect(b.matches.map((m) => m.number)).toEqual(Array.from({ length: 60 }, (_, i) => i + 1))
+    expect([17, 20, 21, 24].map(pair)).toEqual(['L9–L10', 'L15–L16', 'L1–L2', 'L7–L8'])
+    expect([25, 32, 41, 44, 49, 50, 60].map(pair)).toEqual([
+      'M1–M2',
+      'M15–M16',
+      'M25–M26',
+      'M31–M32',
+      'M41–M42',
+      'M43–M44',
+      'M49–M50',
+    ])
+    expect([33, 36, 37, 40].map(pair)).toEqual(['M17–L29', 'M20–L32', 'L25–M21', 'L28–M24'])
+    expect([45, 48, 51, 52, 53, 54].map(pair)).toEqual([
+      'M33–M34',
+      'M39–M40',
+      'M45–L43',
+      'M46–L44',
+      'L41–M47',
+      'L42–M48',
+    ])
+    expect([55, 56, 57, 58, 59].map(pair)).toEqual(['M51–M52', 'M53–M54', 'M55–L50', 'L49–M56', 'M57–M58'])
+  })
+
+  it('places 1–4 are played, the rest are shared by the round where the second loss came', () => {
+    const { places } = play(b, 32, upsets)
+    expect(places).toHaveLength(32)
+    const ranges = places.map((p) => `${p.place}–${p.placeTo}`)
+    expect(ranges.slice(0, 4)).toEqual(['1–1', '2–2', '3–3', '4–4'])
+    for (const r of ['5–6', '7–8', '9–12', '13–16', '17–24', '25–32']) expect(ranges).toContain(r)
+  })
+
+  it('the final is played after the match for 3rd place; byes go to the top seeds with 24 players', () => {
+    expect(byNumber.get(60)!.round).toBeGreaterThan(byNumber.get(59)!.round)
+    const { places, resolved } = play(b, 24, favourite)
+    expect(places).toHaveLength(24)
+    expect(places.slice(0, 4).map((p) => p.id)).toEqual(['P1', 'P2', 'P3', 'P4'])
+    expect(
+      resolved
+        .filter((m) => m.state === 'bye' && m.number <= 16)
+        .map((m) => (m.winner as { id: string }).id)
+        .sort(),
+    ).toEqual(Array.from({ length: 8 }, (_, i) => `P${i + 1}`).sort())
   })
 })

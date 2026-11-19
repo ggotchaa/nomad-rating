@@ -38,6 +38,7 @@ const FORMAT_NAMES: Record<FormatTemplateId, string> = {
   gs2: 'ГС-2. Группы → олимпийка N с матчем за 3-е место',
   gs3: 'ГС-3. Группы, выходят все → сетка',
   groups_main_consolation: 'Группы по 4 → основная + утешительная',
+  long32: '32 длинная (RTTF): сетка −2, M1…M60',
 }
 
 const ruleOverride = z.object({ winsNeeded: z.number().int().min(2).max(4).optional(), pointsToWin: z.number().int().min(5).max(21).optional(), gamePoints: z.enum(['none', 'optional', 'required']).optional() })
@@ -47,7 +48,7 @@ const stageSchema = z.discriminatedUnion('kind', [
   z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('round_robin'), name: z.string().min(1).max(60) }),
   z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('single_elim'), name: z.string().min(1).max(60), thirdPlace: z.enum(['match', 'shared']) }),
   z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('all_places'), name: z.string().min(1).max(60), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
-  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('minus2'), name: z.string().min(1).max(60), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('minus2'), name: z.string().min(1).max(60), scheme: z.enum(['long32']).optional(), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
   z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('mixed'), name: z.string().min(1).max(60), lowerRounds: z.number().int().min(1).max(6), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
 ])
 

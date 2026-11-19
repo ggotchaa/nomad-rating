@@ -36,7 +36,7 @@ type Stage = StageMatch &
     | { id: string; kind: 'round_robin'; name: string }
     | { id: string; kind: 'single_elim'; name: string; thirdPlace: 'match' | 'shared' }
     | { id: string; kind: 'all_places'; name: string; eliminateAfter?: number | null }
-    | { id: string; kind: 'minus2'; name: string; eliminateAfter?: number | null }
+    | { id: string; kind: 'minus2'; name: string; scheme?: 'long32'; eliminateAfter?: number | null }
     | { id: string; kind: 'mixed'; name: string; lowerRounds: number; eliminateAfter?: number | null }
   )
 type Rule =
@@ -312,6 +312,19 @@ function FormatBuilder({ format, onChange }: { format: Format; onChange: (f: For
             )}
             {(s.kind === 'all_places' || s.kind === 'minus2' || s.kind === 'mixed') && (
               <div className="row small">
+                {s.kind === 'minus2' && (
+                  <label className="row">
+                    {t.ctor.scheme}
+                    <select
+                      value={s.scheme ?? ''}
+                      style={{ width: 'auto' }}
+                      onChange={(e) => setStage(i, { scheme: e.target.value === 'long32' ? 'long32' : undefined })}
+                    >
+                      <option value="">{t.ctor.schemeGeneric}</option>
+                      <option value="long32">{t.ctor.schemeLong32}</option>
+                    </select>
+                  </label>
+                )}
                 {s.kind === 'mixed' && (
                   <label className="row">
                     {t.ctor.lowerRounds}

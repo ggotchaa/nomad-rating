@@ -6,7 +6,8 @@
 // in a 16-player all-places bracket the main draw is № 1–15, then the blocks
 // 3..4, 5..8, 5..6, 7..8, 9..16, 9..12, 9..10, 11..12, 13..16, 13..14, 15..16.
 
-export type Source = { kind: 'seed'; seed: number } | { kind: 'winner'; match: number } | { kind: 'loser'; match: number }
+export type Source =
+  { kind: 'seed'; seed: number } | { kind: 'winner'; match: number } | { kind: 'loser'; match: number }
 
 export type BracketMatch = {
   number: number
@@ -182,7 +183,12 @@ export function placesBracket(size: number, options: PlacesOptions = {}): Bracke
     }
   }
 
-  const main = block(1, seedOrder(size).map((seed) => ({ kind: 'seed', seed })), 0, true)
+  const main = block(
+    1,
+    seedOrder(size).map((seed) => ({ kind: 'seed', seed })),
+    0,
+    true,
+  )
   const firstLower = rounds - 1 - lowerRounds
   if (!out(1) && rounds >= 2) {
     // Lower branch: pool of earlier drops plays itself (minor round), then meets the next drops (major round).
@@ -191,7 +197,8 @@ export function placesBracket(size: number, options: PlacesOptions = {}): Bracke
     const loserBlock = (losers: Source[], alive: number) => {
       const from = 3 + alive - losers.length
       if (out(2)) {
-        for (const l of losers) (matches[(l as { match: number }).match - 1] as BracketMatch).loserShared = [from, from + losers.length - 1]
+        for (const l of losers)
+          (matches[(l as { match: number }).match - 1] as BracketMatch).loserShared = [from, from + losers.length - 1]
       } else if (losers.length > 1) block(from, losers, 2)
     }
     let pool = drops[0] as Source[]
@@ -199,7 +206,13 @@ export function placesBracket(size: number, options: PlacesOptions = {}): Bracke
       const winners: Source[] = []
       const losers: Source[] = []
       for (const [home, away] of pairs) {
-        const m: Omit<BracketMatch, 'number' | 'round'> = { placeFrom: 3, placeTo: 2 + alive, stageLabel: 'lower', home, away }
+        const m: Omit<BracketMatch, 'number' | 'round'> = {
+          placeFrom: 3,
+          placeTo: 2 + alive,
+          stageLabel: 'lower',
+          home,
+          away,
+        }
         if (alive === 2) {
           m.winnerPlace = 3
           m.loserPlace = 4
@@ -220,7 +233,10 @@ export function placesBracket(size: number, options: PlacesOptions = {}): Bracke
       const drop = drops[k]
       if (!drop) break
       const crossed = [...drop].reverse()
-      pool = round(pool.map((p, i) => [p, crossed[i] as Source]), pool.length + future(k))
+      pool = round(
+        pool.map((p, i) => [p, crossed[i] as Source]),
+        pool.length + future(k),
+      )
     }
   }
   subBlocks(main, 1, firstLower - 1, 0)
@@ -231,9 +247,15 @@ export function placesBracket(size: number, options: PlacesOptions = {}): Bracke
 export const allPlaces = (size: number): Bracket => placesBracket(size)
 
 /** Number of matches of a bracket; olympic: S − 1 (+1 for the 3rd-place match). */
-export function bracketMatchCount(kind: Bracket['kind'], size: number, thirdPlace: 'match' | 'shared' = 'match', options: PlacesOptions = {}): number {
+export function bracketMatchCount(
+  kind: Bracket['kind'],
+  size: number,
+  thirdPlace: 'match' | 'shared' = 'match',
+  options: PlacesOptions = {},
+): number {
   if (kind === 'single_elim') return size - 1 + (thirdPlace === 'match' ? 1 : 0)
-  if (kind === 'all_places' && options.lowerRounds == null && options.eliminateAfter == null) return (size / 2) * log2(size)
+  if (kind === 'all_places' && options.lowerRounds == null && options.eliminateAfter == null)
+    return (size / 2) * log2(size)
   return placesBracket(size, { ...options, lowerRounds: kind === 'minus2' ? size : options.lowerRounds }).matches.length
 }
 
@@ -332,4 +354,54 @@ export function bracketPlaces(resolved: readonly ResolvedMatch[]): BracketPlace[
     const same = list.filter(([, [f]]) => f === from).length
     return { id, place: better + 1, placeTo: better + same }
   })
+}
+
+// ---------------------------------------------------------------------------
+// «32 длинная» (RTTF protocol): сетка −2 for 32 with the protocol's own match numbers M1…M60, so the
+// printed RTTF sheet and the screen agree. Lower-branch losers share their places; 3rd/4th are played (M59).
+
+const W = (match: number): Source => ({ kind: 'winner', match })
+const L = (match: number): Source => ({ kind: 'loser', match })
+
+export function long32(): Bracket {
+  const order = seedOrder(32)
+  const matches: BracketMatch[] = []
+  const add = (number: number, home: Source, away: Source, m: Partial<BracketMatch>) =>
+    matches.push({ number, round: 0, placeFrom: 1, placeTo: 32, stageLabel: 'lower', home, away, ...m })
+  const lower = (number: number, home: Source, away: Source, alive: number, losers: number) =>
+    add(number, home, away, { placeFrom: 3, placeTo: 2 + alive, loserShared: [3 + alive - losers, 2 + alive] })
+  for (let i = 0; i < 16; i++)
+    add(
+      i + 1,
+      { kind: 'seed', seed: order[2 * i] as number },
+      { kind: 'seed', seed: order[2 * i + 1] as number },
+      { placeTo: 32, stageLabel: '1/16' },
+    )
+  // Lower round 1: losers of M9…M16 first, then M1…M8 (protocol order L9…L16, L1…L8).
+  ;[9, 11, 13, 15, 1, 3, 5, 7].forEach((l, i) => lower(17 + i, L(l), L(l + 1), 30, 8))
+  for (let i = 0; i < 8; i++) add(25 + i, W(2 * i + 1), W(2 * i + 2), { placeTo: 16, stageLabel: '1/8' })
+  // Losers of M29…M32 meet M17…M20, losers of M25…M28 meet M21…M24.
+  ;[29, 30, 31, 32].forEach((l, i) => lower(33 + i, W(17 + i), L(l), 22, 8))
+  ;[25, 26, 27, 28].forEach((l, i) => lower(37 + i, L(l), W(21 + i), 22, 8))
+  for (let i = 0; i < 4; i++) add(41 + i, W(25 + 2 * i), W(26 + 2 * i), { placeTo: 8, stageLabel: '1/4' })
+  for (let i = 0; i < 4; i++) lower(45 + i, W(33 + 2 * i), W(34 + 2 * i), 14, 4)
+  add(49, W(41), W(42), { placeTo: 4, stageLabel: '1/2' })
+  add(50, W(43), W(44), { placeTo: 4, stageLabel: '1/2' })
+  lower(51, W(45), L(43), 10, 4)
+  lower(52, W(46), L(44), 10, 4)
+  lower(53, L(41), W(47), 10, 4)
+  lower(54, L(42), W(48), 10, 4)
+  lower(55, W(51), W(52), 6, 2)
+  lower(56, W(53), W(54), 6, 2)
+  lower(57, W(55), L(50), 4, 2)
+  lower(58, L(49), W(56), 4, 2)
+  add(59, W(57), W(58), { placeFrom: 3, placeTo: 4, winnerPlace: 3, loserPlace: 4 })
+  add(60, W(49), W(50), { placeTo: 2, stageLabel: 'final', winnerPlace: 1, loserPlace: 2 })
+  matches.sort((a, b) => a.number - b.number)
+  const roundOf = (s: Source) => (s.kind === 'seed' ? 0 : (matches[s.match - 1] as BracketMatch).round)
+  for (const m of matches) m.round = Math.max(roundOf(m.home), roundOf(m.away)) + 1
+  // The final is played last, after the match for 3rd place.
+  const final = matches[59] as BracketMatch
+  final.round = Math.max(...matches.map((m) => m.round)) + 1
+  return { kind: 'minus2', size: 32, matches }
 }
