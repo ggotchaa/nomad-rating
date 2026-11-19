@@ -49,3 +49,17 @@ test('a player who already has a profile entering a code sends a merge request',
   await page.getByRole('button', { name: 'Привязать' }).click()
   await expect(page.getByText('заявка на объединение отправлена администратору')).toBeVisible()
 })
+
+test('captain enters a teammate by name, the person later takes the card from the list', async ({ playwright }) => {
+  const captain = await apiAs(playwright, 'player')
+  const team = await json<{ id: number }>(await captain.post('/api/teams', { data: { kind: 'team', name: `Ростер ${Date.now() % 100000}` } }))
+  const lastName = `Безаккаунтов${Date.now() % 100000}`
+  const added = await json<{ playerId: number }>(await captain.post(`/api/teams/${team.id}/members/by-name`, { data: { lastName, firstName: 'Ерлан', gender: 'm', birthYear: 1991, force: true } }))
+
+  const claimant = await accountWithoutProfile(playwright)
+  const list = await json<{ id: number }[]>(await claimant.get(`/api/my/claimable?q=${encodeURIComponent(lastName)}`))
+  expect(list.map((c) => c.id)).toContain(added.playerId)
+  expect((await json<{ claimed: number }>(await claimant.post('/api/my/claim-card', { data: { playerId: added.playerId } }))).claimed).toBe(added.playerId)
+  expect((await json(await claimant.get('/api/auth/me'))).player.id).toBe(added.playerId)
+  expect((await claimant.post('/api/my/claim-card', { data: { playerId: added.playerId } })).status(), 'a bound card is not free').toBe(409)
+})

@@ -7,6 +7,7 @@ import { formatDateTime } from '../../i18n/format.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
 import { LiveDeltas } from '../rating/widgets.tsx'
 import { MyBookings } from '../booking/MyBookings.tsx'
+import { Avatar } from '../../ui/Avatar.tsx'
 
 const ACTIVE_ENTRY = ['awaiting_payment', 'paid', 'checked_in', 'playing', 'assembling', 'waitlist', 'invited']
 
@@ -59,7 +60,10 @@ export function Cabinet() {
   return (
     <main className="page">
       <header className="pagehead">
-        <h1>{t.me.title}</h1>
+        <h1 className="withava">
+          <Avatar name={`${me.player.last_name} ${me.player.first_name}`} photoUrl={me.player.photo_url} size={48} />
+          {t.me.title}
+        </h1>
         <p>
           {me.player.last_name} {me.player.first_name} · {me.player.city} · {t.p.rating.toLowerCase()}{' '}
           <b style={{ color: 'var(--holo)' }}>{me.player.rating ?? `— (${t.t.calibrating})`}</b>

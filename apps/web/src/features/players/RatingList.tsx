@@ -7,6 +7,7 @@ import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
 import { Async, Delta, Seg } from '../../ui/kit.tsx'
 import { CalibratingMark, RecalcBanner } from '../rating/widgets.tsx'
+import { Avatar } from '../../ui/Avatar.tsx'
 
 const PAGE = 50
 
@@ -112,7 +113,12 @@ export function RatingList() {
                       <tr key={p.id} className={p.id === me.player?.id ? 'is-me' : ''}>
                         <td className="rank">{p.rank ?? '—'}</td>
                         <td>
-                          <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
+                          <span className="withava">
+                            <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
+                            <span>
+                              <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
+                            </span>
+                          </span>
                         </td>
                         <td className="muted">{p.city}</td>
                         <td className="num">

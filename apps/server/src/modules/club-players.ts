@@ -45,7 +45,7 @@ export async function findDuplicates(exec: Exec, p: { lastName: string; firstNam
   return rows.map((r) => ({ id: r.id, name: `${r.last_name} ${r.first_name}`, birthYear: r.birth_year, city: r.city, hasAccount: r.user_id != null }))
 }
 
-export async function createClubPlayer(trx: Transaction<Database>, clubId: number, actorUserId: number, p: ImportPlayer, action = 'create_by_club') {
+export async function createClubPlayer(trx: Transaction<Database>, clubId: number | null, actorUserId: number, p: ImportPlayer, action = 'create_by_club') {
   const row = await trx
     .insertInto('players')
     .values({

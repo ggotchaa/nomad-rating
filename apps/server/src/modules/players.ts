@@ -169,6 +169,7 @@ playersRouter.get(
       city: p.city,
       citySlug: p.city_slug,
       addedByClub: p.added_by_club_id != null && p.user_id == null,
+      claimed: p.user_id != null,
       ratings: ratingView,
     })
   }),

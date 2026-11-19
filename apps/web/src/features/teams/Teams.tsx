@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { intlTag } from '../../i18n/locale.ts'
 import { Link, useParams } from 'react-router'
-import { api } from '../../api/client.ts'
+import { api, ApiError } from '../../api/client.ts'
 import { useSession } from '../../app/auth.tsx'
 import { useApi } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
 import { Async, Field, Seg, StatusChip } from '../../ui/kit.tsx'
+import { Avatar } from '../../ui/Avatar.tsx'
 
-type Member = { id: number; name: string; birthYear: number; region: string | null; role: string; singles: number | null; doubles: number | null }
+type Member = { id: number; name: string; photoUrl: string | null; hasAccount: boolean; birthYear: number; region: string | null; role: string; singles: number | null; doubles: number | null }
 export type Team = {
   id: number
   kind: 'pair' | 'team'
@@ -26,7 +27,7 @@ export type Team = {
   entries: { id: number; status: string; slug: string; title: string; startsAt: string }[]
 }
 type Mine = { teams: Team[]; invitations: { id: number; teamId: number; name: string; kind: string; captain: string; expiresAt: string }[] }
-type Found = { id: number; name: string; birthYear: number; region: string | null; city: string | null; rating: number | null }
+type Found = { id: number; name: string; photoUrl: string | null; birthYear: number; region: string | null; city: string | null; rating: number | null }
 
 function useAction(reload: () => void) {
   const [error, setError] = useState('')
@@ -59,8 +60,11 @@ function InviteSearch({ team, onDone }: { team: Team; onDone: () => void }) {
       <input type="search" placeholder={t.teams.searchPlayer} value={q} onChange={(e) => setQ(e.target.value)} />
       {found.map((p) => (
         <div key={p.id} className="row row--between">
-          <span>
-            {p.name} <span className="muted small">· {[p.region ?? p.city, p.birthYear, p.rating].filter(Boolean).join(' · ')}</span>
+          <span className="withava">
+            <Avatar name={p.name} photoUrl={p.photoUrl} size={24} />
+            <span>
+              {p.name} <span className="muted small">· {[p.region ?? p.city, p.birthYear, p.rating].filter(Boolean).join(' · ')}</span>
+            </span>
           </span>
           <button className="button button--sm" disabled={team.members.some((m) => m.id === p.id)} onClick={() => void run(() => post(`/teams/${team.id}/invitations`, { playerId: p.id }))}>
             {t.teams.invite}
@@ -69,6 +73,82 @@ function InviteSearch({ team, onDone }: { team: Team; onDone: () => void }) {
       ))}
       {error && <p className="note note--error">{error}</p>}
     </div>
+  )
+}
+
+type Similar = { id: number; name: string; birthYear: number; city: string | null }
+
+/** T-18: a roster member without an account, entered by name. */
+function AddByName({ team, onDone }: { team: Team; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [similar, setSimilar] = useState<Similar[]>([])
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  if (!open)
+    return (
+      <button className="button button--sm" onClick={() => setOpen(true)}>
+        + {t.cards.addByName}
+      </button>
+    )
+  return (
+    <form
+      className="form form--cols"
+      onSubmit={(e) => {
+        e.preventDefault()
+        const f = new FormData(e.currentTarget)
+        setBusy(true)
+        setError('')
+        void post(`/teams/${team.id}/members/by-name`, { lastName: f.get('lastName'), firstName: f.get('firstName'), gender: f.get('gender'), birthYear: Number(f.get('birthYear')), force: similar.length > 0 })
+          .then(() => {
+            setOpen(false)
+            setSimilar([])
+            onDone()
+          })
+          .catch((err: unknown) => {
+            if (err instanceof ApiError && err.code === 'player.possible_duplicates') setSimilar(err.details as Similar[])
+            else setError(errorText(err))
+          })
+          .finally(() => setBusy(false))
+      }}
+    >
+      <p className="small muted field--wide">{t.cards.addByNameLead}</p>
+      <Field label={t.a.lastName}>
+        <input name="lastName" required maxLength={80} />
+      </Field>
+      <Field label={t.a.firstName}>
+        <input name="firstName" required maxLength={80} />
+      </Field>
+      <Field label={t.a.gender}>
+        <select name="gender">
+          <option value="m">{t.a.male}</option>
+          <option value="f">{t.a.female}</option>
+        </select>
+      </Field>
+      <Field label={t.a.birthYear}>
+        <input name="birthYear" type="number" min={1920} max={new Date().getFullYear() - 5} defaultValue={1990} required />
+      </Field>
+      {similar.length > 0 && (
+        <div className="note field--wide">
+          {t.m.duplicates}
+          <ul>
+            {similar.map((d) => (
+              <li key={d.id}>
+                {d.name}, {d.birthYear}, {d.city}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {error && <p className="note note--error field--wide">{error}</p>}
+      <div className="row field--wide">
+        <button className="button button--primary button--sm" disabled={busy}>
+          {similar.length ? t.m.createAnyway : t.common.save}
+        </button>
+        <button type="button" className="button button--sm" onClick={() => setOpen(false)}>
+          {t.common.cancel}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -124,8 +204,11 @@ function TeamCard({ team, reload }: { team: Team; reload: () => void }) {
       <ul className="stack">
         {team.members.map((m) => (
           <li key={m.id} className="row row--between">
-            <span>
-              <Link to={`/players/${m.id}`}>{m.name}</Link> <span className="muted small">· {[m.region, m.birthYear, m.role === 'captain' && t.teams.captain].filter(Boolean).join(' · ')}</span>
+            <span className="withava">
+              <Avatar name={m.name} photoUrl={m.photoUrl} size={28} />
+              <span>
+                <Link to={`/players/${m.id}`}>{m.name}</Link> <span className="muted small">· {[m.region, m.birthYear, m.role === 'captain' && t.teams.captain, !m.hasAccount && t.cards.noAccount].filter(Boolean).join(' · ')}</span>
+              </span>
             </span>
             <span className="row">
               <span className="muted small">
@@ -175,6 +258,7 @@ function TeamCard({ team, reload }: { team: Team; reload: () => void }) {
             </ul>
           )}
           {team.members.length < team.maxSize && <InviteSearch team={team} onDone={reload} />}
+          {team.members.length < team.maxSize && <AddByName team={team} onDone={reload} />}
           {team.joinUrl && <ShareLink team={team} reload={reload} />}
           {team.members.length > 1 && <p className="muted small">{t.teams.captainLeave}</p>}
           <button className="button button--sm" onClick={() => void run(() => post(`/teams/${team.id}/repeat`))}>

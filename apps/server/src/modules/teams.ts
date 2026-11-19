@@ -5,17 +5,21 @@ import { Router } from 'express'
 import type { Request } from 'express'
 import { z } from 'zod'
 import { searchWords } from '@nomad/shared'
+import type { Transaction } from '../db/index.ts'
+import type { Database } from '../db/types.ts'
+import { audit } from '../audit.ts'
 import { db } from '../db/index.ts'
 import type { Tournament } from '../db/types.ts'
 import { requireClubRight, requireUser } from '../auth/access.ts'
 import { clubAccess } from '../auth/access.ts'
-import { forbidden, handler, notFound } from '../http/errors.ts'
+import { conflict, forbidden, handler, notFound } from '../http/errors.ts'
 import { intParam, parseBody, parseQuery } from '../http/validate.ts'
 import { bus } from '../realtime/bus.ts'
 import { config } from '../config.ts'
-import { answerInvitation, createTeam, invite, joinByLink, registerTeam, reissueJoinLink, removeMember, repeatTeam, transferCaptain } from '../teams/service.ts'
+import { addMember, answerInvitation, createTeam, loadTeam, invite, joinByLink, registerTeam, reissueJoinLink, removeMember, repeatTeam, transferCaptain } from '../teams/service.ts'
 import { callGame, captainSide, loadMeeting, meetingView, recordGame, submitLineup } from '../teams/meeting.ts'
 import { playerName } from './players.ts'
+import { createClubPlayer, findDuplicates } from './club-players.ts'
 
 export const teamsRouter = Router()
 export const teamEntriesRouter = Router()
@@ -35,7 +39,7 @@ async function teamView(teamId: number, viewerPlayerId: number | null) {
     .leftJoin('cities as c', 'c.id', 'p.city_id')
     .leftJoin('player_ratings as s', (j) => j.onRef('s.player_id', '=', 'p.id').on('s.kind', '=', 'singles'))
     .leftJoin('player_ratings as d', (j) => j.onRef('d.player_id', '=', 'p.id').on('d.kind', '=', 'doubles'))
-    .select(['p.id', 'p.first_name', 'p.last_name', 'p.birth_year', 'c.region_ru as region', 'm.role', 'm.status', 's.rating as singles', 'd.rating as doubles'])
+    .select(['p.id', 'p.first_name', 'p.last_name', 'p.birth_year', 'p.photo_url', 'p.user_id', 'c.region_ru as region', 'm.role', 'm.status', 's.rating as singles', 'd.rating as doubles'])
     .where('m.team_id', '=', teamId)
     .where('m.status', '=', 'active')
     .orderBy('m.joined_at')
@@ -69,7 +73,7 @@ async function teamView(teamId: number, viewerPlayerId: number | null) {
     joinToken: captain ? team.join_token : undefined,
     complete: members.length >= team.min_size,
     belowMinimum: members.length < team.min_size && entries.some((e) => ['awaiting_payment', 'paid', 'waitlist', 'invited'].includes(e.status)),
-    members: members.map((m) => ({ id: m.id, name: playerName(m), birthYear: m.birth_year, region: m.region, role: m.role, singles: m.singles, doubles: m.doubles })),
+    members: members.map((m) => ({ id: m.id, name: playerName(m), photoUrl: m.photo_url, hasAccount: m.user_id != null, birthYear: m.birth_year, region: m.region, role: m.role, singles: m.singles, doubles: m.doubles })),
     invitations: invitations.map((i) => ({ id: i.id, playerId: i.player_id, name: playerName(i), direction: i.direction, status: i.status, expiresAt: i.expires_at })),
     entries: entries.map((e) => ({ id: e.id, status: e.status, tournamentId: e.tournament_id, slug: e.slug, title: e.title, startsAt: e.starts_at })),
   }
@@ -104,12 +108,12 @@ teamsRouter.get(
       .selectFrom('players as p')
       .leftJoin('cities as c', 'c.id', 'p.city_id')
       .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
-      .select(['p.id', 'p.first_name', 'p.last_name', 'p.birth_year', 'c.region_ru as region', 'c.name_ru as city', 'r.rating'])
+      .select(['p.id', 'p.first_name', 'p.last_name', 'p.birth_year', 'p.photo_url', 'c.region_ru as region', 'c.name_ru as city', 'r.rating'])
       .orderBy('p.last_name')
       .limit(20)
     for (const word of searchWords(q)) query = query.where('p.search_name', 'like', `%${word}%`)
     const rows = await query.execute()
-    res.json(rows.map((r) => ({ id: r.id, name: playerName(r), birthYear: r.birth_year, region: r.region, city: r.city, rating: r.rating })))
+    res.json(rows.map((r) => ({ id: r.id, name: playerName(r), photoUrl: r.photo_url, birthYear: r.birth_year, region: r.region, city: r.city, rating: r.rating })))
   }),
 )
 
@@ -164,6 +168,48 @@ teamsRouter.post(
     const { playerId } = parseBody(z.object({ playerId: z.number().int().positive() }), req)
     const inv = await db.transaction().execute((trx) => invite(trx, intParam(req, 'id'), playerId, actor))
     res.status(201).json({ id: inv.id, status: inv.status, expiresAt: inv.expires_at })
+  }),
+)
+
+/** The club a by-name player belongs to: the team's latest tournament club, else the captain's. */
+async function teamClub(trx: Transaction<Database>, teamId: number, captainId: number): Promise<number | null> {
+  const latest = (where: 'e.team_id' | 'e.player_id', id: number) =>
+    trx.selectFrom('entries as e').innerJoin('tournaments as t', 't.id', 'e.tournament_id').select('t.club_id').where(where, '=', id).orderBy('t.starts_at', 'desc').executeTakeFirst()
+  return ((await latest('e.team_id', teamId)) ?? (await latest('e.player_id', captainId)))?.club_id ?? null
+}
+
+/** T-18: the captain adds someone without an account by name; the card can be claimed later. */
+teamsRouter.post(
+  '/:id/members/by-name',
+  handler(async (req, res) => {
+    const actor = me(req)
+    const teamId = intParam(req, 'id')
+    const body = parseBody(
+      z.object({
+        lastName: z.string().trim().min(1).max(80),
+        firstName: z.string().trim().min(1).max(80),
+        gender: z.enum(['m', 'f']),
+        birthYear: z.number().int().min(1920).max(new Date().getFullYear() - 5),
+        force: z.boolean().default(false),
+      }),
+      req,
+    )
+    const id = await db.transaction().execute(async (trx) => {
+      const team = await loadTeam(trx, teamId)
+      if (team.captain_player_id !== actor.playerId) throw forbidden('team.captain_only')
+      const captain = await trx.selectFrom('players').select('city_id').where('id', '=', actor.playerId).executeTakeFirstOrThrow()
+      const cityId = captain.city_id ?? (await trx.selectFrom('cities').select('id').orderBy('id').executeTakeFirstOrThrow()).id
+      const p = { lastName: body.lastName, firstName: body.firstName, middleName: null, gender: body.gender, birthYear: body.birthYear, cityId, email: null, startLevel: 'amateur' as const }
+      if (!body.force) {
+        const similar = await findDuplicates(trx, p)
+        if (similar.length) throw conflict('player.possible_duplicates', similar)
+      }
+      const row = await createClubPlayer(trx, await teamClub(trx, teamId, actor.playerId), actor.userId, p, 'create_by_captain')
+      await addMember(trx, teamId, row.id, actor.userId)
+      await audit({ actorUserId: actor.userId, entity: 'team', entityId: teamId, action: 'member_added_by_name', after: { playerId: row.id } }, trx)
+      return row.id
+    })
+    res.status(201).json({ playerId: id, team: await teamView(teamId, actor.playerId) })
   }),
 )
 

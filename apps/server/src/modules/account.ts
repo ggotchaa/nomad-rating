@@ -19,7 +19,7 @@ import { consumeToken, issueToken } from '../auth/tokens.ts'
 import { badRequest, conflict, forbidden, handler, notFound, unauthorized } from '../http/errors.ts'
 import { parseBody } from '../http/validate.ts'
 import { mails, sendMail, siteLink } from '../mail/index.ts'
-import { IMAGE_MAX_BYTES, IMAGE_TYPES, removeFile, saveFile } from '../storage/index.ts'
+import { removeFile } from '../storage/index.ts'
 import { currentUserView, limiter } from './auth.ts'
 import { selfLevel } from './club-players.ts'
 
@@ -410,21 +410,6 @@ myAccountRouter.patch(
       .execute()
     await audit({ actorUserId: user.id, entity: 'player', entityId: before.id, action: 'update_profile', after: body })
     res.json(await userView(user.id, req))
-  }),
-)
-
-myAccountRouter.post(
-  '/photo',
-  express.raw({ type: Object.keys(IMAGE_TYPES), limit: IMAGE_MAX_BYTES }),
-  handler(async (req, res) => {
-    const user = requireUser(req)
-    if (!user.playerId) throw forbidden('player.profile_required')
-    const ext = IMAGE_TYPES[req.get('content-type')?.split(';')[0]?.trim() ?? '']
-    if (!ext || !Buffer.isBuffer(req.body) || req.body.length === 0) throw badRequest('upload.invalid_type')
-    const url = await saveFile('photos', req.body, ext)
-    await db.updateTable('players').set({ photo_url: url, updated_at: new Date() }).where('id', '=', user.playerId).execute()
-    await audit({ actorUserId: user.id, entity: 'player', entityId: user.playerId, action: 'photo', after: { url } })
-    res.json({ photoUrl: url })
   }),
 )
 

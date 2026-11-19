@@ -489,6 +489,7 @@ export interface Database {
   club_invitations: ClubInvitationsTable
   club_documents: ClubDocumentsTable
   player_merge_requests: PlayerMergeRequestsTable
+  profile_claim_disputes: ProfileClaimDisputesTable
   rttf_profiles: RttfProfilesTable
   rttf_claims: RttfClaimsTable
   series: SeriesTable
@@ -559,6 +560,20 @@ export interface ClubInvitationsTable {
   expires_at: Timestamp
   invited_by: number | null
   accepted_by: number | null
+  created_at: DefaultTimestamp
+}
+
+export interface ProfileClaimDisputesTable {
+  id: Id
+  player_id: number
+  claimant_user_id: number
+  holder_user_id: number | null
+  reason: Generated<string>
+  documents: JsonDefault<{ name: string; url: string }[]>
+  status: Generated<'open' | 'approved' | 'rejected'>
+  decision_note: string | null
+  decided_by: number | null
+  decided_at: Timestamp | null
   created_at: DefaultTimestamp
 }
 

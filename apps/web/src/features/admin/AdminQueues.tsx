@@ -167,7 +167,83 @@ export function AdminMerges() {
           )
         }
       </Async>
+      <AdminProfileDisputes />
     </div>
+  )
+}
+
+type ProfileDispute = {
+  id: number
+  reason: string
+  documents: { name: string; url: string }[]
+  createdAt: string
+  player: { id: number; name: string; birthYear: number }
+  claimant: { email: string; playerId: number | null }
+  holder: { email: string | null }
+}
+
+/** T-19: the card is rebound only by this decision. */
+function AdminProfileDisputes() {
+  const state = useApi<ProfileDispute[]>('/admin/profile-disputes')
+  const { busy, run, notes } = useAction()
+  const decide = async (id: number, decision: 'approve' | 'reject') => {
+    const note = await ask.prompt(t.cards.decisionNote)
+    if (note === null) return
+    void run(async () => {
+      await api(`/admin/profile-disputes/${id}`, { method: 'POST', json: { decision, note } })
+      state.reload()
+    })
+  }
+  return (
+    <section className="stack">
+      <h2>{t.cards.disputesTitle}</h2>
+      {notes}
+      <Async state={state}>
+        {(list) =>
+          list.length ? (
+            list.map((d) => (
+              <section key={d.id} className="panel stack">
+                <p>
+                  <a href={`/players/${d.player.id}`} target="_blank" rel="noreferrer">
+                    <b>
+                      {d.player.name}, {d.player.birthYear} (#{d.player.id})
+                    </b>
+                  </a>
+                </p>
+                <p className="small muted">
+                  {t.admin.holder}: {d.holder.email ?? '—'} · {t.cards.claimant}: {d.claimant.email}
+                  {d.claimant.playerId ? ` (#${d.claimant.playerId})` : ''} · {formatDateTime(d.createdAt)}
+                </p>
+                <p className="small" style={{ whiteSpace: 'pre-line' }}>
+                  {d.reason}
+                </p>
+                <div className="small">
+                  <b>{t.admin.documents}:</b>{' '}
+                  {d.documents.map((doc, i) => (
+                    <span key={doc.url}>
+                      {i > 0 && ' · '}
+                      <a href={doc.url} target="_blank" rel="noreferrer">
+                        {doc.name}
+                      </a>
+                    </span>
+                  ))}
+                </div>
+                <div className="row">
+                  <button className="button button--sm button--primary" disabled={busy} onClick={() => void decide(d.id, 'approve')}>
+                    {t.cards.approveDispute}
+                  </button>
+                  <button className="button button--sm" disabled={busy} onClick={() => void decide(d.id, 'reject')}>
+                    {t.admin.reject}
+                  </button>
+                </div>
+              </section>
+            ))
+          ) : (
+            <p className="empty">{t.admin.empty}</p>
+          )
+        }
+      </Async>
+    </section>
   )
 }
 

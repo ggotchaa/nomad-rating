@@ -10,6 +10,8 @@ import { RatingChart } from './RatingChart.tsx'
 import { PlayerSearch } from './PlayerSearch.tsx'
 import { CalibratingMark, DisputeButton, RecalcBanner } from '../rating/widgets.tsx'
 import { PlayerLeagues } from '../leagues/Leagues.tsx'
+import { Avatar } from '../../ui/Avatar.tsx'
+import { ProfileDisputeButton } from './ProfileDispute.tsx'
 
 type Period = '3m' | '1y' | 'all'
 
@@ -77,12 +79,7 @@ export function Profile() {
                   ← {t.r.title}
                 </Link>
                 <div className="profile">
-                  <div className="avatar" aria-hidden="true">
-                    {p.name
-                      .split(' ')
-                      .map((w) => w[0])
-                      .join('')}
-                  </div>
+                  <Avatar className="avatar" name={p.name} photoUrl={p.photoUrl} size={104} />
                   <div className="stack">
                     <h1>
                       {p.name} {r && r.rating == null && <CalibratingMark />}
@@ -93,6 +90,7 @@ export function Profile() {
                     <div className="row">
                       {r?.provisional && r.rating != null && <span className="chip chip--warn">{t.t.calibrating} · {t.misc.ratingRefining}</span>}
                       {p.addedByClub && <span className="chip">{t.p.addedByClub}</span>}
+                      {p.claimed && me.user && myId !== p.id && <ProfileDisputeButton playerId={p.id} />}
                     </div>
                   </div>
                 </div>
