@@ -265,7 +265,7 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
   const lUrl = d.leagueSlug ? `${site}/leagues/${s(d.leagueSlug)}` : me
   const title = s(d.tournamentTitle || d.title)
   const bUrl = s(d.cancelUrl) || me
-  const myT = d.slug ? `${site}/me/t/${s(d.slug)}` : tUrl
+  const myT = d.slug ? `${site}/t/${s(d.slug)}` : tUrl
   const out = (m: Msg, url: string): Rendered => ({ ...m, url, open: p.open })
   // Server-composed `text` is Russian: shown as extra detail in ru only.
   const ruText = lang === 'ru' ? s(d.text) : ''
@@ -354,7 +354,7 @@ function renderDefault(type: string, d: D, lang: Lang): Rendered {
     case 'tournament_venue_changed':
       return out({ title: p.venue, body: lines(title, [d.hall, d.address].filter(Boolean).join(', ')) }, tUrl)
     case 'score_confirm':
-      return out(p.scoreConfirm(d), d.slug ? `${site}/me/t/${s(d.slug)}` : tUrl)
+      return out(p.scoreConfirm(d), d.slug ? `${site}/t/${s(d.slug)}` : tUrl)
     case 'player_busy':
     case 'tournament_underfilled': {
       const m = type === 'player_busy' ? p.playerBusy(d) : p.underfilled(d)

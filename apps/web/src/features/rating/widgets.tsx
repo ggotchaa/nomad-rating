@@ -35,26 +35,6 @@ export const CalibTag = ({ e }: { e: { calibrating?: boolean; startLevel?: numbe
     </>
   ) : null
 
-/** On a running tournament page: my preliminary change and a link to «Мой турнир». */
-export function MyTournamentStrip({ tournamentId, slug, status }: { tournamentId: number; slug: string; status: string }) {
-  const { me } = useSession()
-  const running = status === 'running'
-  const live = useApi<{ running: boolean; deltas: Record<string, number> }>(running && me.player ? `/rating/tournaments/${tournamentId}/preliminary` : null)
-  useRoom(running && me.player ? `tournament:${tournamentId}` : null, (type) => type === 'match.updated' && live.reload())
-  const pid = me.player?.id
-  if (!pid || !live.data || !(String(pid) in live.data.deltas)) return null
-  return (
-    <div className="panel row row--between">
-      <span title={t.rating2.preliminaryHint}>
-        {t.rating2.preliminary}: <Delta value={live.data.deltas[String(pid)]} />
-      </span>
-      <Link className="button button--sm button--primary" to={`/me/t/${slug}`}>
-        {t.rating2.myTournament} →
-      </Link>
-    </div>
-  )
-}
-
 /** Cabinet: tournaments I am playing right now with the preliminary delta. */
 export function LiveDeltas() {
   const { me } = useSession()
@@ -65,7 +45,7 @@ export function LiveDeltas() {
       <h2>{t.rating2.live}</h2>
       <div className="linklist">
         {rows.data.map((r) => (
-          <Link key={r.tournamentId} to={`/me/t/${r.slug}`}>
+          <Link key={r.tournamentId} to={`/t/${r.slug}`}>
             <div>
               <b>{r.title}</b>
               <span title={t.rating2.preliminaryHint}>{t.rating2.preliminary}</span>
@@ -97,5 +77,60 @@ export function DisputeButton({ matchId }: { matchId: number }) {
     <button className="linkbtn small" onClick={() => void send()}>
       {t.rating2.dispute}
     </button>
+  )
+}
+
+type MyStatusView = {
+  entry: { status: string; place: number | null; placeTo: number | null }
+  next: {
+    number: number
+    status: string
+    table: number | null
+    opponent: { id: number; name: string } | null
+    queuePosition: number
+  } | null
+  queueLength: number
+}
+
+/** The current player's essentials on the tournament page: check-in, next match, table and queue. */
+export function MyStatus({ tournamentId, slug, status }: { tournamentId: number; slug: string; status: string }) {
+  const { me } = useSession()
+  const on = Boolean(me.player) && (status === 'running' || status === 'registration_closed' || status === 'published')
+  const st = useApi<MyStatusView>(on ? `/rating/me/tournaments/${slug}` : null)
+  useRoom(on ? `tournament:${tournamentId}` : null, st.reload)
+  const d = st.data
+  if (!d || d.entry.status === 'waitlist' || d.entry.status === 'invited') return null
+  const checked = d.entry.status === 'checked_in'
+  return (
+    <section className="panel row row--between">
+      <div className="row">
+        <b>{t.t.myStatus}</b>
+        <span className={`chip${checked ? ' chip--holo' : ''}`}>{checked ? t.t.checkedIn : t.t.notCheckedIn}</span>
+        {d.next ? (
+          <>
+            {d.next.status === 'called' && <span className="chip chip--warn">{t.rating2.called}</span>}
+            {d.next.status === 'playing' && <span className="chip chip--holo">{t.rating2.playing}</span>}
+            <span>
+              {t.rating2.next}: № {d.next.number}
+              {d.next.opponent && (
+                <>
+                  {' · '}
+                  <Link to={`/players/${d.next.opponent.id}`}>{d.next.opponent.name}</Link>
+                </>
+              )}
+              {d.next.table != null && ` · ${t.rating2.table} ${d.next.table}`}
+            </span>
+            {d.next.queuePosition > 0 && <span className="small muted">{t.rating2.queue(d.next.queuePosition, d.queueLength)}</span>}
+          </>
+        ) : (
+          status === 'running' && <span className="muted">{t.rating2.noNext}</span>
+        )}
+      </div>
+      {!checked && status !== 'published' && (
+        <Link className="button button--sm button--primary" to={`/t/${slug}/checkin`}>
+          {t.t.checkinLink}
+        </Link>
+      )}
+    </section>
   )
 }

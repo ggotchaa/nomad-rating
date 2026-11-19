@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router'
 import { api } from '../../api/client.ts'
 import type { TournamentDetail } from '../../api/types.ts'
 import { useSession } from '../../app/auth.tsx'
@@ -12,6 +12,7 @@ import { RegistrationQr, ShareBox } from './ShareBox.tsx'
 import { TeamTournamentBlock } from '../teams/Teams.tsx'
 import { ask } from '../../ui/dialogs.tsx'
 import type { NotifySettings } from '../notifications/model.ts'
+import { MyStatus } from '../rating/widgets.tsx'
 
 function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const { me } = useSession()
@@ -115,8 +116,7 @@ export function TournamentPage() {
     <main className="page">
       <Async state={state} skeleton={3}>
         {(d) => {
-          // Club staff opening their own tournament land in the manager console; «?view=public» keeps the player view.
-          if (d.isStaff && !asPlayer) return <Navigate to={`/manage/tournaments/${d.id}`} replace />
+          const admin = Boolean(d.isStaff) && !asPlayer
           const finished = d.status === 'finished' || d.status === 'finished_early'
           const limits = restrictionLabel(d.restrictions)
           const active = d.participants.filter((p) => p.status !== 'waitlist' && p.status !== 'invited')
@@ -134,9 +134,9 @@ export function TournamentPage() {
                 </Link>
                 <div className="row row--between">
                   <h1>{d.title}</h1>
-                  {d.isStaff && (
-                    <Link className="button button--sm" to={`/manage/tournaments/${d.id}`}>
-                      {t.adminT.manage}
+                  {d.isStaff && asPlayer && (
+                    <Link className="button button--sm" to={`/t/${d.slug}`}>
+                      {t.t.viewAsAdmin}
                     </Link>
                   )}
                   {!d.isStaff && me.user?.role === 'admin' && (
@@ -154,6 +154,28 @@ export function TournamentPage() {
                   </span>
                 </div>
               </header>
+
+              {admin ? (
+                <section className="panel row row--between noprint">
+                  <b>{t.t.adminBar}</b>
+                  <div className="row">
+                    <Link className="button button--sm button--primary" to={`/manage/tournaments/${d.id}/conduct`}>
+                      {t.t.conductLink}
+                    </Link>
+                    <Link className="button button--sm" to={`/manage/tournaments/${d.id}`}>
+                      {t.t.editLink}
+                    </Link>
+                    <Link className="button button--sm" to={`/manage/tournaments/${d.id}/qr`}>
+                      {t.t.qrPage}
+                    </Link>
+                    <Link className="button button--sm button--ghost" to={`/t/${d.slug}?view=public`}>
+                      {t.t.viewAsPlayer}
+                    </Link>
+                  </div>
+                </section>
+              ) : (
+                d.myEntry && <MyStatus tournamentId={d.id} slug={d.slug} status={d.status} />
+              )}
 
               {/* Facts stay above the tabs: on open you see when and where it is. */}
               <section className="panel">
@@ -301,9 +323,9 @@ export function TournamentPage() {
                 </div>
 
                 <div className="stack noprint">
-                  {!finished && d.status !== 'running' && <Register d={d} reload={state.reload} />}
+                  {!admin && !finished && d.status !== 'running' && <Register d={d} reload={state.reload} />}
                   <ShareBox slug={d.slug} url={shareUrl} text={d.title} live={d.status === 'running' || finished} />
-                  {d.isStaff && <RegistrationQr url={shareUrl} />}
+                  {admin && <RegistrationQr url={shareUrl} />}
                   <section className="panel">
                     <h2>{t.t.scheme}</h2>
                     <div className="stack">

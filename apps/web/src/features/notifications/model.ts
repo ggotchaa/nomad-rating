@@ -17,7 +17,7 @@ const s = (v: unknown) => (v == null ? '' : String(v))
 export function describe(n: NotificationItem): { title: string; text: string; link: string | null } {
   const d = n.data
   const title = s(d.tournamentTitle || d.title)
-  const link = d.slug ? (n.type.startsWith('match_') ? `/me/t/${s(d.slug)}` : `/t/${s(d.slug)}`) : null
+  const link = d.slug ? `/t/${s(d.slug)}` : null
   switch (n.type) {
     case 'match_call':
       return { title: `${t.notif.types.match_call}${d.table ? ` · ${t.rating2.table.toLowerCase()} ${s(d.table)}` : ''}`, text: [title, d.opponent && `${t.rating2.opponent}: ${s(d.opponent)}`].filter(Boolean).join(' · '), link }
