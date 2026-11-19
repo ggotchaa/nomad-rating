@@ -16,6 +16,7 @@ import * as m0230 from './migrations/0230_league_draft.ts'
 import * as m0240 from './migrations/0240_club_documents.ts'
 import * as m0250 from './migrations/0250_team_start_level.ts'
 import * as m0300 from './migrations/0300_admin_lifecycle_flags.ts'
+import * as m0400 from './migrations/0400_brackets_draft.ts'
 
 // Migrations are listed explicitly (works the same from sources and from a bundle).
 const migrations: Record<string, Migration> = {
@@ -34,6 +35,7 @@ const migrations: Record<string, Migration> = {
   '0240_club_documents': m0240,
   '0250_team_start_level': m0250,
   '0300_admin_lifecycle_flags': m0300,
+  '0400_brackets_draft': m0400,
 }
 
 const provider: MigrationProvider = { getMigrations: async () => migrations }

@@ -24,6 +24,7 @@ import { UPLOADS_ROOT } from '../storage/index.ts'
 import { ratingRouter } from '../modules/rating.ts'
 import { notificationsRouter } from '../modules/notifications.ts'
 import { conductRouter, myCallsRouter } from '../modules/conduct.ts'
+import { stageEditRouter } from '../modules/stage-edit.ts'
 import { teamEntriesRouter, teamsRouter } from '../modules/teams.ts'
 import { clubLeaguesRouter, leaguesRouter } from '../modules/leagues.ts'
 import { checkinRouter } from '../modules/checkin.ts'
@@ -84,6 +85,7 @@ export function createApp() {
   api.use('/tournaments', tournamentsRouter)
   api.use('/tournaments', tournamentAdminRouter)
   api.use('/tournaments', conductRouter)
+  api.use('/tournaments', stageEditRouter)
   api.use('/tournaments', checkinRouter)
   api.use('/tournaments', liveRouter)
   api.use('/tournaments', tournamentPlanRouter)

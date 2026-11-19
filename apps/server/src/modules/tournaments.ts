@@ -21,6 +21,7 @@ import { intParam, parseBody, parseQuery } from '../http/validate.ts'
 import { startPayment } from '../payments/service.ts'
 import { bus } from '../realtime/bus.ts'
 import { notify } from '../notify/index.ts'
+import { draftView, lockReason } from '../tournaments/stage-edit.ts'
 import { finishTournament, recordResult, startTournament } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
 
@@ -42,10 +43,12 @@ const FORMAT_NAMES: Record<FormatTemplateId, string> = {
 const ruleOverride = z.object({ winsNeeded: z.number().int().min(2).max(4).optional(), pointsToWin: z.number().int().min(5).max(21).optional(), gamePoints: z.enum(['none', 'optional', 'required']).optional() })
 const stageMatch = { match: ruleOverride.optional(), rounds: z.object({ semifinal: ruleOverride.optional(), final: ruleOverride.optional() }).optional() }
 const stageSchema = z.discriminatedUnion('kind', [
-  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('groups'), name: z.string().min(1).max(60), groupSize: z.number().int(), seeding: z.enum(['snake', 'random', 'manual']), separateClubs: z.boolean().optional() }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('groups'), name: z.string().min(1).max(60), groupSize: z.number().int(), seeding: z.enum(['snake', 'even', 'rating', 'random', 'manual']), separateClubs: z.boolean().optional() }),
   z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('round_robin'), name: z.string().min(1).max(60) }),
   z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('single_elim'), name: z.string().min(1).max(60), thirdPlace: z.enum(['match', 'shared']) }),
-  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('all_places'), name: z.string().min(1).max(60) }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('all_places'), name: z.string().min(1).max(60), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('minus2'), name: z.string().min(1).max(60), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
+  z.object({ ...stageMatch, id: z.string().min(1).max(30), kind: z.literal('mixed'), name: z.string().min(1).max(60), lowerRounds: z.number().int().min(1).max(6), eliminateAfter: z.number().int().min(1).max(3).nullable().optional() }),
 ])
 
 /** Custom format from the constructor (F-1…F-3); deeper rules are checked by validateFormat (F-5). */
@@ -76,7 +79,8 @@ const templateParams = z
   .object({
     groupSize: z.number().int().min(3).max(8).optional(),
     advance: z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32), z.literal(64)]).optional(),
-    bracket: z.enum(['all_places', 'single_elim']).optional(),
+    bracket: z.enum(['all_places', 'single_elim', 'minus2']).optional(),
+    consolation: z.enum(['all_places', 'single_elim', 'minus2']).optional(),
     match: ruleOverride.optional(),
     restMinutes: z.number().int().min(0).max(30).optional(),
   })
@@ -339,7 +343,7 @@ export async function participants(tournamentId: number) {
     .sort((a, b) => (a.status === 'waitlist' ? 1 : 0) - (b.status === 'waitlist' ? 1 : 0) || (a.waitlistPosition ?? 0) - (b.waitlistPosition ?? 0) || (b.rating ?? b.startLevel) - (a.rating ?? a.startLevel))
 }
 
-export async function structure(t: Tournament) {
+export async function structure(t: Tournament, options: { staff?: boolean } = {}) {
   const stages = await db.selectFrom('stages').selectAll().where('tournament_id', '=', t.id).orderBy('order_index').execute()
   if (!stages.length) return null
   const names = new Map(
@@ -388,6 +392,8 @@ export async function structure(t: Tournament) {
   const result = []
   for (const s of stages) {
     const stageMatches = matches.filter((m) => m.stage_id === s.id)
+    // Staff only: why a player can't be moved any more (T-10).
+    const locks = (ids: number[]) => (options.staff ? Object.fromEntries(ids.map((id) => [id, lockReason(s, stageMatches, id)])) : {})
     if (s.kind === 'groups' || s.kind === 'round_robin') {
       const groups = await db.selectFrom('groups').selectAll().where('stage_id', '=', s.id).orderBy('order_index').execute()
       const members = groups.length
@@ -398,10 +404,14 @@ export async function structure(t: Tournament) {
         kind: s.kind,
         name: s.name,
         status: s.status,
+        warnings: options.staff ? s.warnings : [],
+        locks: locks(members.map((m) => m.entry_id)),
         groups: groups.map((g) => {
           const standings = g.standings as StandingsResult | null
           return {
+            id: g.id,
             code: g.code,
+            manualOrder: g.manual_order,
             members: members.filter((m) => m.group_id === g.id).map((m) => names.get(m.entry_id)),
             standings: standings
               ? {
@@ -421,7 +431,16 @@ export async function structure(t: Tournament) {
         name: s.name,
         status: s.status,
         size: (s.bracket as Bracket | null)?.size ?? null,
-        matches: stageMatches.map(matchView),
+        warnings: options.staff ? s.warnings : [],
+        locks: locks((s.seeds ?? []).filter((x): x is number => x != null)),
+        matches: stageMatches.map((m) => {
+          // A seed still waiting for its group shows «ожидает группу X» (spec T-7).
+          const waiting = (source: unknown, entry: number | null) => {
+            const src = source as { kind?: string; seed?: number } | null
+            return entry == null && src?.kind === 'seed' ? (s.seed_slots?.[(src.seed ?? 0) - 1]?.group ?? null) : null
+          }
+          return { ...matchView(m), homeWaitsGroup: waiting(m.home_source, m.home_entry_id), awayWaitsGroup: waiting(m.away_source, m.away_entry_id) }
+        }),
       })
     }
   }
@@ -501,7 +520,8 @@ tournamentsRouter.get(
       participants: list.map((p) => ({ ...p, paymentMethod: isStaff ? p.paymentMethod : undefined, paymentStatus: isStaff ? p.paymentStatus : undefined, ratingChange: deltas.find((d) => d.player_id === p.playerId) ?? null })),
       myEntry,
       shareUrl: `${config.SITE_URL}/s/t${t.id.toString(36)}`,
-      structure: await structure(t),
+      structure: await structure(t, { staff: isStaff }),
+      draft: await draftView(db, t, isStaff),
     })
   }),
 )

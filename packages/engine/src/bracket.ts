@@ -26,7 +26,7 @@ export type BracketMatch = {
   loserShared?: [number, number]
 }
 
-export type Bracket = { kind: 'single_elim' | 'all_places'; size: number; matches: BracketMatch[] }
+export type Bracket = { kind: 'single_elim' | 'all_places' | 'minus2' | 'mixed'; size: number; matches: BracketMatch[] }
 
 export const isPowerOfTwo = (n: number): boolean => n >= 2 && (n & (n - 1)) === 0
 export const bracketSizeFor = (players: number): number => {
@@ -114,63 +114,138 @@ export function singleElimination(size: number, thirdPlace: 'match' | 'shared' =
   return { kind: 'single_elim', size, matches }
 }
 
-/**
- * «Сетка на все места»: losers do not drop out but play for the next places in sub-blocks,
- * every player gets an exact place and plays log2(size) matches.
- */
-export function allPlaces(size: number): Bracket {
-  const matches: BracketMatch[] = []
-  const order = seedOrder(size)
+export type PlacesOptions = {
+  /**
+   * Upper rounds before the final whose losers drop into the lower branch and play on for 3rd place (−2 rule).
+   * 1 = only semi-final losers (сетка −1), size − 1 rounds = сетка −2, anything between = смешанная.
+   */
+  lowerRounds?: number
+  /** A player who has lost this many times stops playing and shares the places left (null = all places played). */
+  eliminateAfter?: number | null
+}
 
-  const block = (from: number, sources: Source[], startRound: number) => {
-    const total = sources.length
-    const roundsInBlock = log2(total)
+/**
+ * Brackets where every place is decided: «сетка −1» (RTTF прил. 11), «сетка −2» (прил. 12) and the mixed one.
+ * −1: a loser plays only for the lower half of the places still open (9–16 → 9–12 / 13–16 → …).
+ * −2: after the first loss a player goes to the lower branch and can still reach 3rd place; whoever loses there
+ * plays the remaining places in −1 sub-blocks. There is no grand final: the lower branch tops out at 3rd.
+ * Numbering: main draw first, then the lower branch, then the −1 sub-blocks, latest round first.
+ */
+export function placesBracket(size: number, options: PlacesOptions = {}): Bracket {
+  const rounds = log2(size)
+  const lowerRounds = Math.min(Math.max(options.lowerRounds ?? 1, 1), Math.max(rounds - 1, 1))
+  const eliminateAfter = options.eliminateAfter ?? null
+  const out = (losses: number) => eliminateAfter != null && losses >= eliminateAfter
+  const matches: BracketMatch[] = []
+  const roundOf = (s: Source) => (s.kind === 'seed' ? 0 : (matches[s.match - 1] as BracketMatch).round)
+  const add = (m: Omit<BracketMatch, 'number' | 'round'>): number => {
+    const number = matches.length + 1
+    matches.push({ ...m, number, round: Math.max(roundOf(m.home), roundOf(m.away)) + 1 })
+    return number
+  }
+
+  /** −1 block for places from…from + n − 1; `losses` = losses its players already have. */
+  const block = (from: number, sources: Source[], losses: number, main = false): Source[][] => {
     const losersByRound: Source[][] = []
     let current = sources
-    for (let r = 0; r < roundsInBlock; r++) {
+    while (current.length > 1) {
       const players = current.length
       const next: Source[] = []
       const losers: Source[] = []
       for (let i = 0; i < players; i += 2) {
-        const match: BracketMatch = {
-          number: matches.length + 1,
-          round: startRound + r,
+        const m: Omit<BracketMatch, 'number' | 'round'> = {
           placeFrom: from,
           placeTo: from + players - 1,
-          stageLabel: from === 1 ? roundLabel(players) : 'places',
+          stageLabel: main ? roundLabel(players) : 'places',
           home: current[i] as Source,
           away: current[i + 1] as Source,
         }
         if (players === 2) {
-          match.winnerPlace = from
-          match.loserPlace = from + 1
-        }
-        matches.push(match)
-        next.push({ kind: 'winner', match: match.number })
-        losers.push({ kind: 'loser', match: match.number })
+          m.winnerPlace = from
+          m.loserPlace = from + 1
+        } else if (out(losses + 1)) m.loserShared = [from + players / 2, from + players - 1]
+        const n = add(m)
+        next.push({ kind: 'winner', match: n })
+        losers.push({ kind: 'loser', match: n })
       }
       losersByRound.push(losers)
       current = next
     }
-    // Loser blocks, latest round first: semi-final losers (3..4), then quarter-final losers (5..8), …
-    for (let r = roundsInBlock - 2; r >= 0; r--) {
+    if (!main) subBlocks(losersByRound, from, losersByRound.length - 2, losses)
+    return losersByRound
+  }
+  function subBlocks(losersByRound: Source[][], from: number, upTo: number, losses: number) {
+    if (out(losses + 1)) return
+    for (let r = upTo; r >= 0; r--) {
       const losers = losersByRound[r] as Source[]
-      block(from + losers.length, losers, startRound + r + 1)
+      if (losers.length > 1) block(from + losers.length, losers, losses + 1)
     }
   }
 
-  block(
-    1,
-    order.map((seed) => ({ kind: 'seed', seed })),
-    1,
-  )
-  return { kind: 'all_places', size, matches }
+  const main = block(1, seedOrder(size).map((seed) => ({ kind: 'seed', seed })), 0, true)
+  const firstLower = rounds - 1 - lowerRounds
+  if (!out(1) && rounds >= 2) {
+    // Lower branch: pool of earlier drops plays itself (minor round), then meets the next drops (major round).
+    const drops = main.slice(firstLower, rounds - 1)
+    const future = (k: number) => drops.slice(k).reduce((sum, d) => sum + d.length, 0)
+    const loserBlock = (losers: Source[], alive: number) => {
+      const from = 3 + alive - losers.length
+      if (out(2)) {
+        for (const l of losers) (matches[(l as { match: number }).match - 1] as BracketMatch).loserShared = [from, from + losers.length - 1]
+      } else if (losers.length > 1) block(from, losers, 2)
+    }
+    let pool = drops[0] as Source[]
+    const round = (pairs: [Source, Source][], alive: number) => {
+      const winners: Source[] = []
+      const losers: Source[] = []
+      for (const [home, away] of pairs) {
+        const m: Omit<BracketMatch, 'number' | 'round'> = { placeFrom: 3, placeTo: 2 + alive, stageLabel: 'lower', home, away }
+        if (alive === 2) {
+          m.winnerPlace = 3
+          m.loserPlace = 4
+        }
+        const n = add(m)
+        winners.push({ kind: 'winner', match: n })
+        losers.push({ kind: 'loser', match: n })
+      }
+      if (alive > 2) loserBlock(losers, alive)
+      return winners
+    }
+    for (let k = 1; ; k++) {
+      if (pool.length > 1) {
+        const pairs: [Source, Source][] = []
+        for (let i = 0; i < pool.length; i += 2) pairs.push([pool[i] as Source, pool[i + 1] as Source])
+        pool = round(pairs, pool.length + future(k))
+      }
+      const drop = drops[k]
+      if (!drop) break
+      const crossed = [...drop].reverse()
+      pool = round(pool.map((p, i) => [p, crossed[i] as Source]), pool.length + future(k))
+    }
+  }
+  subBlocks(main, 1, firstLower - 1, 0)
+  return { kind: lowerRounds === 1 ? 'all_places' : lowerRounds >= rounds - 1 ? 'minus2' : 'mixed', size, matches }
 }
 
-/** Number of matches the spec formulas give: S/2·log2 S, olympic S − 1 (+1 for the 3rd-place match). */
-export function bracketMatchCount(kind: Bracket['kind'], size: number, thirdPlace: 'match' | 'shared' = 'match'): number {
-  if (kind === 'all_places') return (size / 2) * log2(size)
-  return size - 1 + (thirdPlace === 'match' ? 1 : 0)
+/** «Сетка на все места» = сетка −1: every player gets an exact place and plays log2(size) matches. */
+export const allPlaces = (size: number): Bracket => placesBracket(size)
+
+/** Number of matches of a bracket; olympic: S − 1 (+1 for the 3rd-place match). */
+export function bracketMatchCount(kind: Bracket['kind'], size: number, thirdPlace: 'match' | 'shared' = 'match', options: PlacesOptions = {}): number {
+  if (kind === 'single_elim') return size - 1 + (thirdPlace === 'match' ? 1 : 0)
+  if (kind === 'all_places' && options.lowerRounds == null && options.eliminateAfter == null) return (size / 2) * log2(size)
+  return placesBracket(size, { ...options, lowerRounds: kind === 'minus2' ? size : options.lowerRounds }).matches.length
+}
+
+/** Bracket sizes that are convenient to run (spec): other sizes get a recommendation. */
+export const CONVENIENT_BRACKET_SIZES = [2, 4, 8, 16, 24, 32, 48, 64, 128] as const
+
+/** Nearest convenient sizes around `players`, or null when the count is already convenient. */
+export function recommendBracketSize(players: number): { lower: number | null; upper: number | null } | null {
+  if ((CONVENIENT_BRACKET_SIZES as readonly number[]).includes(players)) return null
+  const lower = [...CONVENIENT_BRACKET_SIZES].reverse().find((s) => s < players) ?? null
+  const upper = CONVENIENT_BRACKET_SIZES.find((s) => s > players) ?? null
+  return { lower, upper }
 }
 
 // ---------------------------------------------------------------------------
@@ -188,12 +263,13 @@ export type ResolvedMatch = BracketMatch & {
 }
 
 /**
- * `seeds[i]` is the entry with seed i + 1, null for an empty slot (bye).
+ * `seeds[i]` is the entry with seed i + 1, null for an empty slot (bye), undefined while still unknown
+ * (the stage was opened before the group feeding that seed finished).
  * `results` maps a match number to its winner side.
  */
 export function resolveBracket(
   bracket: Bracket,
-  seeds: readonly (string | null)[],
+  seeds: readonly (string | null | undefined)[],
   results: ReadonlyMap<number, 'home' | 'away'>,
 ): ResolvedMatch[] {
   const byNumber = new Map<number, ResolvedMatch>()
@@ -201,6 +277,7 @@ export function resolveBracket(
   const slotOf = (source: Source): Slot => {
     if (source.kind === 'seed') {
       const id = seeds[source.seed - 1]
+      if (id === undefined && source.seed <= seeds.length) return pending
       return id ? { kind: 'entry', id } : { kind: 'bye' }
     }
     const m = byNumber.get(source.match)

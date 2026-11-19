@@ -555,7 +555,7 @@ adminTournamentsRouter.get(
       .orderBy('e.seed')
       .execute()
     res.json({
-      stages: await structure(t),
+      stages: await structure(t, { staff: true }),
       locked: Boolean(played),
       seeds: seeds.map((s) => ({ entryId: s.id, seed: s.seed, rating: s.rating_at_start, name: s.team ?? playerName(s) })),
     })

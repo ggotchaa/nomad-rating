@@ -44,6 +44,42 @@ export function snakeGroups<T>(seeded: readonly T[], sizes: readonly number[]): 
   return groups
 }
 
+/** «По рейтингу»: the strongest fill group A, the next ones group B, and so on. */
+export function sequentialGroups<T>(seeded: readonly T[], sizes: readonly number[]): T[][] {
+  let offset = 0
+  return sizes.map((size) => seeded.slice(offset, (offset += size)))
+}
+
+/** «Равномерный»: each player, strongest first, goes to the group with the lowest rating sum that still has room. */
+export function evenGroups<T>(seeded: readonly T[], sizes: readonly number[], rating: (item: T) => number): T[][] {
+  const groups: T[][] = sizes.map(() => [])
+  const sums = sizes.map(() => 0)
+  for (const item of seeded) {
+    let best = -1
+    for (let g = 0; g < sizes.length; g++) {
+      if ((groups[g] as T[]).length >= (sizes[g] as number)) continue
+      if (best < 0 || (sums[g] as number) < (sums[best] as number)) best = g
+    }
+    ;(groups[best] as T[]).push(item)
+    sums[best] = (sums[best] as number) + rating(item)
+  }
+  return groups
+}
+
+/** Club mates left in one group after separation (spec: show a warning when they can't be split). */
+export function clubClashes(groups: readonly string[][], clubOf: (id: string) => string | null | undefined): { group: number; club: string; ids: string[] }[] {
+  const out: { group: number; club: string; ids: string[] }[] = []
+  groups.forEach((g, i) => {
+    const byClub = new Map<string, string[]>()
+    for (const id of g) {
+      const club = clubOf(id)
+      if (club) byClub.set(club, [...(byClub.get(club) ?? []), id])
+    }
+    for (const [club, ids] of byClub) if (ids.length > 1) out.push({ group: i, club, ids })
+  })
+  return out
+}
+
 /**
  * Moves players of one club apart (spec 4.6): a clash is fixed by swapping with a player of the
  * same seeding row in another group, so group strength stays balanced.

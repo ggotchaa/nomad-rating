@@ -3,46 +3,55 @@
 
 import {
   bracketPlaces,
+  bracketSizeWarnings,
   buildBracket,
-  buildGroupStage,
   finalPlaces,
+  groupMatches,
   groupStandings,
+  isBracketKind,
   matchRulesFor,
+  planGroups,
   resolveBracket,
   selectQualifiers,
-  seedsFromQualifiers,
+  seedsFromGroups,
   validateMatchScore,
   walkoverScore,
 } from '@nomad/engine'
 import type {
   Bracket,
+  BracketStageSpec,
   GameScore,
   GroupMatchResult,
   GroupOutcome,
   Participant,
+  PlannedGroup,
+  Qualifier,
   StageOutcome,
   StageSpec,
+  StageWarning,
   TournamentFormat,
+  TransitionRule,
 } from '@nomad/engine'
 import { assertTransition, entryStatus, tournamentStatus } from '@nomad/shared'
 import type { Transaction } from '../db/index.ts'
 import { json } from '../db/index.ts'
-import type { Database, Match } from '../db/types.ts'
+import type { Database, Match, Stage } from '../db/types.ts'
 import { audit } from '../audit.ts'
 import { badRequest, conflict, unprocessable } from '../http/errors.ts'
 import { applyTournamentRatings } from '../rating/service.ts'
 import { revokeTournamentHelpers } from '../modules/helpers.ts'
 import { teamSeedRating } from '../teams/ratings.ts'
+import { layoutFromDraft } from './stage-edit.ts'
 
 type Trx = Transaction<Database>
 
 const FINISHED_MATCH = ['finished', 'walkover', 'retired', 'annulled'] as const
 
-async function loadTournament(trx: Trx, id: number) {
+export async function loadTournament(trx: Trx, id: number) {
   return trx.selectFrom('tournaments').selectAll().where('id', '=', id).forUpdate().executeTakeFirstOrThrow()
 }
 
-async function nextMatchNumber(trx: Trx, tournamentId: number): Promise<number> {
+export async function nextMatchNumber(trx: Trx, tournamentId: number): Promise<number> {
   const row = await trx
     .selectFrom('matches')
     .select((eb) => eb.fn.max<number>('number').as('max'))
@@ -104,19 +113,32 @@ export async function startTournament(
       })
       .execute()
   }
+  // A draft made before the start (T-8) gives the layout; otherwise the stage is built from the seeding.
+  const layout = layoutFromDraft(t.draft, seeded.map((e) => String(e.id)))
   await buildStage(
     trx,
     tournamentId,
     format.stages[0] as StageSpec,
     seeded.map((e) => String(e.id)),
     seeded.map((e) => ({ id: String(e.id), rating: e.rating, clubId: e.clubId == null ? null : String(e.clubId) })),
+    { ...layout, warnings: layout ? t.draft?.warnings : undefined },
   )
+  if (t.draft) await trx.updateTable('tournaments').set({ draft: null, draft_published_at: null }).where('id', '=', tournamentId).execute()
   await trx.updateTable('tournaments').set({ status: 'running', started_at: now }).where('id', '=', tournamentId).execute()
   await audit({ actorUserId, clubId: t.club_id, entity: 'tournament', entityId: tournamentId, action: 'start', before: { status: t.status }, after: { status: 'running', players: seeded.length } }, trx)
 }
 
+export type StageBuild = {
+  /** Ready groups (draft or manual seeding) instead of building them from the seeding order. */
+  groups?: PlannedGroup[]
+  /** Bracket seeds by position: null = bye, undefined = waiting for `slots[i]`. */
+  seeds?: (string | null | undefined)[]
+  slots?: ({ group: string; place: number } | null)[]
+  warnings?: StageWarning[]
+}
+
 /** Creates groups or a bracket of one stage for players given in seeding order. */
-async function buildStage(trx: Trx, tournamentId: number, spec: StageSpec, seedIds: string[], participants: Participant[]): Promise<void> {
+export async function buildStage(trx: Trx, tournamentId: number, spec: StageSpec, seedIds: string[], participants: Participant[], opts: StageBuild = {}): Promise<void> {
   const stage = await trx
     .selectFrom('stages')
     .selectAll()
@@ -124,20 +146,23 @@ async function buildStage(trx: Trx, tournamentId: number, spec: StageSpec, seedI
     .where('stage_key', '=', spec.id)
     .executeTakeFirstOrThrow()
   let number = await nextMatchNumber(trx, tournamentId)
+  const warnings = [...(opts.warnings ?? [])]
   if (spec.kind === 'groups' || spec.kind === 'round_robin') {
     const byId = new Map(participants.map((p) => [p.id, p]))
-    const plan = buildGroupStage(spec, seedIds.map((id) => byId.get(id) ?? { id, rating: 0 }))
+    const plan = opts.groups ? { groups: opts.groups, warnings: [] } : planGroups(spec, seedIds.map((id) => byId.get(id) ?? { id, rating: 0 }))
+    warnings.push(...plan.warnings)
     const groupIds = new Map<string, number>()
     for (const [i, g] of plan.groups.entries()) {
       const row = await trx.insertInto('groups').values({ stage_id: stage.id, code: g.code, order_index: i }).returning('id').executeTakeFirstOrThrow()
       groupIds.set(g.code, row.id)
-      await trx
-        .insertInto('group_members')
-        .values(g.members.map((m, k) => ({ group_id: row.id, entry_id: Number(m), seed_index: k + 1 })))
-        .execute()
+      if (g.members.length)
+        await trx
+          .insertInto('group_members')
+          .values(g.members.map((m, k) => ({ group_id: row.id, entry_id: Number(m), seed_index: k + 1 })))
+          .execute()
     }
     // Number group matches tour by tour across groups, so the queue goes «all first tours, then second…».
-    const ordered = [...plan.matches].sort((a, b) => a.tour - b.tour || a.groupCode.localeCompare(b.groupCode))
+    const ordered = groupMatches(plan.groups).sort((a, b) => a.tour - b.tour || a.groupCode.localeCompare(b.groupCode))
     for (const m of ordered) {
       await trx
         .insertInto('matches')
@@ -156,9 +181,12 @@ async function buildStage(trx: Trx, tournamentId: number, spec: StageSpec, seedI
         .execute()
     }
   } else {
-    const bracket = buildBracket(spec, seedIds.length)
-    const seeds = [...seedIds.map(Number), ...Array<null>(bracket.size - seedIds.length).fill(null)]
-    await trx.updateTable('stages').set({ bracket: json(bracket), seeds: json(seeds) }).where('id', '=', stage.id).execute()
+    const seeded = opts.seeds ?? seedIds
+    const bracket = buildBracket(spec as BracketStageSpec, seeded.length)
+    const seeds = Array.from({ length: bracket.size }, (_, i) => (seeded[i] == null ? null : Number(seeded[i])))
+    const slots = opts.slots?.some(Boolean) ? Array.from({ length: bracket.size }, (_, i) => (seeded[i] === undefined ? (opts.slots?.[i] ?? null) : null)) : null
+    warnings.push(...bracketSizeWarnings(seeded.filter((x) => x !== null).length))
+    await trx.updateTable('stages').set({ bracket: json(bracket), seeds: json(seeds), seed_slots: slots ? json(slots) : null }).where('id', '=', stage.id).execute()
     for (const m of bracket.matches) {
       await trx
         .insertInto('matches')
@@ -179,14 +207,19 @@ async function buildStage(trx: Trx, tournamentId: number, spec: StageSpec, seedI
     }
     await syncBracket(trx, stage.id)
   }
-  await trx.updateTable('stages').set({ status: 'running' }).where('id', '=', stage.id).execute()
+  await trx.updateTable('stages').set({ status: 'running', warnings: json(warnings) }).where('id', '=', stage.id).execute()
 }
 
-/** Fills bracket matches whose players became known; byes are passed without a game (not rated). */
-async function syncBracket(trx: Trx, stageId: number): Promise<void> {
-  const stage = await trx.selectFrom('stages').select(['bracket', 'seeds']).where('id', '=', stageId).executeTakeFirstOrThrow()
+/** Bracket seeds of a stage: null = bye, undefined = waiting for a group. */
+export function stageSeeds(stage: Pick<Stage, 'seeds' | 'seed_slots'>): (string | null | undefined)[] {
+  return (stage.seeds ?? []).map((s, i) => (s != null ? String(s) : stage.seed_slots?.[i] ? undefined : null))
+}
+
+/** Fills bracket matches whose players became known (also one side at a time); byes pass without a game (not rated). */
+export async function syncBracket(trx: Trx, stageId: number): Promise<void> {
+  const stage = await trx.selectFrom('stages').select(['bracket', 'seeds', 'seed_slots']).where('id', '=', stageId).executeTakeFirstOrThrow()
   const bracket = stage.bracket as Bracket
-  const seeds = (stage.seeds ?? []).map((s) => (s == null ? null : String(s)))
+  const seeds = stageSeeds(stage)
   for (let pass = 0; pass < 8; pass++) {
     const rows = await trx.selectFrom('matches').selectAll().where('stage_id', '=', stageId).execute()
     const byNumber = new Map(rows.map((r) => [r.bracket_number as number, r]))
@@ -210,6 +243,9 @@ async function syncBracket(trx: Trx, stageId: number): Promise<void> {
       } else if (m.state === 'ready' && row.status === 'waiting') {
         await trx.updateTable('matches').set({ home_entry_id: home, away_entry_id: away, status: 'scheduled' }).where('id', '=', row.id).execute()
         changed = true
+      } else if (m.state === 'waiting' && row.status === 'waiting' && (row.home_entry_id !== home || row.away_entry_id !== away)) {
+        // The winner of a finished match shows up in the next match at once, before the opponent is known (T-22).
+        await trx.updateTable('matches').set({ home_entry_id: home, away_entry_id: away }).where('id', '=', row.id).execute()
       }
     }
     if (!changed) break
@@ -304,15 +340,28 @@ export async function recordResult(trx: Trx, matchId: number, input: ScoreInput,
     .where('stage_id', '=', stage.id)
     .where('status', 'not in', [...FINISHED_MATCH])
     .executeTakeFirst()
-  if (!open) await completeStage(trx, t.id, stage.id)
+  if (!open) await completeStage(trx, t.id, stage.id, actorUserId)
+  else if (match.group_id) await refreshGroup(trx, t.id, match.group_id, actorUserId)
   return updated
 }
 
-async function groupOutcomes(trx: Trx, stageId: number, format: TournamentFormat, ratings: Record<string, number>): Promise<GroupOutcome[]> {
+type MatchOverride = Map<number, Pick<Match, 'winner_entry_id' | 'sets_home' | 'sets_away' | 'games' | 'result_type'>>
+
+async function groupOutcomes(
+  trx: Trx,
+  stageId: number,
+  format: TournamentFormat,
+  ratings: Record<string, number>,
+  override?: MatchOverride,
+): Promise<(GroupOutcome & { groupId: number; done: boolean })[]> {
   const groups = await trx.selectFrom('groups').selectAll().where('stage_id', '=', stageId).orderBy('order_index').execute()
-  const outcomes: GroupOutcome[] = []
+  const outcomes: (GroupOutcome & { groupId: number; done: boolean })[] = []
   for (const g of groups) {
-    const matches = await trx.selectFrom('matches').selectAll().where('group_id', '=', g.id).where('status', 'in', ['finished', 'walkover', 'retired']).where('excluded', '=', false).execute()
+    const all = await trx.selectFrom('matches').selectAll().where('group_id', '=', g.id).execute()
+    const matches = all
+      .map((m) => (override?.has(m.id) ? { ...m, ...override.get(m.id)! } : m))
+      .filter((m) => ['finished', 'walkover', 'retired'].includes(m.status) && !m.excluded)
+    const done = all.every((m) => (FINISHED_MATCH as readonly string[]).includes(m.status))
     // A withdrawn player whose group matches were all annulled leaves the table.
     const members = (
       await trx.selectFrom('group_members as gm').innerJoin('entries as e', 'e.id', 'gm.entry_id').select(['gm.entry_id', 'e.status']).where('gm.group_id', '=', g.id).orderBy('gm.seed_index').execute()
@@ -329,14 +378,14 @@ async function groupOutcomes(trx: Trx, stageId: number, format: TournamentFormat
     const standings = groupStandings(
       members.map((m) => String(m.entry_id)),
       results,
-      { points: format.groupPoints, tiebreaks: format.tiebreaks, ratings },
+      { points: format.groupPoints, tiebreaks: format.tiebreaks, ratings, manualOrder: g.manual_order?.map(String) },
     )
-    outcomes.push({ code: g.code, standings })
+    outcomes.push({ code: g.code, standings, groupId: g.id, done })
   }
   return outcomes
 }
 
-async function entryRatings(trx: Trx, tournamentId: number): Promise<Record<string, number>> {
+export async function entryRatings(trx: Trx, tournamentId: number): Promise<Record<string, number>> {
   const rows = await trx
     .selectFrom('entries as e')
     .innerJoin('players as p', 'p.id', 'e.player_id')
@@ -346,36 +395,181 @@ async function entryRatings(trx: Trx, tournamentId: number): Promise<Record<stri
   return Object.fromEntries(rows.map((r) => [String(r.id), r.rating_at_start ?? r.start_level]))
 }
 
-export async function completeStage(trx: Trx, tournamentId: number, stageId: number): Promise<void> {
-  const t = await trx.selectFrom('tournaments').select(['format']).where('id', '=', tournamentId).executeTakeFirstOrThrow()
+const withoutCode = (warnings: StageWarning[], code: string) => warnings.filter((w) => w.code !== code)
+
+export async function completeStage(trx: Trx, tournamentId: number, stageId: number, actorUserId: number | null = null): Promise<void> {
+  const t = await trx.selectFrom('tournaments').select(['format', 'club_id']).where('id', '=', tournamentId).executeTakeFirstOrThrow()
   const stage = await trx.selectFrom('stages').selectAll().where('id', '=', stageId).executeTakeFirstOrThrow()
   const ratings = await entryRatings(trx, tournamentId)
   if (stage.kind === 'groups' || stage.kind === 'round_robin') {
     const outcomes = await groupOutcomes(trx, stageId, t.format, ratings)
-    for (const o of outcomes) {
-      await trx
-        .updateTable('groups')
-        .set({ standings: json(o.standings) })
-        .where('stage_id', '=', stageId)
-        .where('code', '=', o.code)
-        .execute()
+    for (const o of outcomes) await trx.updateTable('groups').set({ standings: json(o.standings) }).where('id', '=', o.groupId).execute()
+    const transitions = t.format.transitions.filter((x) => x.from === stage.stage_key)
+    const undecided = outcomes.filter((o) => o.standings.needsDecision).map((o) => o.code)
+    // A tie left after every rule: with a next stage the organiser sets the places by hand (spec T-3).
+    if (undecided.length && transitions.length) {
+      await trx.updateTable('stages').set({ warnings: json([...withoutCode(stage.warnings, 'needs_decision'), { code: 'needs_decision', params: { groups: undecided.join(', ') } }]) }).where('id', '=', stageId).execute()
+      return
     }
-    for (const transition of t.format.transitions.filter((x) => x.from === stage.stage_key)) {
-      const qualifiers = selectQualifiers(transition.rule, outcomes, ratings)
+    if (undecided.length) await audit({ actorUserId, clubId: t.club_id, entity: 'stage', entityId: stageId, action: 'lots', after: { groups: undecided } }, trx)
+    for (const transition of transitions) {
       const target = t.format.stages.find((s) => s.id === transition.to)!
-      // A later stage kept after a correction (already started) is not rebuilt.
       const targetRow = await trx.selectFrom('stages').select('status').where('tournament_id', '=', tournamentId).where('stage_key', '=', target.id).executeTakeFirst()
+      // A stage already opened (early start or kept after a correction) is reseeded below, not rebuilt.
       if (targetRow && targetRow.status !== 'pending') continue
-      const ids = target.kind === 'single_elim' || target.kind === 'all_places'
-        ? seedsFromQualifiers(qualifiers).filter((x): x is string => x != null)
-        : qualifiers.map((q) => q.id)
-      if (ids.length >= 2) {
-        // seedsFromQualifiers returns players in seed order with byes removed; keep that order as seeds.
+      const qualifiers = selectQualifiers(transition.rule, outcomes, ratings)
+      if (qualifiers.length < 2) continue
+      if (isBracketKind(target.kind)) {
+        const { seeds, warnings } = seedsFromGroups(qualifiers)
+        await buildStage(trx, tournamentId, target, [], [], { seeds, warnings })
+      } else {
+        const ids = qualifiers.map((q) => q.id)
         await buildStage(trx, tournamentId, target, ids, ids.map((id) => ({ id, rating: ratings[id] ?? 0 })))
       }
     }
+    await reseedTargets(trx, tournamentId, stageId, actorUserId)
+    await trx.updateTable('stages').set({ warnings: json(withoutCode(stage.warnings, 'needs_decision')) }).where('id', '=', stageId).execute()
   }
   await trx.updateTable('stages').set({ status: 'finished' }).where('id', '=', stageId).execute()
+}
+
+/** Group places a transition takes when each group can be decided on its own (1st/2nd places): needed to open the next stage early. */
+function placesPerGroup(rule: TransitionRule, groupCount: number): number[] | null {
+  if (rule.by === 'places') return rule.places
+  if (rule.by === 'top' && rule.count % groupCount === 0) return Array.from({ length: rule.count / groupCount }, (_, i) => i + 1)
+  return null
+}
+
+/**
+ * Opens a bracket stage while its groups are still playing (spec T-7). Seeds whose group has finished are filled now,
+ * the others wait for «group X» and fill in automatically. Only for rules that take whole places (1st and 2nd).
+ */
+export async function openStageEarly(trx: Trx, tournamentId: number, stageKey: string, actorUserId: number | null): Promise<void> {
+  const t = await loadTournament(trx, tournamentId)
+  if (t.status !== 'running') throw conflict('tournament.not_running')
+  const target = t.format.stages.find((s) => s.id === stageKey)
+  const transition = t.format.transitions.find((x) => x.to === stageKey)
+  if (!target || !transition || !isBracketKind(target.kind)) throw unprocessable('stage.early_unsupported')
+  const rows = await trx.selectFrom('stages').selectAll().where('tournament_id', '=', tournamentId).execute()
+  const targetRow = rows.find((r) => r.stage_key === stageKey)
+  const source = rows.find((r) => r.stage_key === transition.from)
+  if (!targetRow || targetRow.status !== 'pending') throw conflict('stage.already_open')
+  if (!source || source.status !== 'running') throw conflict('stage.source_not_running')
+  const groups = await trx
+    .selectFrom('groups as g')
+    .select(['g.code', 'g.order_index', (eb) => eb.selectFrom('group_members as gm').whereRef('gm.group_id', '=', 'g.id').select((x) => x.fn.countAll<number>().as('n')).as('size')])
+    .where('g.stage_id', '=', source.id)
+    .orderBy('g.order_index')
+    .execute()
+  const places = placesPerGroup(transition.rule, groups.length)
+  if (!places || places.length > 2) throw unprocessable('stage.early_unsupported')
+  const slots: Qualifier[] = groups.flatMap((g, i) =>
+    places.filter((p) => Number(g.size) >= p).map((p) => ({ id: `${g.code}:${p}`, group: g.code, groupPlace: p, groupIndex: i })),
+  )
+  const { seeds, warnings } = seedsFromGroups(slots)
+  const slotOf = (id: string | null) => {
+    if (!id) return null
+    const [group, place] = id.split(':')
+    return { group: group as string, place: Number(place) }
+  }
+  await buildStage(trx, tournamentId, target, [], [], { seeds: seeds.map((id) => (id ? undefined : null)), slots: seeds.map(slotOf), warnings })
+  await audit({ actorUserId, clubId: t.club_id, entity: 'stage', entityId: targetRow.id, action: 'open_early', after: { stage: stageKey } }, trx)
+  await reseedTargets(trx, tournamentId, source.id, actorUserId)
+}
+
+export type ReseedImpact = { rebuild: Match[]; kept: Match[] }
+
+/**
+ * Brings the seeds of opened brackets fed by a group stage in line with the group places: fills seeds waiting for a
+ * finished group and follows corrections. A first-round match already called, playing or played keeps its players
+ * (the organiser decides, the case is audited); unstarted matches are rebuilt.
+ */
+export async function reseedTargets(trx: Trx, tournamentId: number, sourceStageId: number, actorUserId: number | null, options: { override?: MatchOverride; dryRun?: boolean } = {}): Promise<ReseedImpact> {
+  const impact: ReseedImpact = { rebuild: [], kept: [] }
+  const t = await trx.selectFrom('tournaments').select(['format', 'club_id']).where('id', '=', tournamentId).executeTakeFirstOrThrow()
+  const source = await trx.selectFrom('stages').selectAll().where('id', '=', sourceStageId).executeTakeFirstOrThrow()
+  const transitions = t.format.transitions.filter((x) => x.from === source.stage_key)
+  if (!transitions.length) return impact
+  const ratings = await entryRatings(trx, tournamentId)
+  const outcomes = await groupOutcomes(trx, sourceStageId, t.format, ratings, options.override)
+  const allDone = outcomes.every((o) => o.done)
+  for (const transition of transitions) {
+    const target = await trx.selectFrom('stages').selectAll().where('tournament_id', '=', tournamentId).where('stage_key', '=', transition.to).executeTakeFirst()
+    if (!target || target.status === 'pending' || !target.bracket) continue
+    const current = stageSeeds(target)
+    let next: (string | null | undefined)[]
+    if (target.seed_slots) {
+      next = current.map((id, i) => {
+        const slot = target.seed_slots?.[i]
+        if (!slot) return id
+        const o = outcomes.find((x) => x.code === slot.group)
+        if (!o?.done || o.standings.needsDecision) return undefined
+        return o.standings.rows.find((r) => r.place === slot.place)?.id
+      })
+    } else {
+      if (!allDone || outcomes.some((o) => o.standings.needsDecision)) continue
+      const seeds = seedsFromGroups(selectQualifiers(transition.rule, outcomes, ratings)).seeds
+      next = current.map((_, i) => seeds[i] ?? null)
+    }
+    const changed = new Set(current.flatMap((id, i) => (id !== next[i] ? [i + 1] : [])))
+    if (!changed.size) continue
+    const rows = await trx.selectFrom('matches').selectAll().where('stage_id', '=', target.id).execute()
+    const seedOfSide = (s: unknown) => {
+      const src = s as { kind: string; seed?: number } | null
+      return src?.kind === 'seed' ? (src.seed ?? 0) : 0
+    }
+    const direct = rows.filter((r) => changed.has(seedOfSide(r.home_source)) || changed.has(seedOfSide(r.away_source)))
+    const kept = direct.filter(wasPlayed)
+    const fixed = new Set(kept.flatMap((k) => [k, ...dependentMatches(rows, k.bracket_number!)]))
+    const rebuild = [...new Set(direct.filter((d) => !wasPlayed(d)).flatMap((d) => [d, ...dependentMatches(rows, d.bracket_number!)]))].filter((d) => !wasPlayed(d) && !fixed.has(d) && (d.home_entry_id != null || d.away_entry_id != null || d.result_type === 'bye'))
+    impact.kept.push(...kept)
+    impact.rebuild.push(...rebuild)
+    if (options.dryRun) continue
+    const keptSeeds = new Set(kept.flatMap((k) => [seedOfSide(k.home_source), seedOfSide(k.away_source)]))
+    const seeds = current.map((id, i) => (keptSeeds.has(i + 1) ? id : next[i]))
+    await trx
+      .updateTable('stages')
+      .set({
+        seeds: json(seeds.map((id) => (id == null ? null : Number(id)))),
+        warnings: json([...withoutCode(target.warnings, 'seed_kept'), ...kept.map((k) => ({ code: 'seed_kept', params: { match: k.number } }))]),
+      })
+      .where('id', '=', target.id)
+      .execute()
+    if (rebuild.length) {
+      await trx
+        .updateTable('matches')
+        .set({ home_entry_id: null, away_entry_id: null, status: 'waiting', result_type: null, winner_entry_id: null, table_id: null, called_at: null, call_count: 0, call_responses: json({}) })
+        .where('id', 'in', rebuild.map((m) => m.id))
+        .execute()
+    }
+    await syncBracket(trx, target.id)
+    if (kept.length) await audit({ actorUserId, clubId: t.club_id, entity: 'stage', entityId: target.id, action: 'reseed_kept', after: { kept: kept.map((k) => k.number) } }, trx)
+  }
+  return impact
+}
+
+/** Organiser sets the places of a group by hand when a tie is left after every rule (spec T-3); audited. */
+export async function setGroupOrder(trx: Trx, groupId: number, order: number[], reason: string, actorUserId: number | null): Promise<void> {
+  const g = await trx.selectFrom('groups as g').innerJoin('stages as s', 's.id', 'g.stage_id').select(['g.id', 'g.code', 'g.manual_order', 's.id as stage_id', 's.tournament_id']).where('g.id', '=', groupId).executeTakeFirstOrThrow()
+  const t = await trx.selectFrom('tournaments').select(['club_id', 'status']).where('id', '=', g.tournament_id).executeTakeFirstOrThrow()
+  if (t.status !== 'running') throw conflict('tournament.not_running')
+  const members = await trx.selectFrom('group_members').select('entry_id').where('group_id', '=', groupId).execute()
+  if (order.some((id) => !members.some((m) => m.entry_id === id))) throw badRequest('group.unknown_entry')
+  await trx.updateTable('groups').set({ manual_order: order }).where('id', '=', groupId).execute()
+  await audit({ actorUserId, clubId: t.club_id, entity: 'group', entityId: groupId, action: 'manual_places', reason, before: { order: g.manual_order }, after: { order } }, trx)
+  const open = await trx.selectFrom('matches').select('id').where('stage_id', '=', g.stage_id).where('status', 'not in', [...FINISHED_MATCH]).executeTakeFirst()
+  if (!open) await completeStage(trx, g.tournament_id, g.stage_id, actorUserId)
+  else await refreshGroup(trx, g.tournament_id, groupId, actorUserId)
+}
+
+/** Standings of one finished group are saved at once; brackets opened early pick up its places. */
+async function refreshGroup(trx: Trx, tournamentId: number, groupId: number, actorUserId: number | null): Promise<void> {
+  const group = await trx.selectFrom('groups').select(['stage_id']).where('id', '=', groupId).executeTakeFirstOrThrow()
+  const t = await trx.selectFrom('tournaments').select(['format']).where('id', '=', tournamentId).executeTakeFirstOrThrow()
+  const outcome = (await groupOutcomes(trx, group.stage_id, t.format, await entryRatings(trx, tournamentId))).find((o) => o.groupId === groupId)
+  if (!outcome?.done) return
+  await trx.updateTable('groups').set({ standings: json(outcome.standings) }).where('id', '=', groupId).execute()
+  await reseedTargets(trx, tournamentId, group.stage_id, actorUserId)
 }
 
 /** Closes the tournament (M-8): final places, entries completed, ratings, snapshot of the address. */
@@ -405,7 +599,7 @@ export async function finishTournament(trx: Trx, tournamentId: number, actorUser
       const rows = await trx.selectFrom('matches').selectAll().where('stage_id', '=', stage.id).execute()
       const results = new Map<number, 'home' | 'away'>()
       for (const r of rows) if (r.winner_entry_id != null && r.result_type !== 'bye') results.set(r.bracket_number!, r.winner_entry_id === r.home_entry_id ? 'home' : 'away')
-      const seeds = (stage.seeds ?? []).map((s) => (s == null ? null : String(s)))
+      const seeds = stageSeeds(stage)
       for (const s of seeds) if (s) advanced.add(s)
       outcomes.push({ stage: stage.stage_key, kind: 'bracket', places: bracketPlaces(resolveBracket(stage.bracket, seeds, results)) })
     }
@@ -534,7 +728,7 @@ const sourceMatch = (s: unknown): number | null => {
   return src && src.kind !== 'seed' ? (src.match ?? null) : null
 }
 
-const wasPlayed = (m: Match) => ['called', 'playing', 'finished', 'retired'].includes(m.status) || (m.status === 'walkover' && m.result_type !== 'bye')
+export const wasPlayed = (m: Match) => ['called', 'playing', 'finished', 'retired'].includes(m.status) || (m.status === 'walkover' && m.result_type !== 'bye')
 
 /** Bracket matches fed (directly or further down) by match `number`. */
 export function dependentMatches<M extends Pick<Match, 'bracket_number' | 'home_source' | 'away_source'>>(rows: readonly M[], number: number): M[] {
@@ -586,9 +780,14 @@ export async function correctResult(
       rebuild.push(...deps.filter((d) => !wasPlayed(d) && !fixed.has(d)))
     }
   } else {
-    // Group standings may change even with the same winner: later stages that have not started are rebuilt.
-    const later = await trx.selectFrom('stages').select('id').where('tournament_id', '=', t.id).where('order_index', '>', stage.order_index).where('status', '<>', 'pending').execute()
-    for (const s of later) {
+    // Group places may change even with the same winner: opened brackets are reseeded seed by seed,
+    // later group stages that have not started are rebuilt.
+    const override: MatchOverride = new Map([[match.id, { winner_entry_id: winnerEntry, sets_home: setsHome, sets_away: setsAway, games, result_type: type }]])
+    const reseed = await reseedTargets(trx, t.id, stage.id, actorUserId, { override, dryRun: true })
+    rebuild.push(...reseed.rebuild)
+    kept.push(...reseed.kept)
+    const later = await trx.selectFrom('stages').select(['id', 'kind']).where('tournament_id', '=', t.id).where('order_index', '>', stage.order_index).where('status', '<>', 'pending').execute()
+    for (const s of later.filter((x) => !isBracketKind(x.kind))) {
       const rows = await trx.selectFrom('matches').selectAll().where('stage_id', '=', s.id).execute()
       if (rows.some(wasPlayed)) kept.push(...rows.filter(wasPlayed))
       else {
@@ -648,6 +847,7 @@ export async function correctResult(
     await trx.updateTable('stages').set({ status: 'running' }).where('id', '=', stage.id).execute()
   }
   const open = await trx.selectFrom('matches').select('id').where('stage_id', '=', stage.id).where('status', 'not in', [...FINISHED_MATCH]).executeTakeFirst()
-  if (!open) await completeStage(trx, t.id, stage.id)
+  if (!open) await completeStage(trx, t.id, stage.id, actorUserId)
+  else if (match.group_id) await refreshGroup(trx, t.id, match.group_id, actorUserId)
   return impact
 }

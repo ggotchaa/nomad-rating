@@ -214,6 +214,9 @@ export type TournamentSettings = {
 
 export type RefundRule = { hoursBefore: number; percent: number }
 
+/** First stage generated before the start (spec T-8): groups by entry id, or bracket seeds. */
+export type TournamentDraft = { stage: string; groups?: { code: string; members: number[] }[]; seeds?: (number | null)[]; warnings: import('@nomad/engine').StageWarning[]; generatedAt: string; entries: number[] }
+
 export interface TournamentsTable {
   rating_coefficient: Generated<number>
   id: Id
@@ -245,6 +248,8 @@ export interface TournamentsTable {
   cancelled_reason: string | null
   checkin_secret: Generated<string>
   copied_from: number | null
+  draft: Json<TournamentDraft> | null
+  draft_published_at: Timestamp | null
   created_by: number | null
   created_at: DefaultTimestamp
   published_at: Timestamp | null
@@ -294,6 +299,8 @@ export interface EntriesTable {
   team_id: Generated<number | null>
   roster: ColumnType<number[] | null, number[] | null | undefined, number[] | null>
   checked_in_players: ColumnType<number[], number[] | undefined, number[]>
+  /** Player added during the tournament: fee taken on site or waived (spec T-9). */
+  late_payment: 'on_site' | 'waived' | null
   created_at: DefaultTimestamp
   updated_at: DefaultTimestamp
 }
@@ -302,12 +309,15 @@ export interface StagesTable {
   id: Id
   tournament_id: number
   stage_key: string
-  kind: 'groups' | 'round_robin' | 'single_elim' | 'all_places'
+  kind: 'groups' | 'round_robin' | 'single_elim' | 'all_places' | 'minus2' | 'mixed'
   name: string
   order_index: number
   status: Generated<'pending' | 'running' | 'finished'>
   bracket: Json<import('@nomad/engine').Bracket> | null
   seeds: Json<(number | null)[]> | null
+  warnings: JsonDefault<import('@nomad/engine').StageWarning[]>
+  /** Seeds still waiting for a group to finish (final opened early): seed index → group code and place. */
+  seed_slots: Json<({ group: string; place: number } | null)[]> | null
 }
 
 export interface GroupsTable {
@@ -316,6 +326,7 @@ export interface GroupsTable {
   code: string
   order_index: number
   standings: Json<import('@nomad/engine').StandingsResult> | null
+  manual_order: number[] | null
 }
 
 export interface GroupMembersTable {
@@ -520,6 +531,7 @@ export type HallTable = Selectable<HallTablesTable>
 export type Booking = Selectable<BookingsTable>
 export type Entry = Selectable<EntriesTable>
 export type Match = Selectable<MatchesTable>
+export type Stage = Selectable<StagesTable>
 export type User = Selectable<UsersTable>
 
 // --- Stage 1 ---

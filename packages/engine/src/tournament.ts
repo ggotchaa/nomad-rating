@@ -1,35 +1,46 @@
 // Building stages and moving players between them (spec 4.4 M-1, M-2; 4.6 transitions and final places).
 // Pure functions: the server stores the result in stages / groups / matches tables.
 
-import { allPlaces, bracketSizeFor, seedOrder, singleElimination } from './bracket.ts'
+import { bracketSizeFor, placesBracket, recommendBracketSize, seedOrder, singleElimination } from './bracket.ts'
 import type { Bracket, BracketPlace } from './bracket.ts'
-import { groupCode, groupSizes, randomGroups, roundRobinTours, separateClubs, snakeGroups } from './groups.ts'
+import { clubClashes, evenGroups, groupCode, groupSizes, randomGroups, roundRobinTours, separateClubs, sequentialGroups, snakeGroups } from './groups.ts'
 import type { StandingRow, StandingsResult } from './groups.ts'
-import type { StageSpec, TournamentFormat, TransitionRule } from './formats.ts'
+import type { BracketStageSpec, StageSpec, TournamentFormat, TransitionRule } from './formats.ts'
 
 export type Participant = { id: string; rating: number; clubId?: string | null }
 
 export type PlannedGroup = { code: string; members: string[] }
 export type PlannedGroupMatch = { groupCode: string; tour: number; home: string; away: string }
 
-/** Groups and their round-robin matches; `seeded` is sorted strongest first. */
-export function buildGroupStage(
+/** Something the organiser should look at; `code` is an i18n key, `params` fill it. */
+export type StageWarning = { code: string; params?: Record<string, string | number> }
+
+/** Groups of a group stage, `seeded` sorted strongest first. */
+export function planGroups(
   stage: Extract<StageSpec, { kind: 'groups' | 'round_robin' }>,
   seeded: readonly Participant[],
   options: { seed?: number } = {},
-): { groups: PlannedGroup[]; matches: PlannedGroupMatch[] } {
+): { groups: PlannedGroup[]; warnings: StageWarning[] } {
   const ids = seeded.map((p) => p.id)
+  if (stage.kind === 'round_robin') return { groups: [{ code: 'A', members: ids }], warnings: [] }
+  const sizes = groupSizes(ids.length, stage.groupSize)
+  const rating = new Map(seeded.map((p) => [p.id, p.rating]))
   let members: string[][]
-  if (stage.kind === 'round_robin') members = [ids]
-  else {
-    const sizes = groupSizes(ids.length, stage.groupSize)
-    members = stage.seeding === 'random' ? randomGroups(ids, sizes, options.seed ?? 1) : snakeGroups(ids, sizes)
-    if (stage.separateClubs !== false) {
-      const clubs = new Map(seeded.map((p) => [p.id, p.clubId]))
-      members = separateClubs(members, (id) => clubs.get(id))
-    }
+  if (stage.seeding === 'random') members = randomGroups(ids, sizes, options.seed ?? 1)
+  else if (stage.seeding === 'rating') members = sequentialGroups(ids, sizes)
+  else if (stage.seeding === 'even') members = evenGroups(ids, sizes, (id) => rating.get(id) ?? 0)
+  else members = snakeGroups(ids, sizes)
+  const warnings: StageWarning[] = []
+  if (stage.separateClubs !== false) {
+    const clubs = new Map(seeded.map((p) => [p.id, p.clubId]))
+    members = separateClubs(members, (id) => clubs.get(id))
+    for (const c of clubClashes(members, (id) => clubs.get(id))) warnings.push({ code: 'clubs_together', params: { group: groupCode(c.group), count: c.ids.length, club: c.club } })
   }
-  const groups = members.map((m, i) => ({ code: stage.kind === 'round_robin' ? 'A' : groupCode(i), members: m }))
+  return { groups: members.map((m, i) => ({ code: groupCode(i), members: m })), warnings }
+}
+
+/** Round-robin matches of planned groups, tour by tour. */
+export function groupMatches(groups: readonly PlannedGroup[]): PlannedGroupMatch[] {
   const matches: PlannedGroupMatch[] = []
   for (const group of groups) {
     roundRobinTours(group.members.length).forEach((tour, t) => {
@@ -38,12 +49,38 @@ export function buildGroupStage(
       }
     })
   }
-  return { groups, matches }
+  return matches
 }
 
-export function buildBracket(stage: Extract<StageSpec, { kind: 'single_elim' | 'all_places' }>, players: number): Bracket {
+/** Groups and their round-robin matches; `seeded` is sorted strongest first. */
+export function buildGroupStage(
+  stage: Extract<StageSpec, { kind: 'groups' | 'round_robin' }>,
+  seeded: readonly Participant[],
+  options: { seed?: number } = {},
+): { groups: PlannedGroup[]; matches: PlannedGroupMatch[]; warnings: StageWarning[] } {
+  const { groups, warnings } = planGroups(stage, seeded, options)
+  return { groups, matches: groupMatches(groups), warnings }
+}
+
+export function buildBracket(stage: BracketStageSpec, players: number): Bracket {
   const size = bracketSizeFor(Math.max(players, 2))
-  return stage.kind === 'all_places' ? allPlaces(size) : singleElimination(size, stage.thirdPlace)
+  switch (stage.kind) {
+    case 'single_elim':
+      return singleElimination(size, stage.thirdPlace)
+    case 'all_places':
+      return placesBracket(size, { eliminateAfter: stage.eliminateAfter })
+    case 'minus2':
+      return placesBracket(size, { lowerRounds: size, eliminateAfter: stage.eliminateAfter })
+    case 'mixed':
+      return placesBracket(size, { lowerRounds: stage.lowerRounds, eliminateAfter: stage.eliminateAfter })
+  }
+}
+
+/** Warning for a bracket size that is awkward to run (spec: recommend 16, 24, 32, 48 or 64). */
+export function bracketSizeWarnings(players: number): StageWarning[] {
+  const r = recommendBracketSize(players)
+  if (!r) return []
+  return [{ code: 'bracket_size', params: { players, size: bracketSizeFor(players), lower: r.lower ?? '', upper: r.upper ?? '' } }]
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +88,7 @@ export function buildBracket(stage: Extract<StageSpec, { kind: 'single_elim' | '
 
 export type GroupOutcome = { code: string; standings: StandingsResult }
 
-type Finisher = { id: string; group: string; row: StandingRow; rating: number }
+type Finisher = { id: string; group: string; groupIndex: number; row: StandingRow; rating: number }
 
 const setsRatio = (r: StandingRow) => (r.setsLost === 0 ? (r.setsWon === 0 ? 0 : Infinity) : r.setsWon / r.setsLost)
 
@@ -62,11 +99,11 @@ function compareFinishers(a: Finisher, b: Finisher): number {
 
 function finishers(outcomes: readonly GroupOutcome[], ratings: Record<string, number>): Finisher[] {
   return outcomes
-    .flatMap((g) => g.standings.rows.map((row) => ({ id: row.id, group: g.code, row, rating: ratings[row.id] ?? 0 })))
+    .flatMap((g, groupIndex) => g.standings.rows.map((row) => ({ id: row.id, group: g.code, groupIndex, row, rating: ratings[row.id] ?? 0 })))
     .sort(compareFinishers)
 }
 
-export type Qualifier = { id: string; group: string; groupPlace: number }
+export type Qualifier = { id: string; group: string; groupPlace: number; groupIndex?: number }
 
 /** Players a transition rule takes from a group stage, in seeding order (by place, then by the rule above). */
 export function selectQualifiers(
@@ -90,39 +127,92 @@ export function selectQualifiers(
       chosen = all.filter((f) => f.row.place === rule.place).slice(0, rule.count)
       break
   }
-  return chosen.map((f) => ({ id: f.id, group: f.group, groupPlace: f.row.place }))
+  return chosen.map((f) => ({ id: f.id, group: f.group, groupPlace: f.row.place, groupIndex: f.groupIndex }))
 }
 
 /**
- * Seeds for a bracket from qualifiers already in seeding order. Players from one group
- * are moved to different halves where possible (1st and 2nd of a group meet only in the final).
- * Returns seeds[i] = entry id with seed i + 1, null for empty slots.
+ * Seeds of a bracket fed from groups (spec 5, variant Б). Qualifiers come in seeding order.
+ * - The best group place present (1st places) is seeded by group number: A1 = 1, B1 = 2, …
+ * - The next place (2nd) goes to the half opposite its own 1st, facing the 1st of the paired group
+ *   (A1–B2, B1–A2, …), so a group's 1st and 2nd can meet only in the final.
+ * - Lower places (3rd, …) take the standard seeds; one that lands in a quarter with a player of its own group
+ *   swaps with the nearest same-place player of another group. Byes go to the top seeds.
+ * Returns seeds[i] = entry id with seed i + 1 (null = bye) and warnings when a clash can't be avoided.
  */
-export function seedsFromQualifiers(qualifiers: readonly Qualifier[]): (string | null)[] {
+export function seedsFromGroups(qualifiers: readonly Qualifier[]): { seeds: (string | null)[]; warnings: StageWarning[] } {
   const size = bracketSizeFor(Math.max(qualifiers.length, 2))
-  const list: (Qualifier | null)[] = [...qualifiers, ...Array<null>(size - qualifiers.length).fill(null)]
   const order = seedOrder(size)
-  const half = (seedIndex: number) => (order.indexOf(seedIndex + 1) < size / 2 ? 0 : 1)
-  for (let i = 0; i < list.length; i++) {
-    const q = list[i]
-    if (!q) continue
-    const clash = list.some((other, j) => j < i && other && other.group === q.group && half(j) === half(i))
-    if (!clash) continue
-    // Swap with a later-or-equal tier player of the same group place in the other half.
-    for (let j = 0; j < list.length; j++) {
-      const other = list[j]
-      if (j === i || !other || other.groupPlace !== q.groupPlace || half(j) === half(i)) continue
-      const otherOk = !list.some((x, k) => k !== j && k !== i && x && x.group === other.group && half(k) === half(i))
-      const selfOk = !list.some((x, k) => k !== i && k !== j && x && x.group === q.group && half(k) === half(j))
-      if (otherOk && selfOk) {
-        list[i] = other
-        list[j] = q
-        break
+  const slot = new Map(order.map((seed, i) => [seed, i]))
+  const half = (seed: number) => ((slot.get(seed) as number) < size / 2 ? 0 : 1)
+  const unit = Math.max(2, size / 4)
+  const quarter = (seed: number) => Math.floor((slot.get(seed) as number) / unit)
+  const warnings: StageWarning[] = []
+  const seedOf = new Map<Qualifier, number>()
+  const tiers = [...new Set(qualifiers.map((q) => q.groupPlace))].sort((a, b) => a - b)
+  const index = (q: Qualifier) => q.groupIndex ?? q.group.length * 1000 + q.group.charCodeAt(q.group.length - 1)
+  const mates = (q: Qualifier) => [...seedOf].filter(([o]) => o.group === q.group && o !== q).map(([, s]) => s)
+  let next = 1
+  tiers.forEach((place, t) => {
+    let members = qualifiers.filter((q) => q.groupPlace === place)
+    const block = members.map((_, i) => next + i)
+    if (t === 0) {
+      members = [...members].sort((a, b) => index(a) - index(b))
+      members.forEach((q, i) => seedOf.set(q, block[i] as number))
+    } else if (t === 1) {
+      const ok = (q: Qualifier, seed: number) => mates(q).every((s) => half(s) !== half(seed))
+      const first = [...seedOf.keys()]
+      const preferred = members.map((q) => {
+        const partner = first.find((f) => index(f) === (index(q) ^ 1)) ?? first.find((f) => f.group === q.group)
+        return partner ? size + 1 - (seedOf.get(partner) as number) : -1
+      })
+      const fits = new Set(preferred).size === members.length && members.every((q, i) => block.includes(preferred[i] as number) && ok(q, preferred[i] as number))
+      if (fits) members.forEach((q, i) => seedOf.set(q, preferred[i] as number))
+      else {
+        const taken = new Set<number>()
+        const pick = (i: number): boolean => {
+          const q = members[i]
+          if (!q) return true
+          for (const seed of block) {
+            if (taken.has(seed) || !ok(q, seed)) continue
+            taken.add(seed)
+            seedOf.set(q, seed)
+            if (pick(i + 1)) return true
+            taken.delete(seed)
+            seedOf.delete(q)
+          }
+          return false
+        }
+        if (!pick(0)) {
+          members.forEach((q, i) => seedOf.set(q, block[i] as number))
+          for (const q of members) if (!ok(q, seedOf.get(q) as number)) warnings.push({ code: 'group_same_half', params: { group: q.group } })
+        }
+      }
+    } else {
+      const earlier = new Map(seedOf)
+      members.forEach((q, i) => seedOf.set(q, block[i] as number))
+      const clash = (q: Qualifier, seed: number) => [...earlier].some(([o, s]) => o.group === q.group && quarter(s) === quarter(seed))
+      for (const q of members) {
+        const seed = seedOf.get(q) as number
+        if (!clash(q, seed)) continue
+        const swap = members
+          .filter((o) => o.group !== q.group)
+          .sort((a, b) => Math.abs((seedOf.get(a) as number) - seed) - Math.abs((seedOf.get(b) as number) - seed))
+          .find((o) => !clash(q, seedOf.get(o) as number) && !clash(o, seed))
+        if (swap) {
+          seedOf.set(q, seedOf.get(swap) as number)
+          seedOf.set(swap, seed)
+        } else warnings.push({ code: 'group_same_quarter', params: { group: q.group, place } })
       }
     }
-  }
-  return list.map((q) => q?.id ?? null)
+    next += members.length
+  })
+  const seeds: (string | null)[] = Array<string | null>(size).fill(null)
+  for (const [q, s] of seedOf) seeds[s - 1] = q.id
+  return { seeds, warnings }
 }
+
+/** Seeds only (see seedsFromGroups). */
+export const seedsFromQualifiers = (qualifiers: readonly Qualifier[]): (string | null)[] => seedsFromGroups(qualifiers).seeds
 
 // ---------------------------------------------------------------------------
 // Final places (spec 4.6 «не прошедшие дальше получают итоговые места…»)
