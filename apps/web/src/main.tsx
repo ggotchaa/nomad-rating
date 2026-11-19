@@ -9,7 +9,7 @@ import './styles/global.css'
 
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
+import { createBrowserRouter, Navigate, RouterProvider, useParams } from 'react-router'
 import { AppShell } from './app/AppShell.tsx'
 import { SessionProvider } from './app/auth.tsx'
 import { Login, Register } from './features/account/Auth.tsx'
@@ -29,7 +29,6 @@ import { RatingList } from './features/players/RatingList.tsx'
 import { Calendar } from './features/tournaments/Calendar.tsx'
 import { TournamentPage } from './features/tournaments/TournamentPage.tsx'
 import { Notifications } from './features/notifications/Notifications.tsx'
-import { MyTournament } from './features/rating/MyTournament.tsx'
 import { ConductPage } from './features/conduct/ConductPage.tsx'
 import { CheckinPage, CheckinQrScreen } from './features/conduct/Checkin.tsx'
 import { LivePage } from './features/live/LivePage.tsx'
@@ -64,6 +63,7 @@ import { ManageLeagues } from './features/leagues/ManageLeagues.tsx'
 import { ShortLink } from './features/tournaments/ShareBox.tsx'
 
 const Landing = lazy(() => import('./features/landing/Landing.tsx').then((m) => ({ default: m.Landing })))
+const MyTournamentRedirect = () => <Navigate to={`/t/${useParams().slug}`} replace />
 
 const router = createBrowserRouter([
   {
@@ -94,7 +94,7 @@ const router = createBrowserRouter([
       { path: 'login', element: <Login /> },
       { path: 'register', element: <Register /> },
       { path: 'me', element: <Cabinet /> },
-      { path: 'me/t/:slug', element: <MyTournament /> },
+      { path: 'me/t/:slug', element: <MyTournamentRedirect /> },
       { path: 'notifications', element: <Notifications /> },
       { path: 'me/profile', element: <ProfileEdit /> },
       { path: 'me/security', element: <Security /> },

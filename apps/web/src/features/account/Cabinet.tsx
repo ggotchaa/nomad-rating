@@ -37,7 +37,7 @@ function NextTournament({ rows }: { rows: MyEntry[] }) {
               {formatDateTime(next.starts_at)} · {next.club}
             </div>
           </div>
-          <Link className="button button--primary button--sm" to={`/me/t/${next.slug}`}>
+          <Link className="button button--primary button--sm" to={`/t/${next.slug}`}>
             {t.me.nextMatch}
           </Link>
         </div>

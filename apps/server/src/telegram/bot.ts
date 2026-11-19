@@ -201,7 +201,7 @@ export function createBot(): Bot | null {
       .executeTakeFirst()
     if (!m) return void (await ctx.reply(t.noMatches))
     const ahead = m.status === 'scheduled' ? await queuePosition(m.tournament_id, m.id) : null
-    await ctx.reply(`${m.title}\n${t.match(m.number)}${m.table ? ` · ${t.table(m.table)}` : ''}${m.status === 'called' ? ` · ${t.called}` : ''}${ahead != null ? ` · ${t.queue(ahead)}` : ''}\n${site}/me/t/${m.slug}`)
+    await ctx.reply(`${m.title}\n${t.match(m.number)}${m.table ? ` · ${t.table(m.table)}` : ''}${m.status === 'called' ? ` · ${t.called}` : ''}${ahead != null ? ` · ${t.queue(ahead)}` : ''}\n${site}/t/${m.slug}`)
   })
 
   bot.command('stop', async (ctx) => {
