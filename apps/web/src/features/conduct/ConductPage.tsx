@@ -11,6 +11,9 @@ import { ScoreEntry } from './ScoreEntry.tsx'
 import type { ConductEntry, ConductMatch, ConductState } from './types.ts'
 import { TournamentPlan } from '../booking/TournamentPlan.tsx'
 import { ask as dialog } from '../../ui/dialogs.tsx'
+import type { StructureFormat } from '../../api/types.ts'
+import { StageBlock } from '../tournaments/Structure.tsx'
+import { MatchesTab } from './MatchesTab.tsx'
 
 const label = (m: ConductMatch) => (m.label?.startsWith('group:') ? `${t.t.group} ${m.label.slice(6)}` : (m.label ?? ''))
 
@@ -197,6 +200,9 @@ export function ConductPage() {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [replacing, setReplacing] = useState<number | null>(null)
   const [scoring, setScoring] = useState<{ match: ConductMatch; mode: 'result' | 'correct' } | null>(null)
+  const [tab, setTab] = useState<'board' | 'matches'>('board')
+  const [stageKey, setStageKey] = useState<string | null>(null)
+  const [sideOpen, setSideOpen] = useState(false)
 
   const run = async (path: string, json?: unknown, ok?: string) => {
     setMessage(null)
@@ -250,17 +256,18 @@ export function ConductPage() {
             <button className="button button--sm button--primary" onClick={() => setScoring({ match: m, mode: 'result' })}>
               {t.conduct.score}
             </button>
-            <button
-              className="button button--sm"
-              onClick={async () => {
-                const who = await dialog.prompt(`${t.conduct.noShowWho}\n1 — ${m.home?.name}\n2 — ${m.away?.name}`)
-                if (who === '1' || who === '2') void run(`${base}/matches/${m.id}/no-show`, { absent: who === '1' ? 'home' : 'away' })
-              }}
-            >
+            <button className="button button--sm" onClick={() => void noShow(m)}>
               {t.conduct.noShow}
             </button>
           </div>
         )
+        const noShow = async (m: ConductMatch) => {
+          const who = await dialog.prompt(`${t.conduct.noShowWho}\n1 — ${m.home?.name}\n2 — ${m.away?.name}`)
+          if (who === '1' || who === '2') void run(`${base}/matches/${m.id}/no-show`, { absent: who === '1' ? 'home' : 'away' })
+        }
+        const started = !['published', 'registration_closed'].includes(d.tournament.status)
+        const stage = d.stages.find((s) => s.key === stageKey) ?? d.stages.find((s) => s.status === 'running') ?? d.stages.filter((s) => s.status !== 'pending').at(-1) ?? d.stages[0]
+        const onTables = d.tables.filter((x) => x.match)
         return (
           <>
             <section className="panel">
@@ -328,106 +335,106 @@ export function ConductPage() {
               {message && <p className={`note ${message.ok ? 'note--ok' : 'note--error'}`}>{message.text}</p>}
             </section>
 
-            {['published', 'registration_closed'].includes(d.tournament.status) && <Seeding d={d} run={(p, j) => run(p, j)} />}
+            {!started && <Seeding d={d} run={(p, j) => run(p, j)} />}
 
-            {running && (
-              <>
-                {d.attention.length > 0 && (
-                  <section className="panel">
-                    <h2>{t.conduct.attention}</h2>
-                    {d.attention.map((m) => (
-                      <div className="row row--between" key={m.id}>
-                        <span>
-                          № {m.number} · {m.home?.name} — {m.away?.name} · {m.disputed ? t.conduct.disputed : t.conduct.reported}{' '}
-                          {m.reportedScore && `${m.reportedScore.setsHome}:${m.reportedScore.setsAway}`}
-                        </span>
-                        <button className="button button--sm button--primary" onClick={() => setScoring({ match: m, mode: 'result' })}>
-                          {t.conduct.score}
+            {started && (
+              <div className="tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={tab === 'board'} onClick={() => setTab('board')}>
+                  {t.conduct.tabBoard}
+                </button>
+                <button type="button" role="tab" aria-selected={tab === 'matches'} onClick={() => setTab('matches')}>
+                  {t.conduct.tabMatches}
+                </button>
+              </div>
+            )}
+
+            {started && tab === 'matches' && (
+              <MatchesTab tournamentId={d.tournament.id} running={running} canCorrect={d.canCorrect} run={(p, j) => run(p, j)} onScore={(match, mode) => setScoring({ match, mode })} onNoShow={(m) => void noShow(m)} />
+            )}
+
+            {started && tab === 'board' && (
+              <div className={`conduct-board${sideOpen ? ' is-open' : ''}`}>
+                <section className="panel conduct-board__main">
+                  {d.stages.length > 1 && (
+                    <div className="tabs" role="tablist">
+                      {d.stages.map((s) => (
+                        <button key={s.key} type="button" role="tab" aria-selected={s.key === stage?.key} onClick={() => setStageKey(s.key)}>
+                          {s.name}
                         </button>
-                      </div>
-                    ))}
-                  </section>
-                )}
-                <section className="panel">
-                  <h2>{t.conduct.tables}</h2>
-                  <TournamentPlan tournamentId={Number(id)} tables={d.tables} />
-                  <div className="tables-grid">
-                    {d.tables.map((x) => (
-                      <div key={x.id} className={`tablecard${x.match ? ` tablecard--${x.match.status}` : ''}`}>
-                        <div className="row row--between">
-                          <b className="mono">№ {x.number}</b>
-                          {x.match ? <span className="chip">{t.conduct.matchStatus[x.match.status]}</span> : <span className="muted small">{t.conduct.free}</span>}
-                        </div>
-                        {x.match && (
-                          <>
-                            <p className="small muted">
-                              № {x.match.number} · {label(x.match)} {x.match.calledAt && `· ${formatTime(x.match.calledAt)}`}
-                            </p>
-                            <p>
-                              {x.match.home?.name}
-                              <br />
-                              {x.match.away?.name}
-                            </p>
-                            <CallState m={x.match} telegram={d.telegram} />
-                            {actions(x.match)}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
+                  {stage ? <StageBlock s={stage} stages={d.stages} format={d.format as StructureFormat} heading={d.stages.length === 1} /> : <p className="empty">{t.conduct.noStructure}</p>}
                 </section>
-                <section className="panel">
-                  <h2>
-                    {t.conduct.queue} · {d.queue.length}
-                  </h2>
-                  <div className="tablewrap">
-                    <table className="table">
-                      <tbody>
-                        {d.queue.map((q) => (
-                          <tr key={q.id}>
-                            <td className="mono small">№ {q.number}</td>
-                            <td className="small muted">{label(q)}</td>
-                            <td>
-                              {q.home?.name} — {q.away?.name}
-                            </td>
-                            <td className="small">
-                              {q.waitReason ? (
-                                <span className="chip chip--warn">{q.waitReason === 'rest' && q.readyAt ? t.conduct.readyAt(formatTime(q.readyAt)) : t.conduct.wait[q.waitReason]}</span>
-                              ) : (
-                                <button className="button button--sm button--primary" onClick={() => void run(`${base}/matches/${q.id}/call`, { tableId: q.suggestedTableId })}>
-                                  {t.conduct.call} → {q.suggestedTable}
-                                </button>
-                              )}
-                            </td>
-                            <td>
-                              <button className="button button--sm" onClick={() => setScoring({ match: q, mode: 'result' })}>
+                {running && (
+                  <>
+                    <button type="button" className="button conduct-board__toggle" aria-expanded={sideOpen} onClick={() => setSideOpen(!sideOpen)}>
+                      {sideOpen ? t.conduct.hide : `${t.conduct.tablesWidget} · ${onTables.length}/${d.tables.length}`}
+                    </button>
+                    <aside className="panel conduct-board__side">
+                      {d.attention.length > 0 && (
+                        <div className="stack">
+                          <h3>{t.conduct.attention}</h3>
+                          {d.attention.map((m) => (
+                            <div className="row row--between" key={m.id}>
+                              <span className="small">
+                                № {m.number} · {m.home?.name} — {m.away?.name} · {m.disputed ? t.conduct.disputed : t.conduct.reported}{' '}
+                                {m.reportedScore && `${m.reportedScore.setsHome}:${m.reportedScore.setsAway}`}
+                              </span>
+                              <button className="button button--sm button--primary" onClick={() => setScoring({ match: m, mode: 'result' })}>
                                 {t.conduct.score}
                               </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-                <section className="panel">
-                  <h2>{t.conduct.recent}</h2>
-                  {d.recent.map((m) => (
-                    <div className="row row--between" key={m.id}>
-                      <span>
-                        № {m.number} · {m.home?.name} — {m.away?.name}{' '}
-                        <b className="mono">
-                          {m.setsHome}:{m.setsAway}
-                        </b>{' '}
-                        {m.resultType === 'walkover' && <span className="chip chip--warn">{t.conduct.walkover}</span>}
-                        {m.resultType === 'retired' && <span className="chip chip--warn">{t.conduct.retired}</span>}
-                      </span>
-                      <button className="button button--sm" onClick={() => setScoring({ match: m, mode: 'correct' })}>
-                        {t.conduct.correct}
-                      </button>
-                    </div>
-                  ))}
-                </section>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <h3>{t.conduct.tables}</h3>
+                      <TournamentPlan tournamentId={Number(id)} tables={d.tables} />
+                      <h3>
+                        {t.conduct.nowPlaying} · {onTables.length}/{d.tables.length}
+                      </h3>
+                      {onTables.map((x) => (
+                        <div key={x.id} className={`tablecard tablecard--${x.match!.status}`}>
+                          <div className="row row--between">
+                            <b className="mono">№ {x.number}</b>
+                            <span className="chip">{t.conduct.matchStatus[x.match!.status]}</span>
+                          </div>
+                          <p className="small">
+                            № {x.match!.number} · {label(x.match!)} {x.match!.calledAt && `· ${formatTime(x.match!.calledAt)}`}
+                            <br />
+                            {x.match!.home?.name} — {x.match!.away?.name}
+                          </p>
+                          <CallState m={x.match!} telegram={d.telegram} />
+                          {actions(x.match!)}
+                        </div>
+                      ))}
+                      <h3>
+                        {t.conduct.queue} · {d.queue.length}
+                      </h3>
+                      {d.queue.map((q) => (
+                        <div className="row row--between" key={q.id}>
+                          <span className="small">
+                            <span className="mono">№ {q.number}</span> <span className="muted">{label(q)}</span>
+                            <br />
+                            {q.home?.name} — {q.away?.name}
+                          </span>
+                          {q.waitReason ? (
+                            <span className="chip chip--warn">{q.waitReason === 'rest' && q.readyAt ? t.conduct.readyAt(formatTime(q.readyAt)) : t.conduct.wait[q.waitReason]}</span>
+                          ) : (
+                            <button className="button button--sm button--primary" onClick={() => void run(`${base}/matches/${q.id}/call`, { tableId: q.suggestedTableId })}>
+                              {t.conduct.call} → {q.suggestedTable}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </aside>
+                  </>
+                )}
+              </div>
+            )}
+
+            {running && tab === 'board' && (
+              <>
                 <section className="panel">
                   <h2>{t.t.participants}</h2>
                   {d.entries

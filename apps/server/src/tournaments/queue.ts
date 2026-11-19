@@ -7,7 +7,7 @@ import { playerName } from '../modules/players.ts'
 
 export type MatchSide = { entryId: number; playerId: number; userId: number | null; name: string; rating: number | null; calibrating: boolean; startLevel: number }
 
-export async function conductState(t: Tournament, now = new Date()) {
+async function context(t: Tournament) {
   const tables = await db.selectFrom('hall_tables').select(['id', 'number']).where('id', 'in', t.table_ids.length ? t.table_ids : [0]).orderBy('number').execute()
   const entries = await db
     .selectFrom('entries as e')
@@ -53,6 +53,11 @@ export async function conductState(t: Tournament, now = new Date()) {
     disputed: m.disputed,
     rules: matchRulesFor(t.format, stageKeys.get(m.stage_id), m.stage_label),
   })
+  return { tables, entries, memberName, matches, tableNumber, view }
+}
+
+export async function conductState(t: Tournament, now = new Date()) {
+  const { tables, entries, memberName, matches, tableNumber, view } = await context(t)
   const active = matches.filter((m) => m.status === 'called' || m.status === 'playing')
   const busy = new Set(active.flatMap((m) => [m.home_entry_id!, m.away_entry_id!]))
   const lastFinished = new Map<number, Date>()
@@ -90,5 +95,24 @@ export async function conductState(t: Tournament, now = new Date()) {
     entries: entries
       .map((e) => ({ entryId: e.id, playerId: e.player_id, name: playerName(e), status: e.status, seed: e.seed, checkedInAt: e.checked_in_at, members: e.roster?.length ? e.roster.map((id) => ({ playerId: id, name: memberName.get(id) ?? '', present: e.checked_in_players.includes(id) })) : null, rating: e.rating_at_start ?? e.rating ?? e.start_level, calibrating: e.rating == null }))
       .sort((a, b) => (a.seed ?? 1e6) - (b.seed ?? 1e6) || b.rating - a.rating),
+  }
+}
+
+/** Every match of the tournament (the «Матчи» tab), with its stage and group. */
+export async function matchList(t: Tournament) {
+  const { matches, view } = await context(t)
+  const stages = await db.selectFrom('stages').select(['id', 'stage_key', 'name', 'kind', 'order_index']).where('tournament_id', '=', t.id).orderBy('order_index').execute()
+  const groups = stages.length ? await db.selectFrom('groups').select(['id', 'code']).where('stage_id', 'in', stages.map((s) => s.id)).execute() : []
+  const stageOf = new Map(stages.map((s) => [s.id, s]))
+  const groupCode = new Map(groups.map((g) => [g.id, g.code]))
+  return {
+    stages: stages.map((s) => ({ key: s.stage_key, name: s.name, kind: s.kind })),
+    matches: matches.map((m) => ({
+      ...view(m),
+      stageKey: stageOf.get(m.stage_id)?.stage_key ?? null,
+      stageName: stageOf.get(m.stage_id)?.name ?? null,
+      groupCode: m.group_id ? (groupCode.get(m.group_id) ?? null) : null,
+      bracketNumber: m.bracket_number,
+    })),
   }
 }

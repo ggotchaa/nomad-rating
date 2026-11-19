@@ -1,3 +1,5 @@
+import type { StageView } from '../../api/types.ts'
+
 export type Side = { entryId: number; playerId: number; name: string; rating: number | null }
 export type CallResponse = { answer: 'delivered' | 'going' | 'cannot'; reason?: string; at: string }
 export type Game = { home: number; away: number }
@@ -52,6 +54,8 @@ export type ConductState = {
   hallTables: { id: number; number: number }[]
   structure: { players: number; groups: number[] | null; bracket: number | null } | null
   busyElsewhere: Record<number, string>
+  stages: StageView[]
+  canCorrect: boolean
   tables: { id: number; number: number; match: ConductMatch | null }[]
   queue: QueueMatch[]
   attention: ConductMatch[]
@@ -60,3 +64,6 @@ export type ConductState = {
 }
 
 export type ScorePayload = { setsHome: number; setsAway: number; games: Game[]; resultType: 'normal' | 'retired' | 'walkover'; winner?: 'home' | 'away'; version?: number; note?: string }
+
+export type MatchRow = ConductMatch & { stageKey: string | null; stageName: string | null; groupCode: string | null; bracketNumber: number | null }
+export type MatchList = { stages: { key: string; name: string; kind: string }[]; matches: MatchRow[] }

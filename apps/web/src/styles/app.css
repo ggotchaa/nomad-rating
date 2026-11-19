@@ -1922,6 +1922,60 @@
   border-color: var(--ok-line);
   background: var(--ok-soft);
 }
+.conduct-board {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
+  gap: 16px;
+  align-items: start;
+}
+.conduct-board__main {
+  min-width: 0;
+  overflow-x: auto;
+}
+.conduct-board__side {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+.conduct-board__side h3 {
+  margin: 4px 0 0;
+}
+.conduct-board__toggle {
+  display: none;
+}
+@media (max-width: 1279px) {
+  .conduct-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conduct-board__toggle {
+    display: inline-flex;
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 41;
+    box-shadow: var(--shadow-3);
+  }
+  .conduct-board__side {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(420px, 100vw);
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    padding-bottom: 72px;
+  }
+  .conduct-board.is-open .conduct-board__side {
+    display: grid;
+    align-content: start;
+  }
+}
 .seedlist {
   display: grid;
   gap: 6px;
