@@ -16,20 +16,20 @@ import { notify } from '../notify/index.ts'
 import { notifyNext, refreshCallAnswer, sendCall, sendCallCancelled, sendTableChanged, telegramDelivery } from '../notify/match.ts'
 import { bus } from '../realtime/bus.ts'
 import { busyElsewhere, structurePreview } from '../tournaments/busy.ts'
-import { conductState } from '../tournaments/queue.ts'
+import { conductState, matchList } from '../tournaments/queue.ts'
 import { correctResult, finishTournament, recordResult, replaceEntryPlayer, rulesOfMatch, withdrawEntry } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
-import { formatSchema } from './tournaments.ts'
+import { formatSchema, structure } from './tournaments.ts'
 
 export const conductRouter = Router()
 export const myCallsRouter = Router()
 
-async function staffTournament(req: Request) {
+async function staffTournament(req: Request, right: 'conduct' | 'organizer_only' = 'conduct') {
   const id = intParam(req, 'id')
   const t = await db.selectFrom('tournaments').selectAll().where('id', '=', id).executeTakeFirst()
   if (!t) throw notFound('tournament.not_found')
   // A platform admin runs any tournament from the admin panel.
-  const user = req.user?.platformRole === 'admin' ? requirePlatformAdmin(req) : await requireClubRight(req, t.club_id, 'conduct', { tournamentId: id, hallId: t.hall_id })
+  const user = req.user?.platformRole === 'admin' ? requirePlatformAdmin(req) : await requireClubRight(req, t.club_id, right, { tournamentId: id, hallId: t.hall_id })
   return { t, user }
 }
 
@@ -53,7 +53,8 @@ const scoreSchema = z.object({
 conductRouter.get(
   '/:id/conduct',
   handler(async (req, res) => {
-    const { t } = await staffTournament(req)
+    const { t, user } = await staffTournament(req)
+    const role = req.user?.platformRole === 'admin' ? null : await db.selectFrom('club_members').select('role').where('club_id', '=', t.club_id).where('user_id', '=', user.id).executeTakeFirst()
     const notStarted = ['published', 'registration_closed'].includes(t.status)
     res.json({
       tournament: {
@@ -75,8 +76,19 @@ conductRouter.get(
       format: t.format,
       hallTables: await db.selectFrom('hall_tables').select(['id', 'number']).where('hall_id', '=', t.hall_id).where('status', '=', 'active').orderBy('number').execute(),
       structure: notStarted ? await structurePreview(t) : null,
+      stages: notStarted ? [] : ((await structure(t)) ?? []),
+      canCorrect: !role || role.role === 'organizer',
       busyElsewhere: notStarted || t.status === 'running' ? await busyElsewhere(t.id) : {},
     })
+  }),
+)
+
+/** All matches of the tournament, no limit (the «Матчи» tab). */
+conductRouter.get(
+  '/:id/matches',
+  handler(async (req, res) => {
+    const { t } = await staffTournament(req)
+    res.json(await matchList(t))
   }),
 )
 
@@ -211,7 +223,7 @@ conductRouter.post(
 conductRouter.post(
   '/:id/matches/:matchId/correct',
   handler(async (req, res) => {
-    const { t, user } = await staffTournament(req)
+    const { t, user } = await staffTournament(req, 'organizer_only')
     const body = parseBody(scoreSchema.extend({ reason: z.string().trim().min(3).max(500) }), req)
     const impact = await db.transaction().execute((trx) => correctResult(trx, intParam(req, 'matchId'), body, body.reason, user.id))
     changed(t.id)
@@ -223,7 +235,7 @@ conductRouter.post(
 conductRouter.post(
   '/:id/matches/:matchId/correct/preview',
   handler(async (req, res) => {
-    const { t, user } = await staffTournament(req)
+    const { t, user } = await staffTournament(req, 'organizer_only')
     await matchOf(t, intParam(req, 'matchId'))
     const body = parseBody(scoreSchema, req)
     res.json(await db.transaction().execute((trx) => correctResult(trx, intParam(req, 'matchId'), body, '', user.id, new Date(), { dryRun: true })))
