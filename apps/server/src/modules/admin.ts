@@ -39,7 +39,7 @@ adminRouter.get(
       .selectFrom('clubs as c')
       .innerJoin('cities as ci', 'ci.id', 'c.city_id')
       .innerJoin('users as u', 'u.id', 'c.owner_user_id')
-      .select(['c.id', 'c.slug', 'c.name', 'c.description', 'c.status', 'c.status_reason', 'c.requisites', 'c.contact_email', 'c.contact_telegram', 'c.created_at', 'ci.name_ru as city', 'u.email as owner'])
+      .select(['c.id', 'c.slug', 'c.name', 'c.description', 'c.status', 'c.status_reason', 'c.requisites', 'c.contact_email', 'c.contact_telegram', 'c.contact_phone', 'c.created_at', 'ci.name_ru as city', 'u.email as owner'])
       .where('c.status', '=', status)
       .select('c.commission')
       .orderBy('c.created_at')

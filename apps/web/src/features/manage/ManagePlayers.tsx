@@ -10,6 +10,7 @@ import { errorText, t } from '../../i18n/index.ts'
 import { Async, Field, Modal } from '../../ui/kit.tsx'
 import { Avatar, PhotoEditor } from '../../ui/Avatar.tsx'
 import { useClub } from './ManageLayout.tsx'
+import { ImportPlayers } from './ImportPlayers.tsx'
 
 type Duplicate = { id: number; name: string; birthYear: number; city: string | null }
 
@@ -150,89 +151,92 @@ export function ManagePlayers() {
   const [q, setQ] = useState('')
   const [photoFor, setPhotoFor] = useState<ClubPlayer | null>(null)
   return (
-    <section className="panel">
-      <div className="panel__head">
-        <h2>{t.m.clubPlayers}</h2>
-        <div className="row">
-          <input type="search" style={{ width: 200 }} placeholder={t.r.searchName} aria-label={t.r.searchName} value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="button button--primary button--sm" onClick={() => setAdding(true)}>
-            + {t.m.newPlayer}
-          </button>
-        </div>
-      </div>
-      {code && <p className="note note--ok">{t.m.claimCode(code)}</p>}
-      <Async state={list}>
-        {(rows) => (
-          <div className="tablewrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t.t.player}</th>
-                  <th>{t.common.city}</th>
-                  <th className="num">{t.t.rating}</th>
-                  <th className="num">{t.p.tournaments}</th>
-                  <th className="num">{t.m.noShows}</th>
-                  <th>{t.m.account}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows
-                  .filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()))
-                  .map((p) => (
-                    <tr key={p.id}>
-                      <td>
-                        <span className="withava">
-                          {p.addedByClub && !p.hasAccount ? (
-                            <button type="button" className="linkbtn" title={t.acc.photo} aria-label={`${t.acc.photo}: ${p.name}`} onClick={() => setPhotoFor(p)}>
-                              <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
-                            </button>
-                          ) : (
-                            <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
-                          )}
-                          <span>
-                            <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
-                          </span>
-                        </span>
-                      </td>
-                      <td className="muted">{p.city}</td>
-                      <td className="num">
-                        <LevelCell p={p} onDone={list.reload} />
-                      </td>
-                      <td className="num">{p.tournaments}</td>
-                      <td className="num">{p.bookingNoShows || '—'}</td>
-                      <td>
-                        <span className={`chip ${p.hasAccount ? 'chip--ok' : 'chip--warn'}`}>{p.hasAccount ? t.m.hasAccount : t.m.noAccount}</span>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+    <div className="stack">
+      <section className="panel">
+        <div className="panel__head">
+          <h2>{t.m.clubPlayers}</h2>
+          <div className="row">
+            <input type="search" style={{ width: 200 }} placeholder={t.r.searchName} aria-label={t.r.searchName} value={q} onChange={(e) => setQ(e.target.value)} />
+            <button className="button button--primary button--sm" onClick={() => setAdding(true)}>
+              + {t.m.newPlayer}
+            </button>
           </div>
+        </div>
+        {code && <p className="note note--ok">{t.m.claimCode(code)}</p>}
+        <Async state={list}>
+          {(rows) => (
+            <div className="tablewrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t.t.player}</th>
+                    <th>{t.common.city}</th>
+                    <th className="num">{t.t.rating}</th>
+                    <th className="num">{t.p.tournaments}</th>
+                    <th className="num">{t.m.noShows}</th>
+                    <th>{t.m.account}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows
+                    .filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()))
+                    .map((p) => (
+                      <tr key={p.id}>
+                        <td>
+                          <span className="withava">
+                            {p.addedByClub && !p.hasAccount ? (
+                              <button type="button" className="linkbtn" title={t.acc.photo} aria-label={`${t.acc.photo}: ${p.name}`} onClick={() => setPhotoFor(p)}>
+                                <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
+                              </button>
+                            ) : (
+                              <Avatar name={p.name} photoUrl={p.photoUrl} size={28} />
+                            )}
+                            <span>
+                              <Link to={`/players/${p.id}`}>{p.name}</Link> <span className="muted small">{p.birthYear}</span>
+                            </span>
+                          </span>
+                        </td>
+                        <td className="muted">{p.city}</td>
+                        <td className="num">
+                          <LevelCell p={p} onDone={list.reload} />
+                        </td>
+                        <td className="num">{p.tournaments}</td>
+                        <td className="num">{p.bookingNoShows || '—'}</td>
+                        <td>
+                          <span className={`chip ${p.hasAccount ? 'chip--ok' : 'chip--warn'}`}>{p.hasAccount ? t.m.hasAccount : t.m.noAccount}</span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Async>
+        {photoFor && (
+          <Modal title={`${t.acc.photo}: ${photoFor.name}`} onClose={() => setPhotoFor(null)}>
+            <PhotoEditor
+              name={photoFor.name}
+              photoUrl={photoFor.photoUrl}
+              endpoint={`/clubs/${club.id}/players/${photoFor.id}/photo`}
+              onChange={(url) => {
+                setPhotoFor({ ...photoFor, photoUrl: url })
+                list.reload()
+              }}
+            />
+          </Modal>
         )}
-      </Async>
-      {photoFor && (
-        <Modal title={`${t.acc.photo}: ${photoFor.name}`} onClose={() => setPhotoFor(null)}>
-          <PhotoEditor
-            name={photoFor.name}
-            photoUrl={photoFor.photoUrl}
-            endpoint={`/clubs/${club.id}/players/${photoFor.id}/photo`}
-            onChange={(url) => {
-              setPhotoFor({ ...photoFor, photoUrl: url })
+        {adding && (
+          <NewPlayer
+            onClose={() => setAdding(false)}
+            onCreated={(c) => {
+              setAdding(false)
+              setCode(c)
               list.reload()
             }}
           />
-        </Modal>
-      )}
-      {adding && (
-        <NewPlayer
-          onClose={() => setAdding(false)}
-          onCreated={(c) => {
-            setAdding(false)
-            setCode(c)
-            list.reload()
-          }}
-        />
-      )}
-    </section>
+        )}
+      </section>
+      <ImportPlayers onImported={list.reload} />
+    </div>
   )
 }

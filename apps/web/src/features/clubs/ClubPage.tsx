@@ -62,7 +62,7 @@ export function ClubPage() {
         {(c) => {
           const hall = c.halls[0]
           const bookable = hall?.tables.some((x) => x.bookable && x.status === 'active')
-          const contacts = [c.contacts.telegram, c.contacts.email, c.contacts.telegramChannel, c.contacts.instagram].filter(Boolean)
+          const contacts = [c.contacts.phone, c.contacts.telegram, c.contacts.email, c.contacts.telegramChannel, c.contacts.instagram].filter(Boolean)
           return (
             <>
               <header className="pagehead">

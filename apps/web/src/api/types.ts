@@ -309,7 +309,7 @@ export type ClubDetail = {
   city: string
   citySlug: string
   status: string
-  contacts: { telegram: string | null; email: string | null; telegramChannel: string | null; instagram: string | null }
+  contacts: { telegram: string | null; email: string | null; phone: string | null; telegramChannel: string | null; instagram: string | null }
   halls: Hall[]
   upcomingTournaments: ClubTournamentBrief[]
   pastTournaments: ClubTournamentBrief[]

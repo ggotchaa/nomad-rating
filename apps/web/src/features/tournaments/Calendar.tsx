@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { intlTag, locale } from '../../i18n/locale.ts'
 import { formatTime, localDate } from '../../i18n/format.ts'
@@ -96,38 +96,35 @@ const cards = (rows: Card[], past = false) => (
   </div>
 )
 
-/**
- * «Все» (the default) shows the whole picture at once: finished above, running in the middle,
- * upcoming below, and the page scrolls to the «now» line on open.
- */
+/** «Все» (the default): running and upcoming; finished ones fold out above the «now» line on demand. */
 function AllView({ rows }: { rows: Card[] }) {
-  const nowRef = useRef<HTMLDivElement>(null)
+  const [showPast, setShowPast] = useState(false)
   const past = new Set(['finished', 'finished_early', 'cancelled'])
   const finished = rows.filter((x) => past.has(x.status))
   const live = rows.filter((x) => x.status === 'running')
   const upcoming = rows.filter((x) => !past.has(x.status) && x.status !== 'running')
-  useEffect(() => {
-    if (!finished.length) return
-    const el = nowRef.current
-    if (!el) return
-    const top = el.getBoundingClientRect().top + window.scrollY - 90
-    window.scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
-  }, [rows])
   if (!rows.length) return <p className="empty">{t.t.empty}</p>
   return (
     <>
       {finished.length > 0 && (
+        <div>
+          <button className="button button--sm" aria-expanded={showPast} onClick={() => setShowPast(!showPast)}>
+            {showPast ? t.t.hidePast : t.t.showPast(finished.length)}
+          </button>
+        </div>
+      )}
+      {showPast && finished.length > 0 && (
         <section className="stack">
           <h2 className="muted">{t.t.finished}</h2>
           {cards(finished.slice().reverse(), true)}
         </section>
       )}
-      <div className="row row--between" ref={nowRef} style={{ scrollMarginTop: 90 }}>
+      <div className="row row--between">
         <h2>
           <span className="dot" style={{ display: 'inline-block', marginRight: 8, color: 'var(--accent)' }} />
           {t.t.nowLine}
         </h2>
-        <span className="small muted">{t.t.allHint}</span>
+        {showPast && <span className="small muted">{t.t.allHint}</span>}
       </div>
       {live.length > 0 && cards(live)}
       {upcoming.length > 0 && (

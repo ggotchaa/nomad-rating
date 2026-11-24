@@ -45,9 +45,8 @@ import {
 } from './features/account/AccountFlows.tsx'
 import { RttfClaim } from './features/account/Rttf.tsx'
 import { RegisterClub } from './features/clubs/RegisterClub.tsx'
-import { ClubSettings } from './features/manage/ClubSettings.tsx'
+import { ClubAppeals, ClubSettings } from './features/manage/ClubSettings.tsx'
 import { Helpers, ManageAudit } from './features/manage/Helpers.tsx'
-import { ImportPlayers } from './features/manage/ImportPlayers.tsx'
 import { Finance } from './features/manage/Finance.tsx'
 import { ClubToday } from './features/manage/ClubDesk.tsx'
 import { AdminLayout } from './features/admin/AdminLayout.tsx'
@@ -199,11 +198,12 @@ const router = createBrowserRouter([
             ),
           },
           { path: 'club', element: <ClubSettings /> },
+          { path: 'import', element: <Navigate to="../players" replace /> },
           {
-            path: 'import',
+            path: 'appeals',
             element: (
-              <Guard right="players">
-                <ImportPlayers />
+              <Guard right="organizer">
+                <ClubAppeals />
               </Guard>
             ),
           },

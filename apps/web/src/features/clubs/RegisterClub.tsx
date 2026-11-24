@@ -29,7 +29,9 @@ export function RegisterClub() {
                 cityId: Number(f.get('cityId')),
                 description: f.get('description'),
                 ...(f.get('contactEmail') ? { contactEmail: f.get('contactEmail') } : {}),
-                hall: { name: f.get('hallName'), address: f.get('address') },
+                contactPhone: f.get('contactPhone'),
+                tables: Number(f.get('tables')),
+                hall: { name: t.misc.hallDefault, address: f.get('address') },
               },
             })
             setMe(await api<Me>('/auth/me'))
@@ -52,11 +54,14 @@ export function RegisterClub() {
         <Field label={t.a.email}>
           <input name="contactEmail" type="email" />
         </Field>
-        <Field label={t.clubreg.hallName}>
-          <input name="hallName" defaultValue={t.misc.hallDefault} required />
+        <Field label={t.clubreg.phone}>
+          <input name="contactPhone" type="tel" autoComplete="tel" placeholder="+7 701 123 45 67" pattern="[\d\s\+\(\)\-]{10,20}" required />
         </Field>
         <Field label={t.clubreg.address}>
           <input name="address" minLength={3} required />
+        </Field>
+        <Field label={t.clubreg.tables}>
+          <input name="tables" type="number" min={1} max={100} required />
         </Field>
         <Field label={t.m.description} wide>
           <textarea name="description" rows={4} />

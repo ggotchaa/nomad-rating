@@ -15,8 +15,18 @@ export function Clubs() {
   return (
     <main className="page">
       <header className="pagehead">
-        <h1>{t.c.title}</h1>
-        <p>{t.c.lead}</p>
+        <div className="row row--between" style={{ alignItems: 'flex-start' }}>
+          <div className="pagehead">
+            <h1>{t.c.title}</h1>
+            <p>{t.c.lead}</p>
+          </div>
+          <div className="stack" style={{ gap: 6, justifyItems: 'start' }}>
+            <span className="small muted">{t.c.hasClub}</span>
+            <Link className="button button--sm" to="/clubs/new">
+              + {t.c.addClub}
+            </Link>
+          </div>
+        </div>
         <div className="filters">
           <select aria-label={t.common.city} value={where} onChange={(e) => setWhere(e.target.value)}>
             <option value="">{t.common.anyCity}</option>

@@ -8,7 +8,7 @@ import { db, json } from '../db/index.ts'
 import { audit } from '../audit.ts'
 import { clubAccess, requireClubRight, requireUser } from '../auth/access.ts'
 import { badRequest, forbidden, handler, notFound } from '../http/errors.ts'
-import { intParam, parseBody } from '../http/validate.ts'
+import { intParam, parseBody, phone } from '../http/validate.ts'
 import { bus } from '../realtime/bus.ts'
 
 export const clubManageRouter = Router()
@@ -29,10 +29,12 @@ const newClub = z.object({
   description: z.string().max(5000).default(''),
   contactEmail: z.email().optional(),
   contactTelegram: z.string().max(100).optional(),
+  contactPhone: phone,
+  tables: z.number().int().min(1).max(100),
   hall: z.object({ name: z.string().trim().min(1).max(120), address: z.string().trim().min(3).max(300) }),
 })
 
-/** Any signed-in user can register a club; it starts as a draft with one hall. */
+/** Any signed-in user can register a club; it is created with one hall and its tables and goes straight to review. */
 clubManageRouter.post(
   '/',
   handler(async (req, res) => {
@@ -52,17 +54,24 @@ clubManageRouter.post(
           owner_user_id: user.id,
           contact_email: body.contactEmail ?? null,
           contact_telegram: body.contactTelegram ?? null,
+          contact_phone: body.contactPhone,
         })
         .returning(['id', 'slug'])
         .executeTakeFirstOrThrow()
       await trx.insertInto('club_members').values({ club_id: c.id, user_id: user.id, role: 'organizer' }).execute()
-      await trx
+      const hall = await trx
         .insertInto('halls')
         .values({ club_id: c.id, name: body.hall.name, address: body.hall.address, timezone: city.timezone, opening_hours: json(DEFAULT_HOURS), is_default: true })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+      await trx
+        .insertInto('hall_tables')
+        .values(Array.from({ length: body.tables }, (_, i) => ({ hall_id: hall.id, number: i + 1, x: 2 + (i % 4) * 4, y: 2 + Math.floor(i / 4) * 3 })))
         .execute()
       await audit({ actorUserId: user.id, clubId: c.id, entity: 'club', entityId: c.id, action: 'register', after: body }, trx)
       return c
     })
+    await setClubStatus(club.id, 'review', user.id, null)
     await db.updateTable('sessions').set({ active_club_id: club.id }).where('id', '=', user.sessionId).execute()
     res.status(201).json(club)
   }),
@@ -97,6 +106,7 @@ clubManageRouter.get(
       commentForPlayers: club.comment_for_players,
       contactEmail: club.contact_email,
       contactTelegram: club.contact_telegram,
+      contactPhone: club.contact_phone,
       telegramUrl: club.telegram_url,
       instagramUrl: club.instagram_url,
       tournamentDefaults: club.tournament_defaults,

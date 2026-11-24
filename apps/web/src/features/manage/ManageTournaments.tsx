@@ -11,55 +11,59 @@ import type { TournamentInput } from '../conduct/TournamentForm.tsx'
 import { RegistrationQr } from '../tournaments/ShareBox.tsx'
 import { Structure } from '../tournaments/Structure.tsx'
 import { PlayerSearch, useClub } from './ManageLayout.tsx'
+import { TournamentDefaults } from './ClubSettings.tsx'
 import type { ClubDefaults } from './ClubSettings.tsx'
 import { ask } from '../../ui/dialogs.tsx'
 
 export function ManageTournaments() {
-  const { club } = useClub()
+  const { club, can } = useClub()
   const list = useApi<ManageTournament[]>(`/clubs/${club.id}/tournaments`)
   return (
-    <section className="panel">
-      <div className="panel__head">
-        <h2>{t.m.tournaments}</h2>
-        <Link className="button button--primary button--sm" to="new">
-          + {t.m.newTournament}
-        </Link>
-      </div>
-      <Async state={list}>
-        {(rows) => (
-          <div className="tablewrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t.m.date}</th>
-                  <th>{t.m.name}</th>
-                  <th>{t.misc.status}</th>
-                  <th className="num">{t.t.participants}</th>
-                  <th className="num">{t.t.fee}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((x) => (
-                  <tr key={x.id}>
-                    <td className="mono small muted">{formatDateTime(x.starts_at)}</td>
-                    <td>
-                      <Link to={String(x.id)}>{x.title}</Link>
-                    </td>
-                    <td>
-                      <StatusChip status={x.status} />
-                    </td>
-                    <td className="num">
-                      {x.taken} / {x.max_participants}
-                    </td>
-                    <td className="num">{formatTenge(x.fee)}</td>
+    <div className="stack">
+      <section className="panel">
+        <div className="panel__head">
+          <h2>{t.m.tournaments}</h2>
+          <Link className="button button--primary button--sm" to="new">
+            + {t.m.newTournament}
+          </Link>
+        </div>
+        <Async state={list}>
+          {(rows) => (
+            <div className="tablewrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t.m.date}</th>
+                    <th>{t.m.name}</th>
+                    <th>{t.misc.status}</th>
+                    <th className="num">{t.t.participants}</th>
+                    <th className="num">{t.t.fee}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Async>
-    </section>
+                </thead>
+                <tbody>
+                  {rows.map((x) => (
+                    <tr key={x.id}>
+                      <td className="mono small muted">{formatDateTime(x.starts_at)}</td>
+                      <td>
+                        <Link to={String(x.id)}>{x.title}</Link>
+                      </td>
+                      <td>
+                        <StatusChip status={x.status} />
+                      </td>
+                      <td className="num">
+                        {x.taken} / {x.max_participants}
+                      </td>
+                      <td className="num">{formatTenge(x.fee)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Async>
+      </section>
+      {can('club') && <TournamentDefaults />}
+    </div>
   )
 }
 

@@ -10,7 +10,7 @@ import { audit } from '../audit.ts'
 import { requireClubRight, requireUser } from '../auth/access.ts'
 import { badRequest, conflict, handler, notFound } from '../http/errors.ts'
 import { IMAGE_MAX_BYTES, IMAGE_TYPES, saveFile } from '../storage/index.ts'
-import { intParam, parseBody } from '../http/validate.ts'
+import { intParam, parseBody, phone } from '../http/validate.ts'
 import { playerName } from './players.ts'
 import { notify } from '../notify/index.ts'
 import { moveBooking, moveOptions } from '../booking/resolve.ts'
@@ -144,7 +144,7 @@ clubsRouter.get(
       coverUrl: club.cover_url,
       status: club.status,
       commentForPlayers: club.comment_for_players,
-      contacts: { telegram: club.contact_telegram, email: club.contact_email, telegramChannel: club.telegram_url, instagram: club.instagram_url },
+      contacts: { telegram: club.contact_telegram, email: club.contact_email, phone: club.contact_phone, telegramChannel: club.telegram_url, instagram: club.instagram_url },
       hallPaymentEnabled: club.hall_payment_enabled,
       halls: await Promise.all(halls.map((h) => hallView(h.id))),
       upcomingTournaments: tournaments.filter((t) => t.starts_at >= now && t.status !== 'cancelled').reverse(),
@@ -167,6 +167,7 @@ const clubUpdate = z.object({
   instagramUrl: z.string().max(200).nullable().optional(),
   contactEmail: z.email().nullable().optional(),
   contactTelegram: z.string().max(100).nullable().optional(),
+  contactPhone: phone.nullable().optional(),
   tournamentDefaults: z.record(z.string(), z.unknown()).optional(),
   commentForPlayers: z.string().max(5000).optional(),
 })
@@ -188,6 +189,7 @@ clubsRouter.patch(
       ...(body.instagramUrl !== undefined && { instagram_url: body.instagramUrl }),
       ...(body.contactEmail !== undefined && { contact_email: body.contactEmail }),
       ...(body.contactTelegram !== undefined && { contact_telegram: body.contactTelegram }),
+      ...(body.contactPhone !== undefined && { contact_phone: body.contactPhone }),
       ...(body.tournamentDefaults !== undefined && { tournament_defaults: json(body.tournamentDefaults) }),
       ...(body.commentForPlayers !== undefined && { comment_for_players: body.commentForPlayers }),
     }

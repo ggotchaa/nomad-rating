@@ -126,6 +126,7 @@ export interface ClubsTable {
   instagram_url: string | null
   contact_email: string | null
   contact_telegram: string | null
+  contact_phone: ColumnType<string | null, string | null | undefined, string | null>
   requisites: JsonDefault<Record<string, string>>
   commission: Json<ClubCommission | null> | null
   hall_payment_enabled: Generated<boolean>

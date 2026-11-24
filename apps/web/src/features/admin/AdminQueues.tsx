@@ -10,7 +10,7 @@ import { ask } from '../../ui/dialogs.tsx'
 
 const useReloadOverview = () => useOutletContext<{ reloadOverview: () => void }>().reloadOverview
 
-type AdminClub = { id: number; slug: string; name: string; description: string; status: string; status_reason: string | null; requisites: Record<string, string>; contact_email: string | null; city: string; owner: string; created_at: string; commission: Commission | null; documents: { id: number; name: string; url: string }[] }
+type AdminClub = { id: number; slug: string; name: string; description: string; status: string; status_reason: string | null; requisites: Record<string, string>; contact_email: string | null; contact_phone: string | null; city: string; owner: string; created_at: string; commission: Commission | null; documents: { id: number; name: string; url: string }[] }
 
 type Rate = { percent: number; minimum: number | null }
 type Commission = Rate | { tournament?: Rate | null; booking?: Rate | null }
@@ -42,7 +42,7 @@ export function AdminClubs() {
                 <section key={c.id} className="panel stack">
                   <h2>{c.name}</h2>
                   <p className="small muted">
-                    {c.city} · {t.admin.owner}: {c.owner} · {formatDateTime(c.created_at)}
+                    {c.city} · {t.admin.owner}: {c.owner}{c.contact_phone && ` · ${c.contact_phone}`} · {formatDateTime(c.created_at)}
                   </p>
                   <p className="small">{c.description}</p>
                   <p className="small mono">{Object.entries(c.requisites).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—'}</p>

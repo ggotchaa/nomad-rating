@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client.ts'
 import { useApi } from '../../app/hooks.ts'
 import { t } from '../../i18n/index.ts'
-import { Async, Field } from '../../ui/kit.tsx'
+import { Field } from '../../ui/kit.tsx'
 import { useAction } from '../account/AccountFlows.tsx'
 import { useClub } from './ManageLayout.tsx'
 
@@ -12,7 +12,7 @@ type Created = { id: number; name: string; claimCode: string }
 
 const errorName = (code: string) => t.imp.errorNames[code] ?? t.errors[code.split(':')[0]!] ?? code
 
-export function ImportPlayers() {
+export function ImportPlayers({ onImported }: { onImported?: () => void }) {
   const { club } = useClub()
   const [rows, setRows] = useState<PreviewRow[] | null>(null)
   const [skip, setSkip] = useState<Set<number>>(new Set())
@@ -101,6 +101,7 @@ export function ImportPlayers() {
                 setCreated(r.created)
                 setRows(null)
                 codes.reload()
+                onImported?.()
                 return t.imp.done(r.created.length)
               })
             }
@@ -110,25 +111,23 @@ export function ImportPlayers() {
         </section>
       )}
       {created && <p className="note note--ok">{t.imp.done(created.length)}</p>}
-      <section className="panel stack">
-        <h2>{t.imp.codes}</h2>
-        <Async state={codes}>
-          {(list) => (
-            <div className="tablewrap">
-              <table className="table">
-                <tbody>
-                  {list.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.name}</td>
-                      <td className="mono">{p.claimCode}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Async>
-      </section>
+      {codes.data && codes.data.length > 0 && (
+        <section className="panel stack">
+          <h2>{t.imp.codes}</h2>
+          <div className="tablewrap">
+            <table className="table">
+              <tbody>
+                {codes.data.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td className="mono">{p.claimCode}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

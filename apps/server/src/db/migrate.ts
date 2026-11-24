@@ -18,6 +18,7 @@ import * as m0250 from './migrations/0250_team_start_level.ts'
 import * as m0300 from './migrations/0300_admin_lifecycle_flags.ts'
 import * as m0400 from './migrations/0400_brackets_draft.ts'
 import * as m0430 from './migrations/0430_profile_claim_disputes.ts'
+import * as m0440 from './migrations/0440_club_contact_phone.ts'
 
 // Migrations are listed explicitly (works the same from sources and from a bundle).
 const migrations: Record<string, Migration> = {
@@ -38,6 +39,7 @@ const migrations: Record<string, Migration> = {
   '0300_admin_lifecycle_flags': m0300,
   '0400_brackets_draft': m0400,
   '0430_profile_claim_disputes': m0430,
+  '0440_club_contact_phone': m0440,
 }
 
 const provider: MigrationProvider = { getMigrations: async () => migrations }

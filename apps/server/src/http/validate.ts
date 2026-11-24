@@ -17,3 +17,12 @@ export const pageQuery = {
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 }
+
+/** «8 701 …» and «+7 (701) …» both become «+7701…». */
+export const phone = z
+  .string()
+  .transform((v) => {
+    const d = v.replace(/\D/g, '')
+    return `+${d.length === 11 && d.startsWith('8') ? `7${d.slice(1)}` : d}`
+  })
+  .pipe(z.string().regex(/^\+\d{10,15}$/, 'phone'))
