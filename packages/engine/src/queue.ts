@@ -8,28 +8,21 @@ export type QueueInput = {
   freeTables: readonly number[]
   /** Players now called or playing. */
   busy: ReadonlySet<number>
-  /** Finish time of each player's last match. */
-  lastFinished: ReadonlyMap<number, Date>
-  restMinutes: number
-  now: Date
 }
 
-export type QueueItem = { matchId: number; tableId: number | null; waitReason: 'busy' | 'rest' | 'no_table' | null; readyAt: Date | null }
+export type QueueItem = { matchId: number; tableId: number | null; waitReason: 'busy' | 'no_table' | null }
 
-/** Queue in match order; a match waits while a player is busy or resting, so later matches may go first. */
+/** Queue in match order; a match waits only while a player is busy or no table is free, so later matches may go first. */
 export function planQueue(input: QueueInput): QueueItem[] {
   const tables = [...input.freeTables]
   const taken = new Set<number>()
-  const restMs = input.restMinutes * 60000
   return [...input.matches]
     .sort((a, b) => a.order - b.order)
     .map((m): QueueItem => {
-      if (m.players.some((p) => input.busy.has(p) || taken.has(p))) return { matchId: m.id, tableId: null, waitReason: 'busy', readyAt: null }
-      const readyAt = Math.max(0, ...m.players.map((p) => (input.lastFinished.get(p)?.getTime() ?? 0) + restMs))
-      if (readyAt > input.now.getTime()) return { matchId: m.id, tableId: null, waitReason: 'rest', readyAt: new Date(readyAt) }
+      if (m.players.some((p) => input.busy.has(p) || taken.has(p))) return { matchId: m.id, tableId: null, waitReason: 'busy' }
       const table = tables.shift()
-      if (table == null) return { matchId: m.id, tableId: null, waitReason: 'no_table', readyAt: null }
+      if (table == null) return { matchId: m.id, tableId: null, waitReason: 'no_table' }
       for (const p of m.players) taken.add(p)
-      return { matchId: m.id, tableId: table, waitReason: null, readyAt: null }
+      return { matchId: m.id, tableId: table, waitReason: null }
     })
 }

@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from '../../api/client.ts'
-import type { ManageTournament, Participant, TournamentDetail } from '../../api/types.ts'
+import type { ManageTournament, Participant, TournamentCategory, TournamentDetail } from '../../api/types.ts'
 import { useApi, useRoom } from '../../app/hooks.ts'
 import { errorText, t } from '../../i18n/index.ts'
-import { formatDateTime, formatDuration, formatTenge } from '../../i18n/format.ts'
+import { formatDateTime, formatDuration, formatTenge, formatTime, restrictionLabel } from '../../i18n/format.ts'
 import { Async, StatusChip } from '../../ui/kit.tsx'
 import { TournamentForm } from '../conduct/TournamentForm.tsx'
 import type { TournamentInput } from '../conduct/TournamentForm.tsx'
 import { RegistrationQr } from '../tournaments/ShareBox.tsx'
 import { Structure } from '../tournaments/Structure.tsx'
 import { PlayerSearch, useClub } from './ManageLayout.tsx'
+import { NewPlayer } from './ManagePlayers.tsx'
 import { TournamentDefaults } from './ClubSettings.tsx'
 import type { ClubDefaults } from './ClubSettings.tsx'
 import { ask } from '../../ui/dialogs.tsx'
@@ -23,9 +24,13 @@ export function ManageTournaments() {
       <section className="panel">
         <div className="panel__head">
           <h2>{t.m.tournaments}</h2>
-          <Link className="button button--primary button--sm" to="new">
-            + {t.m.newTournament}
-          </Link>
+          {club.status === 'blocked' ? (
+            <span className="chip chip--bad">{t.errors['club.blocked']}</span>
+          ) : (
+            <Link className="button button--primary button--sm" to="new">
+              + {t.m.newTournament}
+            </Link>
+          )}
         </div>
         <Async state={list}>
           {(rows) => (
@@ -200,6 +205,75 @@ function Entries({
   )
 }
 
+/** Categories of the tournament day: the main tournament is the first one, each category is run on its own page. */
+function Categories({ d, clubId }: { d: TournamentDetail; clubId: number }) {
+  const navigate = useNavigate()
+  const [adding, setAdding] = useState(false)
+  const list: TournamentCategory[] = d.categories.length
+    ? d.categories
+    : [{ id: d.id, slug: d.slug, name: d.categoryName, isMain: true, startsAt: d.startsAt, status: d.status, type: d.type, restrictions: d.restrictions, fee: d.fee, maxParticipants: d.maxParticipants, taken: d.taken, myStatus: null }]
+  const open = ['draft', 'published', 'registration_closed', 'running'].includes(d.status)
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>
+          {t.cat.title} · {list.length}
+        </h2>
+        {open && (
+          <button className="button button--sm" onClick={() => setAdding(!adding)}>
+            {adding ? t.common.close : `+ ${t.cat.add}`}
+          </button>
+        )}
+      </div>
+      <div className="tablewrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t.cat.name}</th>
+              <th>{t.cat.start}</th>
+              <th>{t.cat.limits}</th>
+              <th>{t.misc.status}</th>
+              <th className="num">{t.t.participants}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((c) => (
+              <tr key={c.id}>
+                <td>
+                  {c.id === d.id ? (
+                    <>
+                      {c.name ?? t.cat.main} <span className="muted small">· {t.cat.thisPage}</span>
+                    </>
+                  ) : (
+                    <Link to={`/manage/tournaments/${c.id}`}>{c.name ?? t.cat.main}</Link>
+                  )}
+                </td>
+                <td className="mono">{formatTime(c.startsAt)}</td>
+                <td className="muted small">{restrictionLabel(c.restrictions) ?? t.t.noLimits}</td>
+                <td>
+                  <StatusChip status={c.status} />
+                </td>
+                <td className="num">
+                  {c.taken} / {c.maxParticipants}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {adding && (
+        <TournamentForm
+          clubId={clubId}
+          hallId={d.hall.id}
+          parent={{ id: d.id, startsAt: d.startsAt }}
+          initial={{ type: d.type, maxParticipants: d.maxParticipants, fee: d.fee, startsAt: d.startsAt }}
+          onSaved={(id) => navigate(`/manage/tournaments/${id}`)}
+        />
+      )}
+    </section>
+  )
+}
+
 /** Manager console of one tournament: basics and registration on one tab, the draw on the other. */
 export function ManageTournamentPage() {
   const { id } = useParams()
@@ -209,6 +283,7 @@ export function ManageTournamentPage() {
   useRoom(`tournament:${id}`, state.reload)
   const [tab, setTab] = useState<'info' | 'tournament'>('info')
   const [editing, setEditing] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
   const run = async (path: string, json?: unknown, ok?: string) => {
@@ -230,9 +305,15 @@ export function ManageTournamentPage() {
         return (
           <>
             <section className="panel">
-              <Link className="crumb" to="..">
-                ← {t.m.tournaments}
-              </Link>
+              {d.parentId && d.event ? (
+                <Link className="crumb" to={`/manage/tournaments/${d.event.id}`}>
+                  ← {t.cat.ofEvent(d.event.title)}
+                </Link>
+              ) : (
+                <Link className="crumb" to="..">
+                  ← {t.m.tournaments}
+                </Link>
+              )}
               <div className="panel__head">
                 <h2>{d.title}</h2>
                 <div className="row">
@@ -347,8 +428,16 @@ export function ManageTournamentPage() {
                   </div>
                 </section>
                 {editing && (
-                  <TournamentForm clubId={club.id} hallId={d.hall.id} initial={d} onSaved={() => state.reload()} />
+                  <TournamentForm
+                    clubId={club.id}
+                    hallId={d.hall.id}
+                    initial={d}
+                    parent={d.parentId && d.event ? { id: d.event.id, startsAt: d.event.startsAt } : undefined}
+                    categories={!d.parentId && d.categories.length > 1}
+                    onSaved={() => state.reload()}
+                  />
                 )}
+                {!d.parentId && <Categories d={d} clubId={club.id} />}
 
                 <section className="panel">
                   <div className="panel__head">
@@ -357,12 +446,26 @@ export function ManageTournamentPage() {
                     </h2>
                   </div>
                   {(d.status === 'published' || d.status === 'registration_closed') && (
-                    <div className="stack" style={{ maxWidth: 420 }}>
-                      <h3>{t.m.addManually}</h3>
+                    <div className="stack" style={{ maxWidth: 520 }}>
+                      <div className="row row--between">
+                        <h3>{t.m.addManually}</h3>
+                        <button className="button button--sm" onClick={() => setCreating(true)}>
+                          + {t.m.createAndAdd}
+                        </button>
+                      </div>
                       <PlayerSearch
                         onPick={(p) => void run(`/tournaments/${d.id}/entries/manual`, { playerId: p.id })}
                       />
                     </div>
+                  )}
+                  {creating && (
+                    <NewPlayer
+                      onClose={() => setCreating(false)}
+                      onCreated={(code, id) => {
+                        setCreating(false)
+                        void run(`/tournaments/${d.id}/entries/manual`, { playerId: id }, t.m.claimCode(code))
+                      }}
+                    />
                   )}
                   <Entries d={d} run={run} />
                 </section>

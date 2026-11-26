@@ -47,8 +47,9 @@ export const formatTenge = (tiyn: number, locale = intlTag) =>
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`)
 
-export function restrictionLabel(r: { ratingMin?: number | null; ratingMax?: number | null; gender?: 'm' | 'f' | null }): string | null {
+export function restrictionLabel(r: { ratingMin?: number | null; ratingMax?: number | null; gender?: 'm' | 'f' | null; ageMin?: number | null; ageMax?: number | null }): string | null {
   const parts: string[] = []
+  if (r.ageMin != null || r.ageMax != null) parts.push(t.cat.age(r.ageMin ?? null, r.ageMax ?? null))
   if (r.ratingMin != null && r.ratingMax != null) parts.push(`${r.ratingMin}–${r.ratingMax}`)
   else if (r.ratingMax != null) parts.push(`${t.common.upTo} ${r.ratingMax}`)
   else if (r.ratingMin != null) parts.push(`${t.common.from} ${r.ratingMin}`)

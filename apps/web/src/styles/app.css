@@ -2184,6 +2184,14 @@
   left: auto;
   padding: 12px 18px;
 }
+.callpop--mini.button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.callpop--mini.button--primary:hover {
+  background: var(--accent-hover);
+}
 .callpop__table {
   font-family: var(--font-display);
   font-size: 32px;

@@ -30,7 +30,7 @@ export type ConductMatch = {
   disputed: boolean
 }
 
-export type QueueMatch = ConductMatch & { suggestedTableId: number | null; suggestedTable: number | null; waitReason: 'busy' | 'rest' | 'no_table' | null; readyAt: string | null }
+export type QueueMatch = ConductMatch & { suggestedTableId: number | null; suggestedTable: number | null; waitReason: 'busy' | 'no_table' | null }
 
 export type ConductEntry = { entryId: number; playerId: number; name: string; status: string; seed: number | null; checkedInAt: string | null; members: { playerId: number; name: string; present: boolean }[] | null; rating: number; calibrating: boolean }
 
@@ -44,7 +44,6 @@ export type ConductState = {
     startsAt: string
     settings: { scoreEntry?: string; checkinWindowMinutes?: number; requireCheckin?: boolean }
     match: { winsNeeded: number; pointsToWin: number; gamePoints: 'none' | 'optional' | 'required' }
-    restMinutes: number
     minParticipants: number
     tableIds: number[]
     underfillWarnedAt: string | null

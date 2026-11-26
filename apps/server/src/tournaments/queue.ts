@@ -4,6 +4,7 @@ import { matchRulesFor, planQueue } from '@nomad/engine'
 import { db } from '../db/index.ts'
 import type { CallResponses, Tournament } from '../db/types.ts'
 import { playerName } from '../modules/players.ts'
+import { entryPlayers, siblingActivity } from './busy.ts'
 
 export type MatchSide = { entryId: number; playerId: number; userId: number | null; name: string; rating: number | null; calibrating: boolean; startLevel: number }
 
@@ -56,28 +57,20 @@ async function context(t: Tournament) {
   return { tables, entries, memberName, matches, tableNumber, view }
 }
 
-export async function conductState(t: Tournament, now = new Date()) {
+export async function conductState(t: Tournament) {
   const { tables, entries, memberName, matches, tableNumber, view } = await context(t)
   const active = matches.filter((m) => m.status === 'called' || m.status === 'playing')
   const busy = new Set(active.flatMap((m) => [m.home_entry_id!, m.away_entry_id!]))
-  const lastFinished = new Map<number, Date>()
-  for (const m of matches) {
-    if (!m.finished_at || m.result_type === 'bye') continue
-    for (const id of [m.home_entry_id, m.away_entry_id]) {
-      if (id == null) continue
-      const prev = lastFinished.get(id)
-      if (!prev || prev < m.finished_at) lastFinished.set(id, m.finished_at)
-    }
-  }
   const usedTables = new Set(active.map((m) => m.table_id))
+  // Other categories of the same day share the tables and may share players.
+  const sibling = await siblingActivity(db, t)
+  for (const id of sibling.tables) usedTables.add(id)
+  for (const e of entries) if (entryPlayers(e).some((p) => sibling.players.has(p))) busy.add(e.id)
   const ready = matches.filter((m) => m.status === 'scheduled' && m.home_entry_id && m.away_entry_id)
   const plan = planQueue({
     matches: ready.map((m) => ({ id: m.id, players: [m.home_entry_id!, m.away_entry_id!], order: m.round * 100000 + m.number })),
     freeTables: tables.filter((x) => !usedTables.has(x.id)).map((x) => x.id),
     busy,
-    lastFinished,
-    restMinutes: t.settings.restMinutes ?? t.format.restMinutes ?? 0,
-    now,
   })
   const byId = new Map(matches.map((m) => [m.id, m]))
   return {
@@ -85,7 +78,7 @@ export async function conductState(t: Tournament, now = new Date()) {
       const m = active.find((a) => a.table_id === x.id)
       return { id: x.id, number: x.number, match: m ? view(m) : null }
     }),
-    queue: plan.map((p) => ({ ...view(byId.get(p.matchId)!), suggestedTableId: p.tableId, suggestedTable: p.tableId ? tableNumber.get(p.tableId) : null, waitReason: p.waitReason, readyAt: p.readyAt })),
+    queue: plan.map((p) => ({ ...view(byId.get(p.matchId)!), suggestedTableId: p.tableId, suggestedTable: p.tableId ? tableNumber.get(p.tableId) : null, waitReason: p.waitReason })),
     attention: matches.filter((m) => m.disputed || m.reported_score).map(view),
     recent: matches
       .filter((m) => m.finished_at && m.result_type !== 'bye')

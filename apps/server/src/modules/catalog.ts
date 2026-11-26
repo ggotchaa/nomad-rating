@@ -54,6 +54,7 @@ catalogRouter.get(
         .innerJoin('clubs as c', 'c.id', 't.club_id')
         .innerJoin('cities as ci', 'ci.id', 'c.city_id')
         .where('t.archived_at', 'is', null)
+        .where('t.parent_id', 'is', null)
         .select([
           't.id',
           't.slug',

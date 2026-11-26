@@ -70,6 +70,7 @@ export type TournamentInput = {
   type?: string
   template?: string
   title?: string
+  categoryName?: string | null
   startsAt?: string
   registrationClosesAt?: string | null
   maxParticipants?: number
@@ -544,11 +545,17 @@ export function TournamentForm({
   hallId,
   initial,
   onSaved,
+  parent,
+  categories,
 }: {
   clubId: number
   hallId: number
   initial?: TournamentInput
   onSaved: (id: number) => void
+  /** Category of this main tournament: same day, the title is the category name. */
+  parent?: { id: number; startsAt: string }
+  /** The main tournament has categories: ask for the name of its own category. */
+  categories?: boolean
 }) {
   const editing = initial?.id != null
   const formRef = useRef<HTMLFormElement>(null)
@@ -693,6 +700,8 @@ export function TournamentForm({
       const body = {
         ...(!editing && { type }),
         title: f.get('title'),
+        ...(categories && { categoryName: String(f.get('categoryName') ?? '').trim() || null }),
+        ...(parent && !editing && { parentId: parent.id }),
         startsAt: startsAt.toISOString(),
         registrationClosesAt: new Date(startsAt.getTime() - closeHours * 3600000).toISOString(),
         ...(effective ? { format: effective } : { template, templateParams: { match: matchParams } }),
@@ -715,7 +724,6 @@ export function TournamentForm({
         settings: {
           scoreEntry: f.get('scoreEntry'),
           checkinWindowMinutes: num('checkinWindowMinutes') ?? 60,
-          restMinutes: num('restMinutes') ?? 10,
           sameDayRegistration: f.get('sameDayRegistration') === 'on',
           requireCheckin: f.get('requireCheckin') === 'on',
           waitlist,
@@ -791,23 +799,37 @@ export function TournamentForm({
         {/* 1 — basics */}
         <div className="tabpanel" data-step="basics" hidden={current !== 'basics'}>
           <div className="form form--cols">
-            <Field label={t.m.name} wide>
+            <Field label={parent ? t.cat.name : t.m.name} wide>
               <input
                 name="title"
                 required
-                minLength={3}
+                minLength={parent ? 2 : 3}
                 maxLength={150}
                 defaultValue={initial?.title}
-                placeholder={t.misc.tournamentPlaceholder}
+                placeholder={parent ? undefined : t.misc.tournamentPlaceholder}
               />
             </Field>
+            {categories && (
+              <Field label={t.cat.name} wide>
+                <input name="categoryName" maxLength={100} defaultValue={initial?.categoryName ?? ''} placeholder={t.cat.main} />
+                <span className="hint">{t.cat.nameHint}</span>
+              </Field>
+            )}
             <Field label={t.m.date}>
               <input
                 name="date"
                 type="date"
                 required
-                defaultValue={local ? local.date : localDate(new Date(Date.now() + 7 * 86400000))}
+                readOnly={Boolean(parent)}
+                defaultValue={
+                  parent
+                    ? utcToZoned(new Date(parent.startsAt), TZ).date
+                    : local
+                      ? local.date
+                      : localDate(new Date(Date.now() + 7 * 86400000))
+                }
               />
+              {parent && <span className="hint">{t.cat.sameDay}</span>}
             </Field>
             <Field label={t.m.time}>
               <input name="time" type="time" required defaultValue={local ? hhmm(local.minutes) : '11:00'} />
@@ -979,15 +1001,6 @@ export function TournamentForm({
                 max={2}
                 step={0.05}
                 defaultValue={initial?.ratingCoefficient ?? 1}
-              />
-            </Field>
-            <Field label={t.ctor.rest}>
-              <input
-                name="restMinutes"
-                type="number"
-                min={0}
-                max={30}
-                defaultValue={s.restMinutes ?? initial?.format?.restMinutes ?? 10}
               />
             </Field>
             <fieldset className="field--wide">

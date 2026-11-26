@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { planQueue } from './queue.ts'
 import { separateClubs } from './groups.ts'
 
-const now = new Date('2026-01-01T10:00:00Z')
-
 describe('match queue', () => {
-  it('skips matches of busy or resting players and lets later matches go first', () => {
+  it('skips matches of busy players and lets later matches go first', () => {
     const plan = planQueue({
       matches: [
         { id: 1, players: [1, 2], order: 1 },
@@ -16,18 +14,14 @@ describe('match queue', () => {
       ],
       freeTables: [101, 102],
       busy: new Set([2]),
-      lastFinished: new Map([[3, new Date(now.getTime() - 5 * 60000)]]),
-      restMinutes: 10,
-      now,
     })
     expect(plan.map((p) => [p.matchId, p.tableId, p.waitReason])).toEqual([
       [1, null, 'busy'],
-      [2, null, 'rest'],
-      [3, 101, null],
-      [4, 102, null],
+      [2, 101, null],
+      [3, 102, null],
+      [4, null, 'no_table'],
       [5, null, 'no_table'],
     ])
-    expect(plan[1]?.readyAt).toEqual(new Date(now.getTime() + 5 * 60000))
   })
 
   it('never puts one player on two tables', () => {
@@ -38,9 +32,6 @@ describe('match queue', () => {
       ],
       freeTables: [1, 2],
       busy: new Set(),
-      lastFinished: new Map(),
-      restMinutes: 0,
-      now,
     })
     expect(plan[1]).toMatchObject({ tableId: null, waitReason: 'busy' })
   })

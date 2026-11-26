@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../i18n/index.ts'
 
-type Request = { kind: 'confirm' | 'prompt'; text: string; initial: string; resolve: (v: string | null) => void }
+type Request = { kind: 'confirm' | 'prompt' | 'choose'; text: string; initial: string; options?: [string, string][]; resolve: (v: string | null) => void }
 
 let push: ((r: Request) => void) | null = null
 
-function open(kind: Request['kind'], text: string, initial = ''): Promise<string | null> {
+function open(kind: Request['kind'], text: string, initial = '', options?: [string, string][]): Promise<string | null> {
   return new Promise((resolve) => {
     if (!push) return resolve(null)
-    push({ kind, text, initial, resolve })
+    push({ kind, text, initial, options, resolve })
   })
 }
 
@@ -18,6 +18,8 @@ export const ask = {
   confirm: (text: string) => open('confirm', text).then((v) => v != null),
   /** Resolves to the entered text, or null when cancelled. */
   prompt: (text: string, initial = '') => open('prompt', text, initial),
+  /** One button per option ([value, label]); resolves to the picked value, or null when cancelled. */
+  choose: <T extends string>(text: string, options: [T, string][]) => open('choose', text, '', options) as Promise<T | null>,
 }
 
 export function DialogHost() {
@@ -55,9 +57,17 @@ export function DialogHost() {
         <p style={{ whiteSpace: 'pre-line' }}>{current.text}</p>
         {current.kind === 'prompt' && <input ref={input} value={value} onChange={(e) => setValue(e.target.value)} aria-label={current.text} />}
         <div className="row">
-          <button type="submit" className="button button--primary" autoFocus={current.kind === 'confirm'}>
-            {current.kind === 'confirm' ? t.common.yes : t.common.save}
-          </button>
+          {current.kind === 'choose' ? (
+            current.options!.map(([v, label], i) => (
+              <button key={v} type="button" className={`button${i === 0 ? ' button--primary' : ''}`} autoFocus={i === 0} onClick={() => done(v)}>
+                {label}
+              </button>
+            ))
+          ) : (
+            <button type="submit" className="button button--primary" autoFocus={current.kind === 'confirm'}>
+              {current.kind === 'confirm' ? t.common.yes : t.common.save}
+            </button>
+          )}
           <button type="button" className="button" onClick={() => done(null)}>
             {t.common.cancel}
           </button>

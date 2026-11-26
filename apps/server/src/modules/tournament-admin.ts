@@ -14,7 +14,7 @@ import { conflict, handler, notFound, unprocessable } from '../http/errors.ts'
 import { intParam, parseBody } from '../http/validate.ts'
 import { notify } from '../notify/index.ts'
 import { bus } from '../realtime/bus.ts'
-import { clubOfTournament, createSchema, createTournament } from './tournaments.ts'
+import { clubOfTournament, createSchema, createTournament, hallDay } from './tournaments.ts'
 
 export const tournamentAdminRouter = Router()
 export const seriesRouter = Router({ mergeParams: true })
@@ -33,7 +33,17 @@ tournamentAdminRouter.patch(
     const { club_id, hall_id } = await clubOfTournament(id)
     const user = await requireClubRight(req, club_id, 'tournaments', { tournamentId: id, hallId: hall_id })
     const body = parseBody(updateSchema, req)
+    const before = await db.selectFrom('tournaments').select(['starts_at', 'parent_id']).where('id', '=', id).executeTakeFirstOrThrow()
     const result = await updateTournament(id, body, user.id)
+    // Categories stay on the day of the main tournament: a new date moves them, their times are kept.
+    if (before.parent_id == null && body.startsAt) {
+      const shift = new Date(body.startsAt).getTime() - before.starts_at.getTime()
+      const dayShift = Math.round(shift / 86400000) * 86400000
+      if (dayShift) {
+        const children = await db.selectFrom('tournaments').select(['id', 'starts_at']).where('parent_id', '=', id).where('status', 'in', ['draft', 'published', 'registration_closed']).execute()
+        for (const c of children) await updateTournament(c.id, { startsAt: new Date(c.starts_at.getTime() + dayShift).toISOString() }, user.id)
+      }
+    }
     bus.publish(`tournament:${id}`, 'tournament.updated', { tournamentId: id })
     bus.publish(`hall:${hall_id}`, 'hall.availability_changed', { hallId: hall_id })
     res.json(result)
@@ -70,9 +80,15 @@ export async function updateTournament(id: number, body: TournamentPatch, actorU
         if (!tableIds.length) throw unprocessable('tournament.no_tables')
       }
       const startsAt = body.startsAt ? new Date(body.startsAt) : t.starts_at
+      if (t.parent_id != null && body.startsAt) {
+        const parent = await trx.selectFrom('tournaments').select('starts_at').where('id', '=', t.parent_id).executeTakeFirstOrThrow()
+        const hall = await trx.selectFrom('halls').select('timezone').where('id', '=', t.hall_id).executeTakeFirstOrThrow()
+        if (hallDay(startsAt, hall.timezone) !== hallDay(parent.starts_at, hall.timezone)) throw unprocessable('tournament.category_date')
+      }
       const estimate = estimateFormat(format, max, { tables: tableIds.length, avgMatchMinutes: settings.avgMatchMinutes ?? 20 })
       const patch: TournamentUpdate = {
         title: body.title,
+        category_name: t.parent_id != null ? body.title : body.categoryName,
         starts_at: startsAt,
         estimated_end_at: new Date(startsAt.getTime() + estimate.minutes * 60000),
         registration_closes_at: body.registrationClosesAt ? new Date(body.registrationClosesAt) : body.startsAt ? startsAt : undefined,
@@ -175,6 +191,11 @@ export async function cancelTournament(tournamentId: number, actorUserId: number
   }
   bus.publish(`tournament:${tournamentId}`, 'tournament.updated', { tournamentId })
   bus.publish(`hall:${users.t.hall_id}`, 'hall.availability_changed', { hallId: users.t.hall_id })
+  // Cancelling the main tournament cancels the categories that have not started.
+  if (users.t.parent_id == null) {
+    const children = await db.selectFrom('tournaments').select('id').where('parent_id', '=', tournamentId).where('status', 'in', ['draft', 'published', 'registration_closed']).execute()
+    for (const c of children) await cancelTournament(c.id, actorUserId, reason)
+  }
 }
 
 tournamentAdminRouter.post(

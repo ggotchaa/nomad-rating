@@ -50,7 +50,7 @@ export async function currentUserView(userId: number, session?: { activeClubId: 
   const clubs = await db
     .selectFrom('club_members as m')
     .innerJoin('clubs as c', 'c.id', 'm.club_id')
-    .select(['c.id', 'c.slug', 'c.name', 'm.role', 'm.rights'])
+    .select(['c.id', 'c.slug', 'c.name', 'c.status', 'm.role', 'm.rights'])
     .where('m.user_id', '=', userId)
     .execute()
   return {

@@ -264,6 +264,8 @@ export interface TournamentsTable {
   archived_at: Timestamp | null
   postponed_at: Timestamp | null
   postponed_reason: string | null
+  parent_id: ColumnType<number | null, number | null | undefined, number | null>
+  category_name: ColumnType<string | null, string | null | undefined, string | null>
 }
 
 export interface PaymentsTable {

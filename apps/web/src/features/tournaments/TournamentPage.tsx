@@ -13,6 +13,7 @@ import { TeamTournamentBlock } from '../teams/Teams.tsx'
 import { ask } from '../../ui/dialogs.tsx'
 import type { NotifySettings } from '../notifications/model.ts'
 import { MyStatus } from '../rating/widgets.tsx'
+import { EventView } from './EventView.tsx'
 
 function Register({ d, reload }: { d: TournamentDetail; reload: () => void }) {
   const { me } = useSession()
@@ -100,6 +101,7 @@ export function TournamentPage() {
   const { me } = useSession()
   const [params] = useSearchParams()
   const asPlayer = params.get('view') === 'public'
+  const asCategory = params.get('cat') === 'main'
   const state = useApi<TournamentDetail>(`/tournaments/${slug}`)
   const [tab, setTab] = useState('about')
   useRoom(state.data ? `tournament:${state.data.id}` : null, state.reload)
@@ -117,6 +119,8 @@ export function TournamentPage() {
       <Async state={state} skeleton={3}>
         {(d) => {
           const admin = Boolean(d.isStaff) && !asPlayer
+          if (d.categories.length > 1 && !d.parentId && !asCategory) return <EventView d={d} reload={state.reload} admin={admin} />
+          const ofEvent = d.event && d.categories.length > 1 ? d.event : null
           const finished = d.status === 'finished' || d.status === 'finished_early'
           const limits = restrictionLabel(d.restrictions)
           const active = d.participants.filter((p) => p.status !== 'waitlist' && p.status !== 'invited')
@@ -129,11 +133,17 @@ export function TournamentPage() {
           return (
             <>
               <header className="pagehead">
-                <Link className="crumb" to="/tournaments">
-                  ← {t.t.title}
-                </Link>
+                {ofEvent ? (
+                  <Link className="crumb" to={`/t/${ofEvent.slug}`}>
+                    ← {ofEvent.title}
+                  </Link>
+                ) : (
+                  <Link className="crumb" to="/tournaments">
+                    ← {t.t.title}
+                  </Link>
+                )}
                 <div className="row row--between">
-                  <h1>{d.title}</h1>
+                  <h1>{ofEvent ? `${ofEvent.title} · ${d.categoryName ?? t.cat.main}` : d.title}</h1>
                   {d.isStaff && asPlayer && (
                     <Link className="button button--sm" to={`/t/${d.slug}`}>
                       {t.t.viewAsAdmin}

@@ -129,6 +129,7 @@ clubsRouter.get(
       .select(['id', 'slug', 'title', 'starts_at', 'status', 'fee', 'max_participants', 'restrictions'])
       .where('club_id', '=', club.id)
       .where('status', '<>', 'draft')
+      .where('parent_id', 'is', null)
       .orderBy('starts_at', 'desc')
       .limit(30)
       .execute()

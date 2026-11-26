@@ -36,7 +36,6 @@ export function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreat
           birthYear: Number(f.get('birthYear')),
           cityId: Number(f.get('cityId')),
           startLevel: f.get('startLevel'),
-          ...(f.get('email') ? { email: f.get('email') } : {}),
           force: duplicates.length > 0,
         },
       })
@@ -84,9 +83,6 @@ export function NewPlayer({ onClose, onCreated }: { onClose: () => void; onCreat
               </option>
             ))}
           </select>
-        </Field>
-        <Field label={`${t.a.email} (${t.misc.optional})`} wide>
-          <input name="email" type="email" />
         </Field>
         {duplicates.length > 0 && (
           <div className="note field--wide">

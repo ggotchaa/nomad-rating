@@ -15,12 +15,12 @@ import { intParam, parseBody } from '../http/validate.ts'
 import { notify } from '../notify/index.ts'
 import { notifyNext, refreshCallAnswer, sendCall, sendCallCancelled, sendTableChanged, telegramDelivery } from '../notify/match.ts'
 import { bus } from '../realtime/bus.ts'
-import { busyElsewhere, structurePreview } from '../tournaments/busy.ts'
+import { busyElsewhere, entryPlayers, eventTournamentIds, siblingActivity, structurePreview } from '../tournaments/busy.ts'
 import { conductState, matchList } from '../tournaments/queue.ts'
 import { draftView } from '../tournaments/stage-edit.ts'
 import { correctResult, finishTournament, recordResult, replaceEntryPlayer, rulesOfMatch, withdrawEntry } from '../tournaments/structure.ts'
 import { playerName } from './players.ts'
-import { formatSchema, structure } from './tournaments.ts'
+import { formatSchema, removeEntryBeforeStart, structure } from './tournaments.ts'
 
 export const conductRouter = Router()
 export const myCallsRouter = Router()
@@ -66,7 +66,6 @@ conductRouter.get(
         startsAt: t.starts_at,
         settings: t.settings,
         match: t.format.match,
-        restMinutes: t.settings.restMinutes ?? t.format.restMinutes,
         minParticipants: t.min_participants,
         tableIds: t.table_ids,
         underfillWarnedAt: t.underfill_warned_at,
@@ -119,9 +118,13 @@ conductRouter.post(
       if (!m || m.tournament_id !== t.id) throw notFound('match.not_found')
       if (m.status !== 'scheduled') throw conflict('match.not_callable', { status: m.status })
       const active = await trx.selectFrom('matches').select(['id', 'table_id', 'home_entry_id', 'away_entry_id']).where('tournament_id', '=', t.id).where('status', 'in', ['called', 'playing']).execute()
-      const busy = active.some((a) => [a.home_entry_id, a.away_entry_id].some((x) => x === m.home_entry_id || x === m.away_entry_id))
+      const sibling = await siblingActivity(trx, t)
+      const sides = await trx.selectFrom('entries').select(['player_id', 'roster']).where('id', 'in', [m.home_entry_id ?? 0, m.away_entry_id ?? 0]).execute()
+      const busy =
+        active.some((a) => [a.home_entry_id, a.away_entry_id].some((x) => x === m.home_entry_id || x === m.away_entry_id)) ||
+        sides.some((e) => entryPlayers(e).some((p) => sibling.players.has(p)))
       if (busy) throw conflict('match.player_busy')
-      const used = new Set(active.map((a) => a.table_id))
+      const used = new Set([...active.map((a) => a.table_id), ...sibling.tables])
       let table = tableId
       if (table == null) {
         const tables = await trx.selectFrom('hall_tables').select('id').where('id', 'in', t.table_ids).orderBy('number').execute()
@@ -185,7 +188,7 @@ conductRouter.post(
     if (m.status !== 'called' && m.status !== 'playing') throw conflict('match.not_called')
     if (m.table_id === tableId) return void res.json({ ok: true })
     if (!t.table_ids.includes(tableId)) throw badRequest('match.table_not_in_tournament')
-    const busy = await db.selectFrom('matches').select('id').where('tournament_id', '=', t.id).where('table_id', '=', tableId).where('status', 'in', ['called', 'playing']).executeTakeFirst()
+    const busy = await db.selectFrom('matches').select('id').where('tournament_id', 'in', await eventTournamentIds(db, t)).where('table_id', '=', tableId).where('status', 'in', ['called', 'playing']).executeTakeFirst()
     if (busy) throw conflict('match.table_busy')
     await db.updateTable('matches').set({ table_id: tableId, version: m.version + 1 }).where('id', '=', m.id).execute()
     await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'match', entityId: m.id, action: 'move_table', before: { tableId: m.table_id }, after: { tableId } })
@@ -253,10 +256,13 @@ conductRouter.post(
   '/:id/entries/:entryId/withdraw',
   handler(async (req, res) => {
     const { t, user } = await staffTournament(req)
-    const { reason, mode } = parseBody(z.object({ reason: z.string().trim().min(3).max(500), mode: z.enum(['annul', 'walkover']).default('annul') }), req)
+    const { reason, mode } = parseBody(z.object({ reason: z.string().trim().max(500).optional(), mode: z.enum(['annul', 'walkover']).default('annul') }), req)
     const entryId = intParam(req, 'entryId')
     await entryOf(t, entryId)
-    await db.transaction().execute((trx) => withdrawEntry(trx, entryId, user.id, reason, new Date(), mode))
+    if (t.status === 'running') {
+      if (!reason || reason.length < 3) throw badRequest('entry.reason_required')
+      await db.transaction().execute((trx) => withdrawEntry(trx, entryId, user.id, reason, new Date(), mode))
+    } else await db.transaction().execute((trx) => removeEntryBeforeStart(trx, t.id, entryId, user.id, reason || null))
     changed(t.id)
     bus.publish(`tournament:${t.id}`, 'tournament.entries_changed', { tournamentId: t.id })
     res.json({ ok: true })

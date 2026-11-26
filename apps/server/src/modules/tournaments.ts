@@ -197,6 +197,7 @@ tournamentsRouter.get(
       .innerJoin('halls as h', 'h.id', 't.hall_id')
       .innerJoin('cities as ci', 'ci.id', 'c.city_id')
       .where('t.archived_at', 'is', null)
+      .where('t.parent_id', 'is', null)
       .select([
         't.id',
         't.slug',
@@ -448,6 +449,57 @@ export async function structure(t: Tournament, options: { staff?: boolean } = {}
   return result
 }
 
+/** Categories of a tournament day (the main tournament first) and everyone registered in any of them. */
+async function eventView(t: Tournament, playerId: number | null, isStaff: boolean) {
+  const rootId = t.parent_id ?? t.id
+  let q = db
+    .selectFrom('tournaments as t')
+    .select(['t.id', 't.slug', 't.title', 't.category_name', 't.parent_id', 't.starts_at', 't.status', 't.restrictions', 't.fee', 't.max_participants', 't.type', (eb) => occupied(eb).as('taken')])
+    .where((eb) => eb.or([eb('t.id', '=', rootId), eb('t.parent_id', '=', rootId)]))
+  if (!isStaff) q = q.where('t.status', '<>', 'draft')
+  const rows = await q.orderBy(sql`t.parent_id nulls first`).orderBy('t.starts_at').orderBy('t.id').execute()
+  const root = rows.find((r) => r.id === rootId)
+  if (!root || rows.length < 2) return { event: null, categories: [], eventParticipants: [] }
+  const ids = rows.map((r) => r.id)
+  const entries = await db
+    .selectFrom('entries as e')
+    .innerJoin('players as p', 'p.id', 'e.player_id')
+    .leftJoin('cities as c', 'c.id', 'p.city_id')
+    .leftJoin('player_ratings as r', (j) => j.onRef('r.player_id', '=', 'p.id').on('r.kind', '=', 'singles'))
+    .leftJoin('teams as tm', 'tm.id', 'e.team_id')
+    .select(['e.tournament_id', 'e.status', 'e.rating_at_start', 'p.id', 'p.first_name', 'p.last_name', 'p.start_level', 'c.name_ru as city', 'r.rating', 'tm.name as team_name'])
+    .where('e.tournament_id', 'in', ids)
+    .where('e.status', 'in', [...ENTRY_ACTIVE])
+    .execute()
+  const byPlayer = new Map<number, { playerId: number; name: string; city: string | null; rating: number | null; calibrating: boolean; startLevel: number; categories: number[] }>()
+  for (const e of entries) {
+    const row = byPlayer.get(e.id) ?? { playerId: e.id, name: playerName(e), city: e.city, rating: e.rating_at_start ?? e.rating, calibrating: e.rating == null, startLevel: e.start_level, categories: [] }
+    row.categories.push(e.tournament_id)
+    byPlayer.set(e.id, row)
+  }
+  const mine = new Map(playerId ? entries.filter((e) => e.id === playerId).map((e) => [e.tournament_id, e.status]) : [])
+  return {
+    event: { id: root.id, slug: root.slug, title: root.title, startsAt: root.starts_at },
+    categories: rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.parent_id == null ? r.category_name : (r.category_name ?? r.title),
+      isMain: r.parent_id == null,
+      startsAt: r.starts_at,
+      status: r.status,
+      type: r.type,
+      restrictions: r.restrictions,
+      fee: r.fee,
+      maxParticipants: r.max_participants,
+      taken: Number(r.taken ?? 0),
+      myStatus: mine.get(r.id) ?? null,
+    })),
+    eventParticipants: [...byPlayer.values()]
+      .map((p) => ({ ...p, categories: p.categories.sort((a, b) => ids.indexOf(a) - ids.indexOf(b)) }))
+      .sort((a, b) => (b.rating ?? b.startLevel) - (a.rating ?? a.startLevel)),
+  }
+}
+
 tournamentsRouter.get(
   '/:slug',
   handler(async (req, res) => {
@@ -478,6 +530,9 @@ tournamentsRouter.get(
       id: t.id,
       slug: t.slug,
       title: t.title,
+      categoryName: t.parent_id == null ? t.category_name : (t.category_name ?? t.title),
+      parentId: t.parent_id,
+      ...(await eventView(t, req.user?.playerId ?? null, isStaff)),
       type: t.type,
       status: t.status,
       startsAt: t.starts_at,
@@ -546,7 +601,10 @@ export const meetingSchemeSchema = z.object({
 export const createSchema = z.object({
   type: z.enum(['singles', 'doubles', 'team']).default('singles'),
   hallId: z.number().int().positive(),
-  title: z.string().trim().min(3).max(150),
+  /** Creates a category of this tournament (same day and hall, own time, format and restrictions). */
+  parentId: z.number().int().positive().optional(),
+  categoryName: z.string().trim().max(100).nullable().optional(),
+  title: z.string().trim().min(2).max(150),
   startsAt: z.iso.datetime({ offset: true }),
   registrationClosesAt: z.iso.datetime({ offset: true }).optional(),
   template: z.enum(FORMAT_TEMPLATES).optional(),
@@ -601,10 +659,21 @@ async function uniqueSlug(trx: Trx, title: string, startsAt: Date): Promise<stri
 }
 
 /** Creates a draft tournament; address, tables and defaults come from the club (C-3). Used by the API and the dev seed. */
+/** Local calendar day of a moment in the hall time zone. */
+export const hallDay = (d: Date, timezone: string) => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+
 export async function createTournament(trx: Trx, clubId: number, userId: number | null, input: Omit<z.infer<typeof createSchema>, 'type'> & { type?: Tournament['type'] }): Promise<Tournament> {
+  let parent: Tournament | undefined
+  if (input.parentId) {
+    parent = await trx.selectFrom('tournaments').selectAll().where('id', '=', input.parentId).where('club_id', '=', clubId).executeTakeFirst()
+    if (!parent || parent.parent_id != null) throw badRequest('tournament.category_parent')
+    if (!['draft', 'published', 'registration_closed', 'running'].includes(parent.status)) throw conflict('tournament.not_editable')
+    input = { ...input, hallId: parent.hall_id }
+  }
   const hall = await trx.selectFrom('halls').selectAll().where('id', '=', input.hallId).where('club_id', '=', clubId).executeTakeFirst()
   if (!hall) throw badRequest('tournament.hall_not_in_club')
-  const club = await trx.selectFrom('clubs').select(['tournament_defaults']).where('id', '=', clubId).executeTakeFirstOrThrow()
+  const club = await trx.selectFrom('clubs').select(['tournament_defaults', 'status']).where('id', '=', clubId).executeTakeFirstOrThrow()
+  if (club.status === 'blocked') throw forbidden('club.blocked')
   const defaults = club.tournament_defaults as {
     fee?: number
     refundRules?: RefundRule[]
@@ -636,11 +705,14 @@ export async function createTournament(trx: Trx, clubId: number, userId: number 
   }
   const estimate = estimateFormat(format, input.maxParticipants, { tables: tableIds.length, avgMatchMinutes: (settings.avgMatchMinutes as number | undefined) ?? 20 })
   const startsAt = new Date(input.startsAt)
+  if (parent && hallDay(startsAt, hall.timezone) !== hallDay(parent.starts_at, hall.timezone)) throw unprocessable('tournament.category_date')
   return trx
     .insertInto('tournaments')
     .values({
       club_id: clubId,
       hall_id: hall.id,
+      parent_id: parent?.id ?? null,
+      category_name: parent ? input.title : (input.categoryName ?? null),
       slug: await uniqueSlug(trx, input.title, startsAt),
       title: input.title,
       type,
@@ -678,6 +750,7 @@ clubTournamentsRouter.get(
       .selectFrom('tournaments as t')
       .select(['t.id', 't.slug', 't.title', 't.status', 't.type', 't.starts_at', 't.fee', 't.max_participants', (eb) => occupied(eb).as('taken')])
       .where('t.club_id', '=', clubId)
+      .where('t.parent_id', 'is', null)
       .orderBy('t.starts_at', 'desc')
       .execute()
     res.json(rows.map((r) => ({ ...r, taken: Number(r.taken ?? 0) })))
@@ -722,6 +795,9 @@ export async function publishTournament(trx: Trx, tournamentId: number, userId: 
     .execute()
   await audit({ actorUserId: userId, clubId: t.club_id, entity: 'tournament', entityId: t.id, action: 'publish', before: { status: t.status }, after: { status: 'published' } }, trx)
   bus.publish(`hall:${t.hall_id}`, 'hall.availability_changed', { hallId: t.hall_id })
+  // Publishing the main tournament publishes its draft categories too.
+  const drafts = t.parent_id == null ? await trx.selectFrom('tournaments').select('id').where('parent_id', '=', t.id).where('status', '=', 'draft').execute() : []
+  for (const c of drafts) conflicts.push(...(await publishTournament(trx, c.id, userId)).conflicts)
   return { conflicts }
 }
 
@@ -936,14 +1012,7 @@ tournamentsRouter.delete(
         if (payment.status === 'succeeded') refund = Math.round((payment.amount * refundPercent(t.refund_rules, t.starts_at)) / 100)
         if (payment.method === 'at_club' && payment.status === 'created') await trx.updateTable('payments').set({ status: 'expired', updated_at: new Date() }).where('id', '=', payment.id).execute()
       }
-      if (ENTRY_OCCUPYING.includes(entry.status)) {
-        const next = await trx.selectFrom('entries').select(['id', 'player_id']).where('tournament_id', '=', id).where('status', '=', 'waitlist').orderBy('waitlist_position').executeTakeFirst()
-        if (next) {
-          await trx.updateTable('entries').set({ status: 'invited', hold_until: new Date(Date.now() + 30 * 60000), updated_at: new Date() }).where('id', '=', next.id).execute()
-          const invitedUser = await trx.selectFrom('players').select('user_id').where('id', '=', next.player_id).executeTakeFirst()
-          if (invitedUser?.user_id) await notify({ userId: invitedUser.user_id, type: 'waitlist_invited', urgent: true, data: { tournamentId: id, slug: t.slug, title: t.title, minutes: 30 } })
-        }
-      }
+      if (ENTRY_OCCUPYING.includes(entry.status)) await inviteFromWaitlist(trx, t)
       await audit({ actorUserId: user.id, clubId: t.club_id, entity: 'entry', entityId: entry.id, action: 'cancel', before: { status: entry.status }, after: { status: 'cancelled_by_player', refund } }, trx)
       return { refund }
     })
@@ -951,6 +1020,29 @@ tournamentsRouter.delete(
     res.json(result)
   }),
 )
+
+/** A place became free: the first in the waiting list is invited (R-4). */
+async function inviteFromWaitlist(trx: Trx, t: Tournament) {
+  const next = await trx.selectFrom('entries').select(['id', 'player_id']).where('tournament_id', '=', t.id).where('status', '=', 'waitlist').orderBy('waitlist_position').executeTakeFirst()
+  if (!next) return
+  await trx.updateTable('entries').set({ status: 'invited', hold_until: new Date(Date.now() + 30 * 60000), updated_at: new Date() }).where('id', '=', next.id).execute()
+  const invitedUser = await trx.selectFrom('players').select('user_id').where('id', '=', next.player_id).executeTakeFirst()
+  if (invitedUser?.user_id) await notify({ userId: invitedUser.user_id, type: 'waitlist_invited', urgent: true, data: { tournamentId: t.id, slug: t.slug, title: t.title, minutes: 30 } })
+}
+
+/** The club takes a player off a tournament that has not started; the at-club payment expires and the place goes to the waiting list. */
+export async function removeEntryBeforeStart(trx: Trx, tournamentId: number, entryId: number, actorUserId: number, reason: string | null) {
+  const t = await trx.selectFrom('tournaments').selectAll().where('id', '=', tournamentId).forUpdate().executeTakeFirstOrThrow()
+  if (!['draft', 'published', 'registration_closed'].includes(t.status)) throw conflict('entry.cannot_cancel_now')
+  const entry = await trx.selectFrom('entries').selectAll().where('id', '=', entryId).where('tournament_id', '=', tournamentId).forUpdate().executeTakeFirst()
+  if (!entry || !ENTRY_ACTIVE.includes(entry.status)) throw notFound('entry.not_found')
+  await trx.updateTable('entries').set({ status: 'removed_by_club', hold_until: null, updated_at: new Date() }).where('id', '=', entryId).execute()
+  if (entry.payment_id) await trx.updateTable('payments').set({ status: 'expired', updated_at: new Date() }).where('id', '=', entry.payment_id).where('method', '=', 'at_club').where('status', '=', 'created').execute()
+  if (ENTRY_OCCUPYING.includes(entry.status)) await inviteFromWaitlist(trx, t)
+  await audit({ actorUserId, clubId: t.club_id, entity: 'entry', entityId: entryId, action: 'remove', reason, before: { status: entry.status }, after: { status: 'removed_by_club' } }, trx)
+  const player = await trx.selectFrom('players').select('user_id').where('id', '=', entry.player_id).executeTakeFirst()
+  if (player?.user_id) await notify({ userId: player.user_id, type: 'tournament_changed', urgent: true, data: { tournamentId: t.id, slug: t.slug, title: t.title, text: 'Ваша заявка снята с турнира', reason } })
+}
 
 // Running (stage 2 builds the tables screen on top of these).
 

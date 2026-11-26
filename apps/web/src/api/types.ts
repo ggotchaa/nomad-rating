@@ -63,7 +63,7 @@ export type Me = {
     needsWelcome?: boolean
   } | null
   player: { id: number; first_name: string; last_name: string; gender: 'm' | 'f'; birth_year: number; photo_url: string | null; start_level: number; level_status: 'pending' | 'confirmed' | 'rejected' | null; city: string | null; rating: number | null } | null
-  clubs: { id: number; slug: string; name: string; role: 'organizer' | 'helper'; rights: ClubRight[] }[]
+  clubs: { id: number; slug: string; name: string; status: string; role: 'organizer' | 'helper'; rights: ClubRight[] }[]
   activeClubId?: number | null
 }
 
@@ -167,10 +167,30 @@ export type StructureFormat = {
 export type StageEstimate = { id: string; name: string; kind: string; players: number; matches: number; groups?: number[]; bracketSize?: number }
 export type FormatEstimate = { stages: StageEstimate[]; totalMatches: number; minutes: number }
 
+export type TournamentCategory = {
+  id: number
+  slug: string
+  name: string | null
+  isMain: boolean
+  startsAt: string
+  status: string
+  type: string
+  restrictions: { ratingMin?: number | null; ratingMax?: number | null; gender?: 'm' | 'f' | null; ageMin?: number | null; ageMax?: number | null }
+  fee: number
+  maxParticipants: number
+  taken: number
+  myStatus: string | null
+}
 export type TournamentDetail = {
   id: number
   slug: string
   title: string
+  categoryName: string | null
+  parentId: number | null
+  /** Main tournament of the day; null when the tournament has no categories. */
+  event: { id: number; slug: string; title: string; startsAt: string } | null
+  categories: TournamentCategory[]
+  eventParticipants: { playerId: number; name: string; city: string | null; rating: number | null; calibrating: boolean; startLevel: number; categories: number[] }[]
   type: string
   status: string
   startsAt: string
@@ -336,7 +356,7 @@ export type MyBooking = { id: number; starts_at: string; ends_at: string; status
 
 export type MyEntry = { id: number; status: string; waitlist_position: number | null; final_place: number | null; tournament_id: number; slug: string; title: string; starts_at: string; tournament_status: string; fee: number; club: string; payment_method: string | null }
 
-export type MyClub = { id: number; slug: string; name: string; role: 'organizer' | 'helper'; rights: ClubRight[]; halls: { id: number; name: string }[] }
+export type MyClub = { id: number; slug: string; name: string; status: string; role: 'organizer' | 'helper'; rights: ClubRight[]; halls: { id: number; name: string }[] }
 
 export type ManageTournament = { id: number; slug: string; title: string; status: string; starts_at: string; fee: number; max_participants: number; taken: number }
 

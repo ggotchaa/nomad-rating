@@ -105,7 +105,7 @@ export function formatTemplate(id: FormatTemplateId, players: number, params: Te
     match: { ...DEFAULT_MATCH_RULES, ...params.match },
     groupPoints: DEFAULT_GROUP_POINTS,
     tiebreaks: DEFAULT_TIEBREAKS,
-    restMinutes: params.restMinutes ?? 10,
+    restMinutes: params.restMinutes ?? 0,
   }
   const groupSize = params.groupSize ?? 4
   const groups: StageSpec = { id: 'groups', kind: 'groups', name: 'Группы', groupSize, seeding: 'snake' }

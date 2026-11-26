@@ -157,7 +157,7 @@ export function Calendar() {
     query.set('limit', '100')
   }
   const list = useApi<Card[]>(`/tournaments?${query}`)
-  const canCreate = me.clubs.some((c) => c.role === 'organizer' || c.rights.includes('tournaments'))
+  const canCreate = me.clubs.some((c) => c.status !== 'blocked' && (c.role === 'organizer' || c.rights.includes('tournaments')))
 
   return (
     <main className="page">

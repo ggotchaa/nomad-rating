@@ -165,14 +165,25 @@ function Seeding({ d, run }: { d: ConductState; run: (path: string, json?: unkno
                   )}
                 </td>
                 <td>
-                  {e.status === 'paid' && (
+                  <div className="row" style={{ justifyContent: 'flex-end' }}>
+                    {e.status === 'paid' && (
+                      <button
+                        className="button button--sm"
+                        onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`)}
+                      >
+                        {t.conduct.checkin}
+                      </button>
+                    )}
                     <button
-                      className="button button--sm"
-                      onClick={() => void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/checkin`)}
+                      className="button button--sm button--ghost"
+                      onClick={async () =>
+                        (await dialog.confirm(t.m.withdrawConfirm(e.name))) &&
+                        void run(`/tournaments/${d.tournament.id}/entries/${e.entryId}/withdraw`, {})
+                      }
                     >
-                      {t.conduct.checkin}
+                      {t.m.withdraw}
                     </button>
-                  )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -553,9 +564,7 @@ export function ConductPage() {
                           </span>
                           {q.waitReason ? (
                             <span className="chip chip--warn">
-                              {q.waitReason === 'rest' && q.readyAt
-                                ? t.conduct.readyAt(formatTime(q.readyAt))
-                                : t.conduct.wait[q.waitReason]}
+                              {t.conduct.wait[q.waitReason]}
                             </span>
                           ) : (
                             <button
@@ -611,14 +620,13 @@ export function ConductPage() {
                             <button
                               className="button button--sm button--danger"
                               onClick={async () => {
-                                const mode = await dialog.prompt(t.conduct.withdrawMode, '1')
-                                if (mode !== '1' && mode !== '2') return
+                                const mode = await dialog.choose(t.conduct.withdrawMode, [
+                                  ['annul', t.conduct.withdrawAnnul],
+                                  ['walkover', t.conduct.withdrawWalkover],
+                                ])
+                                if (!mode) return
                                 const reason = await ask(t.conduct.withdrawReason)
-                                if (reason)
-                                  void run(`${base}/entries/${e.entryId}/withdraw`, {
-                                    reason,
-                                    mode: mode === '1' ? 'annul' : 'walkover',
-                                  })
+                                if (reason) void run(`${base}/entries/${e.entryId}/withdraw`, { reason, mode })
                               }}
                             >
                               {t.conduct.withdraw}
